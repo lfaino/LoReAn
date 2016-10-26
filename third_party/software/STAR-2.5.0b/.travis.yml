@@ -1,0 +1,7 @@
+git:
+  submodules: false
+before_script:
+  - cd source
+before_script
+script:
+  - make STAR
