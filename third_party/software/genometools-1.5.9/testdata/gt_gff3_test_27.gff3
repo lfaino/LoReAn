@@ -1,3 +1,0 @@
-##gff-version 3
-CTG123	.	gene	1000	9000	.	+	.	ID=gene00001
-##sequence-region CTG123 1 10000

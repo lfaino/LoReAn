@@ -1,6 +1,0 @@
-#!/bin/sh -e
-
-for FILE in $*
-do
-  echo "$FILE\"" | sed 's%src/%#include "%'
-done

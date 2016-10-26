@@ -1,3 +1,0 @@
-##gff-version 3
-##sequence-region seq 1 4
-seq	.	intron	1	4	.	?	.	.

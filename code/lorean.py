@@ -553,7 +553,7 @@ def main():
                 trinity_evm =  wd + 'trinity_evm_combined.gff3'
                 trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, trinity_evm)
                 updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, 
-                            trinity_evm, evm_gff3)
+                            trinity_out, trinity_evm)
             else:
                 print '\n##UPDATE ROUND ###\n'
                 updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, 
