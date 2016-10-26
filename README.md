@@ -1,4 +1,8 @@
 # LoReAn
+Authors:
+Luigi Faino
+David Cook 
+Jose A. Espejo
 
 # LoReAn docker was build on:
 
