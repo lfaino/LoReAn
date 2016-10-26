@@ -307,20 +307,23 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
         
     log_name = pasa_dir + 'update_gff3.log'
     log = open(log_name, 'w')
-    
+    log_out_name = pasa_dir + 'pasa.out.log'
+    out_log = open(log_out_name, 'w')
+
     print '\nCMD: ' + ' '.join(args) + '\n'
 
     try:
         #update_call = subprocess.Popen(args, stdout = file(log_name , "w"), cwd = pasa_dir)
         #update_call.communicate()
-        update_process = subprocess.check_call(args, stderr = log, cwd = pasa_dir)
+        update_process = subprocess.check_call(args, stdout = out_log ,stderr = log, cwd = pasa_dir)
         #processID = update_process.pid
         
         print '> GFF3 updated \n'
     except:
         print 'Could not update GFF3 from PASA DB\n'
         raise NameError('')
-        
+
+    out_log.close()
     log.close()
     
 def parse_pasa_update(round_n, pasa_dir, pasa_db):

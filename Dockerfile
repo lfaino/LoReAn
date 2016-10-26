@@ -46,7 +46,7 @@ RUN cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && s
     cp ../conf_files/gm_key ~/.gm_key 
     
 RUN sudo perl -MCPAN -e shell && cpan -f -i YAML && cpan -f -i Hash::Merge && cpan -f -i  Logger::Simple && cpan -f -i  Parallel::ForkManager &&\
-    cpan -f -i Config::Std 
+    cpan -f -i Config::Std && cpan -f -i Scalar::Util::Numeric 
      
 RUN mkdir gffreadF && cd gffreadF && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin

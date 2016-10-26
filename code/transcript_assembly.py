@@ -87,17 +87,20 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     if os.path.isfile(out_file): 
         print ('PASA output existed already: ' + out_file + ' --- skipping\n')
         return out_file
-    log_name = pasa_dir + 'pasa.log'
+    log_name = pasa_dir + 'pasa.err.log'
+    log_out_name = pasa_dir + 'pasa.out.log'
     log = open(log_name, 'w') 
+    out_log = open(log_out_name, 'w')
     print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
-        subprocess.check_call(args, stderr = log, cwd = pasa_dir)
+        subprocess.check_call(args, stdout = out_log, stderr = log, cwd = pasa_dir)
         
         print '> PASA completed' 
     except:
         print 'PASA failed'
         raise NameError('')
-    log.close()   
+    log.close()
+    out_log.close()
     return out_file
 
 def td_longORFs(td_dir, transcripts_fasta):
