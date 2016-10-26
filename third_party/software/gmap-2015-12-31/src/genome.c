@@ -1,0 +1,11490 @@
+static char rcsid[] = "$Id: genome.c 172736 2015-08-27 16:36:31Z twu $";
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+#ifndef HAVE_MEMCPY
+# define memcpy(d,s,n) bcopy((s),(d),(n))
+#endif
+#ifndef HAVE_MEMMOVE
+# define memmove(d,s,n) bcopy((s),(d),(n))
+#endif
+
+#include "genome.h"
+
+#include <stdio.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>		/* For munmap */
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>		/* For lseek and close */
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>		/* For off_t */
+#endif
+
+#ifdef HAVE_PTHREAD
+#include <pthread.h>		/* sys/types.h already included above */
+#endif
+
+#include "assert.h"
+#include "except.h"
+#include "mem.h"
+#include "complement.h"
+#include "interval.h"
+#include "genomicpos.h"		/* For Genomicpos_commafmt */
+#include "types.h"
+
+
+#ifdef WORDS_BIGENDIAN
+#include "bigendian.h"
+#else
+#include "littleendian.h"
+#endif
+
+
+/* Uses 'A' instead of 'N' just as Oligoindex_hr_tally would do */
+/* #define EXTRACT_GENOMICSEG 1 */
+
+
+#ifdef DEBUG
+#define debug(x) x
+#else
+#define debug(x)
+#endif
+
+/* Print genomic segment */
+#ifdef DEBUG1
+#define debug1(x) x
+#else
+#define debug1(x)
+#endif
+
+/* Patching with strain information */
+#ifdef DEBUG2
+#define debug2(x) x
+#else
+#define debug2(x)
+#endif
+
+/* Nucleotides */
+#ifdef DEBUG3
+#define debug3(x) x
+#else
+#define debug3(x)
+#endif
+
+
+#define T Genome_T
+struct T {
+  Access_T access;
+  int chars_shmid;
+  int blocks_shmid;
+
+  int fd;
+  size_t len;
+
+  char *chars;
+  Genomecomp_T *blocks;
+  bool compressedp;
+
+  char *ptr;
+  unsigned int left;
+#ifdef HAVE_PTHREAD
+  pthread_mutex_t read_mutex;
+#endif
+};
+
+
+Genomecomp_T *
+Genome_blocks (T this) {
+  return this->blocks;
+}
+
+
+Univcoord_T
+Genome_totallength (T this) {
+  if (this->compressedp == false) {
+    return (Univcoord_T) this->len;
+  } else {
+    return (Univcoord_T) ((this->len/3) * 8);
+  }
+}
+
+void
+Genome_free (T *old) {
+  if (*old) {
+    if ((*old)->access == ALLOCATED_PRIVATE) {
+      if ((*old)->compressedp == true) {
+	FREE((*old)->blocks);
+      } else {
+	FREE((*old)->chars);
+      }
+
+    } else if ((*old)->access == ALLOCATED_SHARED) {
+      if ((*old)->compressedp == true) {
+	Access_deallocate((*old)->blocks,(*old)->blocks_shmid);
+      } else {
+	Access_deallocate((*old)->chars,(*old)->chars_shmid);
+      }
+
+#ifdef HAVE_MMAP
+    } else if ((*old)->access == MMAPPED) {
+      if ((*old)->compressedp == true) {
+	munmap((void *) (*old)->blocks,(*old)->len);
+      } else {
+	munmap((void *) (*old)->chars,(*old)->len);
+      }
+      close((*old)->fd);
+#endif
+    } else if ((*old)->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_destroy(&(*old)->read_mutex);
+#endif
+      close((*old)->fd);
+    }
+
+    FREE(*old);
+  }
+  return;
+}
+
+
+void
+Genome_shmem_remove (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T genometype,
+		     bool genome_lc_p) {
+  char *filename;
+  bool compressedp = !genome_lc_p;
+
+  if (compressedp == true) {
+    if (genometype == GENOME_OLIGOS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+      }
+
+    } else if (genometype == GENOME_BITS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits128.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits128")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128",genomesubdir,fileroot);
+      }
+      if (Access_file_exists_p(filename) == false) {
+	fprintf(stderr,"Unable to detect new version of genome index: genomebits128 file not available.  This version of GSNAP is not backwards compatible.\n");
+	fprintf(stderr,"Looking specifically for %s\n",filename);
+	FREE(filename);
+	exit(9);
+	return;
+      }
+
+    } else {
+      fprintf(stderr,"Don't recognize genome type %d\n",genometype);
+      abort();
+    }
+
+  } else {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".genome")+1,sizeof(char));
+    sprintf(filename,"%s/%s.genome",genomesubdir,fileroot);
+  }
+
+  Access_shmem_remove(filename);
+  FREE(filename);
+
+  return;
+
+}
+
+
+T
+Genome_new (char *genomesubdir, char *fileroot, char *snps_root, Genometype_T genometype,
+	    bool genome_lc_p, Access_mode_T access, bool sharedp) {
+  T new = (T) MALLOC(sizeof(*new));
+  char *filename;
+  bool compressedp = !genome_lc_p;
+  char *comma;
+  int npages;
+  double seconds;
+
+  new->compressedp = compressedp;
+
+  if (compressedp == true) {
+    if (genometype == GENOME_OLIGOS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomecomp")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomecomp",genomesubdir,fileroot);
+      }
+
+    } else if (genometype == GENOME_BITS) {
+      if (snps_root != NULL) {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits128.")+strlen(snps_root)+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128.%s",genomesubdir,fileroot,snps_root);
+      } else {
+	filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+				   strlen(".genomebits128")+1,sizeof(char));
+	sprintf(filename,"%s/%s.genomebits128",genomesubdir,fileroot);
+      }
+      if (Access_file_exists_p(filename) == false) {
+	fprintf(stderr,"Unable to detect new version of genome index: genomebits128 file not available.  This version of GSNAP is not backwards compatible.\n");
+	fprintf(stderr,"Looking specifically for %s\n",filename);
+	FREE(filename);
+	FREE(new);
+	exit(9);
+	return (T) NULL;
+      }
+
+    } else {
+      fprintf(stderr,"Don't recognize genome type %d\n",genometype);
+      abort();
+    }
+
+  } else {
+    filename = (char *) CALLOC(strlen(genomesubdir)+strlen("/")+strlen(fileroot)+
+			       strlen(".genome")+1,sizeof(char));
+    sprintf(filename,"%s/%s.genome",genomesubdir,fileroot);
+  }
+
+  if (compressedp == true) {
+    new->chars = (char *) NULL;
+
+    if (access == USE_ALLOCATE) {
+      fprintf(stderr,"Allocating memory for compressed genome ");
+      if (genometype == GENOME_OLIGOS) {
+	fprintf(stderr,"(oligos)...");
+      } else if (genometype == GENOME_BITS) {
+	fprintf(stderr,"(bits)...");
+      }
+      new->blocks = (Genomecomp_T *) Access_allocate(&new->blocks_shmid,&new->len,&seconds,filename,sizeof(Genomecomp_T),sharedp);
+      if (new->blocks == NULL) {
+	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
+	exit(9);
+      } else {
+	comma = Genomicpos_commafmt(new->len);
+	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
+	FREE(comma);
+	if (sharedp == true) {
+	  new->access = ALLOCATED_SHARED;
+	} else {
+	  new->access = ALLOCATED_PRIVATE;
+	}
+      }
+
+#ifdef HAVE_MMAP
+    } else if (access == USE_MMAP_PRELOAD) {
+      fprintf(stderr,"Pre-loading compressed genome ");
+      if (genometype == GENOME_OLIGOS) {
+	fprintf(stderr,"(oligos)...");
+      } else if (genometype == GENOME_BITS) {
+	fprintf(stderr,"(bits)...");
+      }
+      new->blocks = (Genomecomp_T *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
+							     filename,sizeof(Genomecomp_T));
+      if (new->blocks == NULL) {
+	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	comma = Genomicpos_commafmt(new->len);
+	fprintf(stderr,"done (%s bytes, %d pages, %.2f sec)\n",comma,npages,seconds);
+	FREE(comma);
+	new->access = MMAPPED;
+      }
+    } else if (access == USE_MMAP_ONLY) {
+      new->blocks = (Genomecomp_T *) Access_mmap(&new->fd,&new->len,filename,sizeof(Genomecomp_T),/*randomp*/false);
+      if (new->blocks == NULL) {
+	fprintf(stderr,"Insufficient memory for genome mmap (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	new->access = MMAPPED;
+      }
+#endif
+
+    } else if (access == USE_FILEIO) {
+      new->blocks = (Genomecomp_T *) NULL;
+      new->fd = Access_fileio(filename);
+      new->access = FILEIO;
+    }
+
+  } else {
+    new->blocks = (Genomecomp_T *) NULL;
+
+    if (access == USE_ALLOCATE) {
+      fprintf(stderr,"Allocating memory for uncompressed genome...");
+      new->chars = (char *) Access_allocate(&new->chars_shmid,&new->len,&seconds,filename,sizeof(char),sharedp);
+      if (new->chars == NULL) {
+	fprintf(stderr,"insufficient memory (need to use a lower batch mode (-B))\n");
+	exit(9);
+      } else {
+	comma = Genomicpos_commafmt(new->len);
+	fprintf(stderr,"done (%s bytes, %.2f sec)\n",comma,seconds);
+	FREE(comma);
+	if (sharedp == true) {
+	  new->access = ALLOCATED_SHARED;
+	} else {
+	  new->access = ALLOCATED_PRIVATE;
+	}
+      }
+      
+#ifdef HAVE_MMAP
+    } else if (access == USE_MMAP_PRELOAD) {
+      fprintf(stderr,"Pre-loading uncompressed genome...");
+      new->chars = (char *) Access_mmap_and_preload(&new->fd,&new->len,&npages,&seconds,
+						    filename,sizeof(char));
+      if (new->chars == NULL) {
+	fprintf(stderr,"insufficient memory (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	comma = Genomicpos_commafmt(new->len);
+	fprintf(stderr,"done (%s bytes, %d pages, %.2f sec)\n",comma,npages,seconds);
+	FREE(comma);
+	new->access = MMAPPED;
+      }
+
+    } else if (access == USE_MMAP_ONLY) {
+      new->chars = (char *) Access_mmap(&new->fd,&new->len,filename,sizeof(char),/*randomp*/false);
+      if (new->chars == NULL) {
+	fprintf(stderr,"Insufficient memory for genome mmap (will use disk file instead)\n");
+	new->access = FILEIO;
+      } else {
+	new->access = MMAPPED;
+      }
+#endif
+
+    } else if (access == USE_FILEIO) {
+      new->chars = (char *) NULL;
+      new->fd = Access_fileio(filename);
+      new->access = FILEIO;
+    }
+  }
+
+#ifdef HAVE_PTHREAD
+  if (new->access == FILEIO) {
+    pthread_mutex_init(&new->read_mutex,NULL);
+  }
+#endif
+
+  FREE(filename);
+
+  /* Initialize for Genome_next_char */
+  new->ptr = new->chars;
+  new->left = 0U;
+  if (new->compressedp == false) {
+    if (new->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&new->read_mutex);
+#endif
+      if (lseek(new->fd,/*left*/0U,SEEK_SET) < 0) {
+	perror("Error in Genome_new");
+	exit(9);
+      }
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&new->read_mutex);
+#endif
+    }
+  }
+
+  return new;
+}
+
+
+static char complCode[128] = COMPLEMENT_LC;
+
+#if 0
+static void
+make_complement_buffered (char *complement, char *sequence, Chrpos_T length) {
+  int i, j;
+
+  for (i = length-1, j = 0; i >= 0; i--, j++) {
+    complement[j] = complCode[(int) sequence[i]];
+  }
+  complement[length] = '\0';
+  return;
+}
+#endif
+
+static void
+make_complement_inplace (char *sequence, Chrpos_T length) {
+  char temp;
+  unsigned int i, j;
+
+  for (i = 0, j = length-1; i < length/2; i++, j--) {
+    temp = complCode[(int) sequence[i]];
+    sequence[i] = complCode[(int) sequence[j]];
+    sequence[j] = temp;
+  }
+  if (i == j) {
+    sequence[i] = complCode[(int) sequence[i]];
+  }
+
+  return;
+}
+
+
+/************************************************************************
+ *   Read procedures
+ ************************************************************************/
+
+static void
+genomecomp_move_absolute (T this, off_t ptr) {
+  off_t offset = ptr*((off_t) sizeof(Genomecomp_T));
+
+  if (lseek(this->fd,offset,SEEK_SET) < 0) {
+    perror("Error in gmap, genomecomp_move_absolute");
+    exit(9);
+  }
+  return;
+}
+
+static Genomecomp_T
+genomecomp_read_current (T this) {
+  Genomecomp_T value;
+  char buffer[4];
+
+  read(this->fd,buffer,4);
+
+  value = (buffer[3] & 0xff);
+  value <<= 8;
+  value |= (buffer[2] & 0xff);
+  value <<= 8;
+  value |= (buffer[1] & 0xff);
+  value <<= 8;
+  value |= (buffer[0] & 0xff);
+
+  return value;
+}
+
+
+static char DEFAULT_CHARS[4] = {'A','C','G','T'};
+static char DEFAULT_FLAGS[4] = {'N','N','N','N'};
+static char X_FLAGS[4] =       {'X','X','X','X'};
+#ifdef EXTRACT_GENOMICSEG
+static char A_FLAGS[4] =       {'A','A','A','A'};
+#endif
+
+static char SNP_CHARS[4] = {' ',' ',' ',' '};
+static char SNP_FLAGS[4] = {'A','C','G','T'};
+
+static char *global_chars = DEFAULT_CHARS;
+static char *global_flags = DEFAULT_FLAGS;
+
+
+#if 0
+void
+Genome_replace_x (void) {
+  non_acgt[3] = 'N';
+}
+#endif
+
+
+static const char *nucleotides[65536] =
+{"AAAAAAAA","CAAAAAAA","GAAAAAAA","TAAAAAAA","ACAAAAAA","CCAAAAAA","GCAAAAAA","TCAAAAAA",
+ "AGAAAAAA","CGAAAAAA","GGAAAAAA","TGAAAAAA","ATAAAAAA","CTAAAAAA","GTAAAAAA","TTAAAAAA",
+ "AACAAAAA","CACAAAAA","GACAAAAA","TACAAAAA","ACCAAAAA","CCCAAAAA","GCCAAAAA","TCCAAAAA",
+ "AGCAAAAA","CGCAAAAA","GGCAAAAA","TGCAAAAA","ATCAAAAA","CTCAAAAA","GTCAAAAA","TTCAAAAA",
+ "AAGAAAAA","CAGAAAAA","GAGAAAAA","TAGAAAAA","ACGAAAAA","CCGAAAAA","GCGAAAAA","TCGAAAAA",
+ "AGGAAAAA","CGGAAAAA","GGGAAAAA","TGGAAAAA","ATGAAAAA","CTGAAAAA","GTGAAAAA","TTGAAAAA",
+ "AATAAAAA","CATAAAAA","GATAAAAA","TATAAAAA","ACTAAAAA","CCTAAAAA","GCTAAAAA","TCTAAAAA",
+ "AGTAAAAA","CGTAAAAA","GGTAAAAA","TGTAAAAA","ATTAAAAA","CTTAAAAA","GTTAAAAA","TTTAAAAA",
+ "AAACAAAA","CAACAAAA","GAACAAAA","TAACAAAA","ACACAAAA","CCACAAAA","GCACAAAA","TCACAAAA",
+ "AGACAAAA","CGACAAAA","GGACAAAA","TGACAAAA","ATACAAAA","CTACAAAA","GTACAAAA","TTACAAAA",
+ "AACCAAAA","CACCAAAA","GACCAAAA","TACCAAAA","ACCCAAAA","CCCCAAAA","GCCCAAAA","TCCCAAAA",
+ "AGCCAAAA","CGCCAAAA","GGCCAAAA","TGCCAAAA","ATCCAAAA","CTCCAAAA","GTCCAAAA","TTCCAAAA",
+ "AAGCAAAA","CAGCAAAA","GAGCAAAA","TAGCAAAA","ACGCAAAA","CCGCAAAA","GCGCAAAA","TCGCAAAA",
+ "AGGCAAAA","CGGCAAAA","GGGCAAAA","TGGCAAAA","ATGCAAAA","CTGCAAAA","GTGCAAAA","TTGCAAAA",
+ "AATCAAAA","CATCAAAA","GATCAAAA","TATCAAAA","ACTCAAAA","CCTCAAAA","GCTCAAAA","TCTCAAAA",
+ "AGTCAAAA","CGTCAAAA","GGTCAAAA","TGTCAAAA","ATTCAAAA","CTTCAAAA","GTTCAAAA","TTTCAAAA",
+ "AAAGAAAA","CAAGAAAA","GAAGAAAA","TAAGAAAA","ACAGAAAA","CCAGAAAA","GCAGAAAA","TCAGAAAA",
+ "AGAGAAAA","CGAGAAAA","GGAGAAAA","TGAGAAAA","ATAGAAAA","CTAGAAAA","GTAGAAAA","TTAGAAAA",
+ "AACGAAAA","CACGAAAA","GACGAAAA","TACGAAAA","ACCGAAAA","CCCGAAAA","GCCGAAAA","TCCGAAAA",
+ "AGCGAAAA","CGCGAAAA","GGCGAAAA","TGCGAAAA","ATCGAAAA","CTCGAAAA","GTCGAAAA","TTCGAAAA",
+ "AAGGAAAA","CAGGAAAA","GAGGAAAA","TAGGAAAA","ACGGAAAA","CCGGAAAA","GCGGAAAA","TCGGAAAA",
+ "AGGGAAAA","CGGGAAAA","GGGGAAAA","TGGGAAAA","ATGGAAAA","CTGGAAAA","GTGGAAAA","TTGGAAAA",
+ "AATGAAAA","CATGAAAA","GATGAAAA","TATGAAAA","ACTGAAAA","CCTGAAAA","GCTGAAAA","TCTGAAAA",
+ "AGTGAAAA","CGTGAAAA","GGTGAAAA","TGTGAAAA","ATTGAAAA","CTTGAAAA","GTTGAAAA","TTTGAAAA",
+ "AAATAAAA","CAATAAAA","GAATAAAA","TAATAAAA","ACATAAAA","CCATAAAA","GCATAAAA","TCATAAAA",
+ "AGATAAAA","CGATAAAA","GGATAAAA","TGATAAAA","ATATAAAA","CTATAAAA","GTATAAAA","TTATAAAA",
+ "AACTAAAA","CACTAAAA","GACTAAAA","TACTAAAA","ACCTAAAA","CCCTAAAA","GCCTAAAA","TCCTAAAA",
+ "AGCTAAAA","CGCTAAAA","GGCTAAAA","TGCTAAAA","ATCTAAAA","CTCTAAAA","GTCTAAAA","TTCTAAAA",
+ "AAGTAAAA","CAGTAAAA","GAGTAAAA","TAGTAAAA","ACGTAAAA","CCGTAAAA","GCGTAAAA","TCGTAAAA",
+ "AGGTAAAA","CGGTAAAA","GGGTAAAA","TGGTAAAA","ATGTAAAA","CTGTAAAA","GTGTAAAA","TTGTAAAA",
+ "AATTAAAA","CATTAAAA","GATTAAAA","TATTAAAA","ACTTAAAA","CCTTAAAA","GCTTAAAA","TCTTAAAA",
+ "AGTTAAAA","CGTTAAAA","GGTTAAAA","TGTTAAAA","ATTTAAAA","CTTTAAAA","GTTTAAAA","TTTTAAAA",
+ "AAAACAAA","CAAACAAA","GAAACAAA","TAAACAAA","ACAACAAA","CCAACAAA","GCAACAAA","TCAACAAA",
+ "AGAACAAA","CGAACAAA","GGAACAAA","TGAACAAA","ATAACAAA","CTAACAAA","GTAACAAA","TTAACAAA",
+ "AACACAAA","CACACAAA","GACACAAA","TACACAAA","ACCACAAA","CCCACAAA","GCCACAAA","TCCACAAA",
+ "AGCACAAA","CGCACAAA","GGCACAAA","TGCACAAA","ATCACAAA","CTCACAAA","GTCACAAA","TTCACAAA",
+ "AAGACAAA","CAGACAAA","GAGACAAA","TAGACAAA","ACGACAAA","CCGACAAA","GCGACAAA","TCGACAAA",
+ "AGGACAAA","CGGACAAA","GGGACAAA","TGGACAAA","ATGACAAA","CTGACAAA","GTGACAAA","TTGACAAA",
+ "AATACAAA","CATACAAA","GATACAAA","TATACAAA","ACTACAAA","CCTACAAA","GCTACAAA","TCTACAAA",
+ "AGTACAAA","CGTACAAA","GGTACAAA","TGTACAAA","ATTACAAA","CTTACAAA","GTTACAAA","TTTACAAA",
+ "AAACCAAA","CAACCAAA","GAACCAAA","TAACCAAA","ACACCAAA","CCACCAAA","GCACCAAA","TCACCAAA",
+ "AGACCAAA","CGACCAAA","GGACCAAA","TGACCAAA","ATACCAAA","CTACCAAA","GTACCAAA","TTACCAAA",
+ "AACCCAAA","CACCCAAA","GACCCAAA","TACCCAAA","ACCCCAAA","CCCCCAAA","GCCCCAAA","TCCCCAAA",
+ "AGCCCAAA","CGCCCAAA","GGCCCAAA","TGCCCAAA","ATCCCAAA","CTCCCAAA","GTCCCAAA","TTCCCAAA",
+ "AAGCCAAA","CAGCCAAA","GAGCCAAA","TAGCCAAA","ACGCCAAA","CCGCCAAA","GCGCCAAA","TCGCCAAA",
+ "AGGCCAAA","CGGCCAAA","GGGCCAAA","TGGCCAAA","ATGCCAAA","CTGCCAAA","GTGCCAAA","TTGCCAAA",
+ "AATCCAAA","CATCCAAA","GATCCAAA","TATCCAAA","ACTCCAAA","CCTCCAAA","GCTCCAAA","TCTCCAAA",
+ "AGTCCAAA","CGTCCAAA","GGTCCAAA","TGTCCAAA","ATTCCAAA","CTTCCAAA","GTTCCAAA","TTTCCAAA",
+ "AAAGCAAA","CAAGCAAA","GAAGCAAA","TAAGCAAA","ACAGCAAA","CCAGCAAA","GCAGCAAA","TCAGCAAA",
+ "AGAGCAAA","CGAGCAAA","GGAGCAAA","TGAGCAAA","ATAGCAAA","CTAGCAAA","GTAGCAAA","TTAGCAAA",
+ "AACGCAAA","CACGCAAA","GACGCAAA","TACGCAAA","ACCGCAAA","CCCGCAAA","GCCGCAAA","TCCGCAAA",
+ "AGCGCAAA","CGCGCAAA","GGCGCAAA","TGCGCAAA","ATCGCAAA","CTCGCAAA","GTCGCAAA","TTCGCAAA",
+ "AAGGCAAA","CAGGCAAA","GAGGCAAA","TAGGCAAA","ACGGCAAA","CCGGCAAA","GCGGCAAA","TCGGCAAA",
+ "AGGGCAAA","CGGGCAAA","GGGGCAAA","TGGGCAAA","ATGGCAAA","CTGGCAAA","GTGGCAAA","TTGGCAAA",
+ "AATGCAAA","CATGCAAA","GATGCAAA","TATGCAAA","ACTGCAAA","CCTGCAAA","GCTGCAAA","TCTGCAAA",
+ "AGTGCAAA","CGTGCAAA","GGTGCAAA","TGTGCAAA","ATTGCAAA","CTTGCAAA","GTTGCAAA","TTTGCAAA",
+ "AAATCAAA","CAATCAAA","GAATCAAA","TAATCAAA","ACATCAAA","CCATCAAA","GCATCAAA","TCATCAAA",
+ "AGATCAAA","CGATCAAA","GGATCAAA","TGATCAAA","ATATCAAA","CTATCAAA","GTATCAAA","TTATCAAA",
+ "AACTCAAA","CACTCAAA","GACTCAAA","TACTCAAA","ACCTCAAA","CCCTCAAA","GCCTCAAA","TCCTCAAA",
+ "AGCTCAAA","CGCTCAAA","GGCTCAAA","TGCTCAAA","ATCTCAAA","CTCTCAAA","GTCTCAAA","TTCTCAAA",
+ "AAGTCAAA","CAGTCAAA","GAGTCAAA","TAGTCAAA","ACGTCAAA","CCGTCAAA","GCGTCAAA","TCGTCAAA",
+ "AGGTCAAA","CGGTCAAA","GGGTCAAA","TGGTCAAA","ATGTCAAA","CTGTCAAA","GTGTCAAA","TTGTCAAA",
+ "AATTCAAA","CATTCAAA","GATTCAAA","TATTCAAA","ACTTCAAA","CCTTCAAA","GCTTCAAA","TCTTCAAA",
+ "AGTTCAAA","CGTTCAAA","GGTTCAAA","TGTTCAAA","ATTTCAAA","CTTTCAAA","GTTTCAAA","TTTTCAAA",
+ "AAAAGAAA","CAAAGAAA","GAAAGAAA","TAAAGAAA","ACAAGAAA","CCAAGAAA","GCAAGAAA","TCAAGAAA",
+ "AGAAGAAA","CGAAGAAA","GGAAGAAA","TGAAGAAA","ATAAGAAA","CTAAGAAA","GTAAGAAA","TTAAGAAA",
+ "AACAGAAA","CACAGAAA","GACAGAAA","TACAGAAA","ACCAGAAA","CCCAGAAA","GCCAGAAA","TCCAGAAA",
+ "AGCAGAAA","CGCAGAAA","GGCAGAAA","TGCAGAAA","ATCAGAAA","CTCAGAAA","GTCAGAAA","TTCAGAAA",
+ "AAGAGAAA","CAGAGAAA","GAGAGAAA","TAGAGAAA","ACGAGAAA","CCGAGAAA","GCGAGAAA","TCGAGAAA",
+ "AGGAGAAA","CGGAGAAA","GGGAGAAA","TGGAGAAA","ATGAGAAA","CTGAGAAA","GTGAGAAA","TTGAGAAA",
+ "AATAGAAA","CATAGAAA","GATAGAAA","TATAGAAA","ACTAGAAA","CCTAGAAA","GCTAGAAA","TCTAGAAA",
+ "AGTAGAAA","CGTAGAAA","GGTAGAAA","TGTAGAAA","ATTAGAAA","CTTAGAAA","GTTAGAAA","TTTAGAAA",
+ "AAACGAAA","CAACGAAA","GAACGAAA","TAACGAAA","ACACGAAA","CCACGAAA","GCACGAAA","TCACGAAA",
+ "AGACGAAA","CGACGAAA","GGACGAAA","TGACGAAA","ATACGAAA","CTACGAAA","GTACGAAA","TTACGAAA",
+ "AACCGAAA","CACCGAAA","GACCGAAA","TACCGAAA","ACCCGAAA","CCCCGAAA","GCCCGAAA","TCCCGAAA",
+ "AGCCGAAA","CGCCGAAA","GGCCGAAA","TGCCGAAA","ATCCGAAA","CTCCGAAA","GTCCGAAA","TTCCGAAA",
+ "AAGCGAAA","CAGCGAAA","GAGCGAAA","TAGCGAAA","ACGCGAAA","CCGCGAAA","GCGCGAAA","TCGCGAAA",
+ "AGGCGAAA","CGGCGAAA","GGGCGAAA","TGGCGAAA","ATGCGAAA","CTGCGAAA","GTGCGAAA","TTGCGAAA",
+ "AATCGAAA","CATCGAAA","GATCGAAA","TATCGAAA","ACTCGAAA","CCTCGAAA","GCTCGAAA","TCTCGAAA",
+ "AGTCGAAA","CGTCGAAA","GGTCGAAA","TGTCGAAA","ATTCGAAA","CTTCGAAA","GTTCGAAA","TTTCGAAA",
+ "AAAGGAAA","CAAGGAAA","GAAGGAAA","TAAGGAAA","ACAGGAAA","CCAGGAAA","GCAGGAAA","TCAGGAAA",
+ "AGAGGAAA","CGAGGAAA","GGAGGAAA","TGAGGAAA","ATAGGAAA","CTAGGAAA","GTAGGAAA","TTAGGAAA",
+ "AACGGAAA","CACGGAAA","GACGGAAA","TACGGAAA","ACCGGAAA","CCCGGAAA","GCCGGAAA","TCCGGAAA",
+ "AGCGGAAA","CGCGGAAA","GGCGGAAA","TGCGGAAA","ATCGGAAA","CTCGGAAA","GTCGGAAA","TTCGGAAA",
+ "AAGGGAAA","CAGGGAAA","GAGGGAAA","TAGGGAAA","ACGGGAAA","CCGGGAAA","GCGGGAAA","TCGGGAAA",
+ "AGGGGAAA","CGGGGAAA","GGGGGAAA","TGGGGAAA","ATGGGAAA","CTGGGAAA","GTGGGAAA","TTGGGAAA",
+ "AATGGAAA","CATGGAAA","GATGGAAA","TATGGAAA","ACTGGAAA","CCTGGAAA","GCTGGAAA","TCTGGAAA",
+ "AGTGGAAA","CGTGGAAA","GGTGGAAA","TGTGGAAA","ATTGGAAA","CTTGGAAA","GTTGGAAA","TTTGGAAA",
+ "AAATGAAA","CAATGAAA","GAATGAAA","TAATGAAA","ACATGAAA","CCATGAAA","GCATGAAA","TCATGAAA",
+ "AGATGAAA","CGATGAAA","GGATGAAA","TGATGAAA","ATATGAAA","CTATGAAA","GTATGAAA","TTATGAAA",
+ "AACTGAAA","CACTGAAA","GACTGAAA","TACTGAAA","ACCTGAAA","CCCTGAAA","GCCTGAAA","TCCTGAAA",
+ "AGCTGAAA","CGCTGAAA","GGCTGAAA","TGCTGAAA","ATCTGAAA","CTCTGAAA","GTCTGAAA","TTCTGAAA",
+ "AAGTGAAA","CAGTGAAA","GAGTGAAA","TAGTGAAA","ACGTGAAA","CCGTGAAA","GCGTGAAA","TCGTGAAA",
+ "AGGTGAAA","CGGTGAAA","GGGTGAAA","TGGTGAAA","ATGTGAAA","CTGTGAAA","GTGTGAAA","TTGTGAAA",
+ "AATTGAAA","CATTGAAA","GATTGAAA","TATTGAAA","ACTTGAAA","CCTTGAAA","GCTTGAAA","TCTTGAAA",
+ "AGTTGAAA","CGTTGAAA","GGTTGAAA","TGTTGAAA","ATTTGAAA","CTTTGAAA","GTTTGAAA","TTTTGAAA",
+ "AAAATAAA","CAAATAAA","GAAATAAA","TAAATAAA","ACAATAAA","CCAATAAA","GCAATAAA","TCAATAAA",
+ "AGAATAAA","CGAATAAA","GGAATAAA","TGAATAAA","ATAATAAA","CTAATAAA","GTAATAAA","TTAATAAA",
+ "AACATAAA","CACATAAA","GACATAAA","TACATAAA","ACCATAAA","CCCATAAA","GCCATAAA","TCCATAAA",
+ "AGCATAAA","CGCATAAA","GGCATAAA","TGCATAAA","ATCATAAA","CTCATAAA","GTCATAAA","TTCATAAA",
+ "AAGATAAA","CAGATAAA","GAGATAAA","TAGATAAA","ACGATAAA","CCGATAAA","GCGATAAA","TCGATAAA",
+ "AGGATAAA","CGGATAAA","GGGATAAA","TGGATAAA","ATGATAAA","CTGATAAA","GTGATAAA","TTGATAAA",
+ "AATATAAA","CATATAAA","GATATAAA","TATATAAA","ACTATAAA","CCTATAAA","GCTATAAA","TCTATAAA",
+ "AGTATAAA","CGTATAAA","GGTATAAA","TGTATAAA","ATTATAAA","CTTATAAA","GTTATAAA","TTTATAAA",
+ "AAACTAAA","CAACTAAA","GAACTAAA","TAACTAAA","ACACTAAA","CCACTAAA","GCACTAAA","TCACTAAA",
+ "AGACTAAA","CGACTAAA","GGACTAAA","TGACTAAA","ATACTAAA","CTACTAAA","GTACTAAA","TTACTAAA",
+ "AACCTAAA","CACCTAAA","GACCTAAA","TACCTAAA","ACCCTAAA","CCCCTAAA","GCCCTAAA","TCCCTAAA",
+ "AGCCTAAA","CGCCTAAA","GGCCTAAA","TGCCTAAA","ATCCTAAA","CTCCTAAA","GTCCTAAA","TTCCTAAA",
+ "AAGCTAAA","CAGCTAAA","GAGCTAAA","TAGCTAAA","ACGCTAAA","CCGCTAAA","GCGCTAAA","TCGCTAAA",
+ "AGGCTAAA","CGGCTAAA","GGGCTAAA","TGGCTAAA","ATGCTAAA","CTGCTAAA","GTGCTAAA","TTGCTAAA",
+ "AATCTAAA","CATCTAAA","GATCTAAA","TATCTAAA","ACTCTAAA","CCTCTAAA","GCTCTAAA","TCTCTAAA",
+ "AGTCTAAA","CGTCTAAA","GGTCTAAA","TGTCTAAA","ATTCTAAA","CTTCTAAA","GTTCTAAA","TTTCTAAA",
+ "AAAGTAAA","CAAGTAAA","GAAGTAAA","TAAGTAAA","ACAGTAAA","CCAGTAAA","GCAGTAAA","TCAGTAAA",
+ "AGAGTAAA","CGAGTAAA","GGAGTAAA","TGAGTAAA","ATAGTAAA","CTAGTAAA","GTAGTAAA","TTAGTAAA",
+ "AACGTAAA","CACGTAAA","GACGTAAA","TACGTAAA","ACCGTAAA","CCCGTAAA","GCCGTAAA","TCCGTAAA",
+ "AGCGTAAA","CGCGTAAA","GGCGTAAA","TGCGTAAA","ATCGTAAA","CTCGTAAA","GTCGTAAA","TTCGTAAA",
+ "AAGGTAAA","CAGGTAAA","GAGGTAAA","TAGGTAAA","ACGGTAAA","CCGGTAAA","GCGGTAAA","TCGGTAAA",
+ "AGGGTAAA","CGGGTAAA","GGGGTAAA","TGGGTAAA","ATGGTAAA","CTGGTAAA","GTGGTAAA","TTGGTAAA",
+ "AATGTAAA","CATGTAAA","GATGTAAA","TATGTAAA","ACTGTAAA","CCTGTAAA","GCTGTAAA","TCTGTAAA",
+ "AGTGTAAA","CGTGTAAA","GGTGTAAA","TGTGTAAA","ATTGTAAA","CTTGTAAA","GTTGTAAA","TTTGTAAA",
+ "AAATTAAA","CAATTAAA","GAATTAAA","TAATTAAA","ACATTAAA","CCATTAAA","GCATTAAA","TCATTAAA",
+ "AGATTAAA","CGATTAAA","GGATTAAA","TGATTAAA","ATATTAAA","CTATTAAA","GTATTAAA","TTATTAAA",
+ "AACTTAAA","CACTTAAA","GACTTAAA","TACTTAAA","ACCTTAAA","CCCTTAAA","GCCTTAAA","TCCTTAAA",
+ "AGCTTAAA","CGCTTAAA","GGCTTAAA","TGCTTAAA","ATCTTAAA","CTCTTAAA","GTCTTAAA","TTCTTAAA",
+ "AAGTTAAA","CAGTTAAA","GAGTTAAA","TAGTTAAA","ACGTTAAA","CCGTTAAA","GCGTTAAA","TCGTTAAA",
+ "AGGTTAAA","CGGTTAAA","GGGTTAAA","TGGTTAAA","ATGTTAAA","CTGTTAAA","GTGTTAAA","TTGTTAAA",
+ "AATTTAAA","CATTTAAA","GATTTAAA","TATTTAAA","ACTTTAAA","CCTTTAAA","GCTTTAAA","TCTTTAAA",
+ "AGTTTAAA","CGTTTAAA","GGTTTAAA","TGTTTAAA","ATTTTAAA","CTTTTAAA","GTTTTAAA","TTTTTAAA",
+ "AAAAACAA","CAAAACAA","GAAAACAA","TAAAACAA","ACAAACAA","CCAAACAA","GCAAACAA","TCAAACAA",
+ "AGAAACAA","CGAAACAA","GGAAACAA","TGAAACAA","ATAAACAA","CTAAACAA","GTAAACAA","TTAAACAA",
+ "AACAACAA","CACAACAA","GACAACAA","TACAACAA","ACCAACAA","CCCAACAA","GCCAACAA","TCCAACAA",
+ "AGCAACAA","CGCAACAA","GGCAACAA","TGCAACAA","ATCAACAA","CTCAACAA","GTCAACAA","TTCAACAA",
+ "AAGAACAA","CAGAACAA","GAGAACAA","TAGAACAA","ACGAACAA","CCGAACAA","GCGAACAA","TCGAACAA",
+ "AGGAACAA","CGGAACAA","GGGAACAA","TGGAACAA","ATGAACAA","CTGAACAA","GTGAACAA","TTGAACAA",
+ "AATAACAA","CATAACAA","GATAACAA","TATAACAA","ACTAACAA","CCTAACAA","GCTAACAA","TCTAACAA",
+ "AGTAACAA","CGTAACAA","GGTAACAA","TGTAACAA","ATTAACAA","CTTAACAA","GTTAACAA","TTTAACAA",
+ "AAACACAA","CAACACAA","GAACACAA","TAACACAA","ACACACAA","CCACACAA","GCACACAA","TCACACAA",
+ "AGACACAA","CGACACAA","GGACACAA","TGACACAA","ATACACAA","CTACACAA","GTACACAA","TTACACAA",
+ "AACCACAA","CACCACAA","GACCACAA","TACCACAA","ACCCACAA","CCCCACAA","GCCCACAA","TCCCACAA",
+ "AGCCACAA","CGCCACAA","GGCCACAA","TGCCACAA","ATCCACAA","CTCCACAA","GTCCACAA","TTCCACAA",
+ "AAGCACAA","CAGCACAA","GAGCACAA","TAGCACAA","ACGCACAA","CCGCACAA","GCGCACAA","TCGCACAA",
+ "AGGCACAA","CGGCACAA","GGGCACAA","TGGCACAA","ATGCACAA","CTGCACAA","GTGCACAA","TTGCACAA",
+ "AATCACAA","CATCACAA","GATCACAA","TATCACAA","ACTCACAA","CCTCACAA","GCTCACAA","TCTCACAA",
+ "AGTCACAA","CGTCACAA","GGTCACAA","TGTCACAA","ATTCACAA","CTTCACAA","GTTCACAA","TTTCACAA",
+ "AAAGACAA","CAAGACAA","GAAGACAA","TAAGACAA","ACAGACAA","CCAGACAA","GCAGACAA","TCAGACAA",
+ "AGAGACAA","CGAGACAA","GGAGACAA","TGAGACAA","ATAGACAA","CTAGACAA","GTAGACAA","TTAGACAA",
+ "AACGACAA","CACGACAA","GACGACAA","TACGACAA","ACCGACAA","CCCGACAA","GCCGACAA","TCCGACAA",
+ "AGCGACAA","CGCGACAA","GGCGACAA","TGCGACAA","ATCGACAA","CTCGACAA","GTCGACAA","TTCGACAA",
+ "AAGGACAA","CAGGACAA","GAGGACAA","TAGGACAA","ACGGACAA","CCGGACAA","GCGGACAA","TCGGACAA",
+ "AGGGACAA","CGGGACAA","GGGGACAA","TGGGACAA","ATGGACAA","CTGGACAA","GTGGACAA","TTGGACAA",
+ "AATGACAA","CATGACAA","GATGACAA","TATGACAA","ACTGACAA","CCTGACAA","GCTGACAA","TCTGACAA",
+ "AGTGACAA","CGTGACAA","GGTGACAA","TGTGACAA","ATTGACAA","CTTGACAA","GTTGACAA","TTTGACAA",
+ "AAATACAA","CAATACAA","GAATACAA","TAATACAA","ACATACAA","CCATACAA","GCATACAA","TCATACAA",
+ "AGATACAA","CGATACAA","GGATACAA","TGATACAA","ATATACAA","CTATACAA","GTATACAA","TTATACAA",
+ "AACTACAA","CACTACAA","GACTACAA","TACTACAA","ACCTACAA","CCCTACAA","GCCTACAA","TCCTACAA",
+ "AGCTACAA","CGCTACAA","GGCTACAA","TGCTACAA","ATCTACAA","CTCTACAA","GTCTACAA","TTCTACAA",
+ "AAGTACAA","CAGTACAA","GAGTACAA","TAGTACAA","ACGTACAA","CCGTACAA","GCGTACAA","TCGTACAA",
+ "AGGTACAA","CGGTACAA","GGGTACAA","TGGTACAA","ATGTACAA","CTGTACAA","GTGTACAA","TTGTACAA",
+ "AATTACAA","CATTACAA","GATTACAA","TATTACAA","ACTTACAA","CCTTACAA","GCTTACAA","TCTTACAA",
+ "AGTTACAA","CGTTACAA","GGTTACAA","TGTTACAA","ATTTACAA","CTTTACAA","GTTTACAA","TTTTACAA",
+ "AAAACCAA","CAAACCAA","GAAACCAA","TAAACCAA","ACAACCAA","CCAACCAA","GCAACCAA","TCAACCAA",
+ "AGAACCAA","CGAACCAA","GGAACCAA","TGAACCAA","ATAACCAA","CTAACCAA","GTAACCAA","TTAACCAA",
+ "AACACCAA","CACACCAA","GACACCAA","TACACCAA","ACCACCAA","CCCACCAA","GCCACCAA","TCCACCAA",
+ "AGCACCAA","CGCACCAA","GGCACCAA","TGCACCAA","ATCACCAA","CTCACCAA","GTCACCAA","TTCACCAA",
+ "AAGACCAA","CAGACCAA","GAGACCAA","TAGACCAA","ACGACCAA","CCGACCAA","GCGACCAA","TCGACCAA",
+ "AGGACCAA","CGGACCAA","GGGACCAA","TGGACCAA","ATGACCAA","CTGACCAA","GTGACCAA","TTGACCAA",
+ "AATACCAA","CATACCAA","GATACCAA","TATACCAA","ACTACCAA","CCTACCAA","GCTACCAA","TCTACCAA",
+ "AGTACCAA","CGTACCAA","GGTACCAA","TGTACCAA","ATTACCAA","CTTACCAA","GTTACCAA","TTTACCAA",
+ "AAACCCAA","CAACCCAA","GAACCCAA","TAACCCAA","ACACCCAA","CCACCCAA","GCACCCAA","TCACCCAA",
+ "AGACCCAA","CGACCCAA","GGACCCAA","TGACCCAA","ATACCCAA","CTACCCAA","GTACCCAA","TTACCCAA",
+ "AACCCCAA","CACCCCAA","GACCCCAA","TACCCCAA","ACCCCCAA","CCCCCCAA","GCCCCCAA","TCCCCCAA",
+ "AGCCCCAA","CGCCCCAA","GGCCCCAA","TGCCCCAA","ATCCCCAA","CTCCCCAA","GTCCCCAA","TTCCCCAA",
+ "AAGCCCAA","CAGCCCAA","GAGCCCAA","TAGCCCAA","ACGCCCAA","CCGCCCAA","GCGCCCAA","TCGCCCAA",
+ "AGGCCCAA","CGGCCCAA","GGGCCCAA","TGGCCCAA","ATGCCCAA","CTGCCCAA","GTGCCCAA","TTGCCCAA",
+ "AATCCCAA","CATCCCAA","GATCCCAA","TATCCCAA","ACTCCCAA","CCTCCCAA","GCTCCCAA","TCTCCCAA",
+ "AGTCCCAA","CGTCCCAA","GGTCCCAA","TGTCCCAA","ATTCCCAA","CTTCCCAA","GTTCCCAA","TTTCCCAA",
+ "AAAGCCAA","CAAGCCAA","GAAGCCAA","TAAGCCAA","ACAGCCAA","CCAGCCAA","GCAGCCAA","TCAGCCAA",
+ "AGAGCCAA","CGAGCCAA","GGAGCCAA","TGAGCCAA","ATAGCCAA","CTAGCCAA","GTAGCCAA","TTAGCCAA",
+ "AACGCCAA","CACGCCAA","GACGCCAA","TACGCCAA","ACCGCCAA","CCCGCCAA","GCCGCCAA","TCCGCCAA",
+ "AGCGCCAA","CGCGCCAA","GGCGCCAA","TGCGCCAA","ATCGCCAA","CTCGCCAA","GTCGCCAA","TTCGCCAA",
+ "AAGGCCAA","CAGGCCAA","GAGGCCAA","TAGGCCAA","ACGGCCAA","CCGGCCAA","GCGGCCAA","TCGGCCAA",
+ "AGGGCCAA","CGGGCCAA","GGGGCCAA","TGGGCCAA","ATGGCCAA","CTGGCCAA","GTGGCCAA","TTGGCCAA",
+ "AATGCCAA","CATGCCAA","GATGCCAA","TATGCCAA","ACTGCCAA","CCTGCCAA","GCTGCCAA","TCTGCCAA",
+ "AGTGCCAA","CGTGCCAA","GGTGCCAA","TGTGCCAA","ATTGCCAA","CTTGCCAA","GTTGCCAA","TTTGCCAA",
+ "AAATCCAA","CAATCCAA","GAATCCAA","TAATCCAA","ACATCCAA","CCATCCAA","GCATCCAA","TCATCCAA",
+ "AGATCCAA","CGATCCAA","GGATCCAA","TGATCCAA","ATATCCAA","CTATCCAA","GTATCCAA","TTATCCAA",
+ "AACTCCAA","CACTCCAA","GACTCCAA","TACTCCAA","ACCTCCAA","CCCTCCAA","GCCTCCAA","TCCTCCAA",
+ "AGCTCCAA","CGCTCCAA","GGCTCCAA","TGCTCCAA","ATCTCCAA","CTCTCCAA","GTCTCCAA","TTCTCCAA",
+ "AAGTCCAA","CAGTCCAA","GAGTCCAA","TAGTCCAA","ACGTCCAA","CCGTCCAA","GCGTCCAA","TCGTCCAA",
+ "AGGTCCAA","CGGTCCAA","GGGTCCAA","TGGTCCAA","ATGTCCAA","CTGTCCAA","GTGTCCAA","TTGTCCAA",
+ "AATTCCAA","CATTCCAA","GATTCCAA","TATTCCAA","ACTTCCAA","CCTTCCAA","GCTTCCAA","TCTTCCAA",
+ "AGTTCCAA","CGTTCCAA","GGTTCCAA","TGTTCCAA","ATTTCCAA","CTTTCCAA","GTTTCCAA","TTTTCCAA",
+ "AAAAGCAA","CAAAGCAA","GAAAGCAA","TAAAGCAA","ACAAGCAA","CCAAGCAA","GCAAGCAA","TCAAGCAA",
+ "AGAAGCAA","CGAAGCAA","GGAAGCAA","TGAAGCAA","ATAAGCAA","CTAAGCAA","GTAAGCAA","TTAAGCAA",
+ "AACAGCAA","CACAGCAA","GACAGCAA","TACAGCAA","ACCAGCAA","CCCAGCAA","GCCAGCAA","TCCAGCAA",
+ "AGCAGCAA","CGCAGCAA","GGCAGCAA","TGCAGCAA","ATCAGCAA","CTCAGCAA","GTCAGCAA","TTCAGCAA",
+ "AAGAGCAA","CAGAGCAA","GAGAGCAA","TAGAGCAA","ACGAGCAA","CCGAGCAA","GCGAGCAA","TCGAGCAA",
+ "AGGAGCAA","CGGAGCAA","GGGAGCAA","TGGAGCAA","ATGAGCAA","CTGAGCAA","GTGAGCAA","TTGAGCAA",
+ "AATAGCAA","CATAGCAA","GATAGCAA","TATAGCAA","ACTAGCAA","CCTAGCAA","GCTAGCAA","TCTAGCAA",
+ "AGTAGCAA","CGTAGCAA","GGTAGCAA","TGTAGCAA","ATTAGCAA","CTTAGCAA","GTTAGCAA","TTTAGCAA",
+ "AAACGCAA","CAACGCAA","GAACGCAA","TAACGCAA","ACACGCAA","CCACGCAA","GCACGCAA","TCACGCAA",
+ "AGACGCAA","CGACGCAA","GGACGCAA","TGACGCAA","ATACGCAA","CTACGCAA","GTACGCAA","TTACGCAA",
+ "AACCGCAA","CACCGCAA","GACCGCAA","TACCGCAA","ACCCGCAA","CCCCGCAA","GCCCGCAA","TCCCGCAA",
+ "AGCCGCAA","CGCCGCAA","GGCCGCAA","TGCCGCAA","ATCCGCAA","CTCCGCAA","GTCCGCAA","TTCCGCAA",
+ "AAGCGCAA","CAGCGCAA","GAGCGCAA","TAGCGCAA","ACGCGCAA","CCGCGCAA","GCGCGCAA","TCGCGCAA",
+ "AGGCGCAA","CGGCGCAA","GGGCGCAA","TGGCGCAA","ATGCGCAA","CTGCGCAA","GTGCGCAA","TTGCGCAA",
+ "AATCGCAA","CATCGCAA","GATCGCAA","TATCGCAA","ACTCGCAA","CCTCGCAA","GCTCGCAA","TCTCGCAA",
+ "AGTCGCAA","CGTCGCAA","GGTCGCAA","TGTCGCAA","ATTCGCAA","CTTCGCAA","GTTCGCAA","TTTCGCAA",
+ "AAAGGCAA","CAAGGCAA","GAAGGCAA","TAAGGCAA","ACAGGCAA","CCAGGCAA","GCAGGCAA","TCAGGCAA",
+ "AGAGGCAA","CGAGGCAA","GGAGGCAA","TGAGGCAA","ATAGGCAA","CTAGGCAA","GTAGGCAA","TTAGGCAA",
+ "AACGGCAA","CACGGCAA","GACGGCAA","TACGGCAA","ACCGGCAA","CCCGGCAA","GCCGGCAA","TCCGGCAA",
+ "AGCGGCAA","CGCGGCAA","GGCGGCAA","TGCGGCAA","ATCGGCAA","CTCGGCAA","GTCGGCAA","TTCGGCAA",
+ "AAGGGCAA","CAGGGCAA","GAGGGCAA","TAGGGCAA","ACGGGCAA","CCGGGCAA","GCGGGCAA","TCGGGCAA",
+ "AGGGGCAA","CGGGGCAA","GGGGGCAA","TGGGGCAA","ATGGGCAA","CTGGGCAA","GTGGGCAA","TTGGGCAA",
+ "AATGGCAA","CATGGCAA","GATGGCAA","TATGGCAA","ACTGGCAA","CCTGGCAA","GCTGGCAA","TCTGGCAA",
+ "AGTGGCAA","CGTGGCAA","GGTGGCAA","TGTGGCAA","ATTGGCAA","CTTGGCAA","GTTGGCAA","TTTGGCAA",
+ "AAATGCAA","CAATGCAA","GAATGCAA","TAATGCAA","ACATGCAA","CCATGCAA","GCATGCAA","TCATGCAA",
+ "AGATGCAA","CGATGCAA","GGATGCAA","TGATGCAA","ATATGCAA","CTATGCAA","GTATGCAA","TTATGCAA",
+ "AACTGCAA","CACTGCAA","GACTGCAA","TACTGCAA","ACCTGCAA","CCCTGCAA","GCCTGCAA","TCCTGCAA",
+ "AGCTGCAA","CGCTGCAA","GGCTGCAA","TGCTGCAA","ATCTGCAA","CTCTGCAA","GTCTGCAA","TTCTGCAA",
+ "AAGTGCAA","CAGTGCAA","GAGTGCAA","TAGTGCAA","ACGTGCAA","CCGTGCAA","GCGTGCAA","TCGTGCAA",
+ "AGGTGCAA","CGGTGCAA","GGGTGCAA","TGGTGCAA","ATGTGCAA","CTGTGCAA","GTGTGCAA","TTGTGCAA",
+ "AATTGCAA","CATTGCAA","GATTGCAA","TATTGCAA","ACTTGCAA","CCTTGCAA","GCTTGCAA","TCTTGCAA",
+ "AGTTGCAA","CGTTGCAA","GGTTGCAA","TGTTGCAA","ATTTGCAA","CTTTGCAA","GTTTGCAA","TTTTGCAA",
+ "AAAATCAA","CAAATCAA","GAAATCAA","TAAATCAA","ACAATCAA","CCAATCAA","GCAATCAA","TCAATCAA",
+ "AGAATCAA","CGAATCAA","GGAATCAA","TGAATCAA","ATAATCAA","CTAATCAA","GTAATCAA","TTAATCAA",
+ "AACATCAA","CACATCAA","GACATCAA","TACATCAA","ACCATCAA","CCCATCAA","GCCATCAA","TCCATCAA",
+ "AGCATCAA","CGCATCAA","GGCATCAA","TGCATCAA","ATCATCAA","CTCATCAA","GTCATCAA","TTCATCAA",
+ "AAGATCAA","CAGATCAA","GAGATCAA","TAGATCAA","ACGATCAA","CCGATCAA","GCGATCAA","TCGATCAA",
+ "AGGATCAA","CGGATCAA","GGGATCAA","TGGATCAA","ATGATCAA","CTGATCAA","GTGATCAA","TTGATCAA",
+ "AATATCAA","CATATCAA","GATATCAA","TATATCAA","ACTATCAA","CCTATCAA","GCTATCAA","TCTATCAA",
+ "AGTATCAA","CGTATCAA","GGTATCAA","TGTATCAA","ATTATCAA","CTTATCAA","GTTATCAA","TTTATCAA",
+ "AAACTCAA","CAACTCAA","GAACTCAA","TAACTCAA","ACACTCAA","CCACTCAA","GCACTCAA","TCACTCAA",
+ "AGACTCAA","CGACTCAA","GGACTCAA","TGACTCAA","ATACTCAA","CTACTCAA","GTACTCAA","TTACTCAA",
+ "AACCTCAA","CACCTCAA","GACCTCAA","TACCTCAA","ACCCTCAA","CCCCTCAA","GCCCTCAA","TCCCTCAA",
+ "AGCCTCAA","CGCCTCAA","GGCCTCAA","TGCCTCAA","ATCCTCAA","CTCCTCAA","GTCCTCAA","TTCCTCAA",
+ "AAGCTCAA","CAGCTCAA","GAGCTCAA","TAGCTCAA","ACGCTCAA","CCGCTCAA","GCGCTCAA","TCGCTCAA",
+ "AGGCTCAA","CGGCTCAA","GGGCTCAA","TGGCTCAA","ATGCTCAA","CTGCTCAA","GTGCTCAA","TTGCTCAA",
+ "AATCTCAA","CATCTCAA","GATCTCAA","TATCTCAA","ACTCTCAA","CCTCTCAA","GCTCTCAA","TCTCTCAA",
+ "AGTCTCAA","CGTCTCAA","GGTCTCAA","TGTCTCAA","ATTCTCAA","CTTCTCAA","GTTCTCAA","TTTCTCAA",
+ "AAAGTCAA","CAAGTCAA","GAAGTCAA","TAAGTCAA","ACAGTCAA","CCAGTCAA","GCAGTCAA","TCAGTCAA",
+ "AGAGTCAA","CGAGTCAA","GGAGTCAA","TGAGTCAA","ATAGTCAA","CTAGTCAA","GTAGTCAA","TTAGTCAA",
+ "AACGTCAA","CACGTCAA","GACGTCAA","TACGTCAA","ACCGTCAA","CCCGTCAA","GCCGTCAA","TCCGTCAA",
+ "AGCGTCAA","CGCGTCAA","GGCGTCAA","TGCGTCAA","ATCGTCAA","CTCGTCAA","GTCGTCAA","TTCGTCAA",
+ "AAGGTCAA","CAGGTCAA","GAGGTCAA","TAGGTCAA","ACGGTCAA","CCGGTCAA","GCGGTCAA","TCGGTCAA",
+ "AGGGTCAA","CGGGTCAA","GGGGTCAA","TGGGTCAA","ATGGTCAA","CTGGTCAA","GTGGTCAA","TTGGTCAA",
+ "AATGTCAA","CATGTCAA","GATGTCAA","TATGTCAA","ACTGTCAA","CCTGTCAA","GCTGTCAA","TCTGTCAA",
+ "AGTGTCAA","CGTGTCAA","GGTGTCAA","TGTGTCAA","ATTGTCAA","CTTGTCAA","GTTGTCAA","TTTGTCAA",
+ "AAATTCAA","CAATTCAA","GAATTCAA","TAATTCAA","ACATTCAA","CCATTCAA","GCATTCAA","TCATTCAA",
+ "AGATTCAA","CGATTCAA","GGATTCAA","TGATTCAA","ATATTCAA","CTATTCAA","GTATTCAA","TTATTCAA",
+ "AACTTCAA","CACTTCAA","GACTTCAA","TACTTCAA","ACCTTCAA","CCCTTCAA","GCCTTCAA","TCCTTCAA",
+ "AGCTTCAA","CGCTTCAA","GGCTTCAA","TGCTTCAA","ATCTTCAA","CTCTTCAA","GTCTTCAA","TTCTTCAA",
+ "AAGTTCAA","CAGTTCAA","GAGTTCAA","TAGTTCAA","ACGTTCAA","CCGTTCAA","GCGTTCAA","TCGTTCAA",
+ "AGGTTCAA","CGGTTCAA","GGGTTCAA","TGGTTCAA","ATGTTCAA","CTGTTCAA","GTGTTCAA","TTGTTCAA",
+ "AATTTCAA","CATTTCAA","GATTTCAA","TATTTCAA","ACTTTCAA","CCTTTCAA","GCTTTCAA","TCTTTCAA",
+ "AGTTTCAA","CGTTTCAA","GGTTTCAA","TGTTTCAA","ATTTTCAA","CTTTTCAA","GTTTTCAA","TTTTTCAA",
+ "AAAAAGAA","CAAAAGAA","GAAAAGAA","TAAAAGAA","ACAAAGAA","CCAAAGAA","GCAAAGAA","TCAAAGAA",
+ "AGAAAGAA","CGAAAGAA","GGAAAGAA","TGAAAGAA","ATAAAGAA","CTAAAGAA","GTAAAGAA","TTAAAGAA",
+ "AACAAGAA","CACAAGAA","GACAAGAA","TACAAGAA","ACCAAGAA","CCCAAGAA","GCCAAGAA","TCCAAGAA",
+ "AGCAAGAA","CGCAAGAA","GGCAAGAA","TGCAAGAA","ATCAAGAA","CTCAAGAA","GTCAAGAA","TTCAAGAA",
+ "AAGAAGAA","CAGAAGAA","GAGAAGAA","TAGAAGAA","ACGAAGAA","CCGAAGAA","GCGAAGAA","TCGAAGAA",
+ "AGGAAGAA","CGGAAGAA","GGGAAGAA","TGGAAGAA","ATGAAGAA","CTGAAGAA","GTGAAGAA","TTGAAGAA",
+ "AATAAGAA","CATAAGAA","GATAAGAA","TATAAGAA","ACTAAGAA","CCTAAGAA","GCTAAGAA","TCTAAGAA",
+ "AGTAAGAA","CGTAAGAA","GGTAAGAA","TGTAAGAA","ATTAAGAA","CTTAAGAA","GTTAAGAA","TTTAAGAA",
+ "AAACAGAA","CAACAGAA","GAACAGAA","TAACAGAA","ACACAGAA","CCACAGAA","GCACAGAA","TCACAGAA",
+ "AGACAGAA","CGACAGAA","GGACAGAA","TGACAGAA","ATACAGAA","CTACAGAA","GTACAGAA","TTACAGAA",
+ "AACCAGAA","CACCAGAA","GACCAGAA","TACCAGAA","ACCCAGAA","CCCCAGAA","GCCCAGAA","TCCCAGAA",
+ "AGCCAGAA","CGCCAGAA","GGCCAGAA","TGCCAGAA","ATCCAGAA","CTCCAGAA","GTCCAGAA","TTCCAGAA",
+ "AAGCAGAA","CAGCAGAA","GAGCAGAA","TAGCAGAA","ACGCAGAA","CCGCAGAA","GCGCAGAA","TCGCAGAA",
+ "AGGCAGAA","CGGCAGAA","GGGCAGAA","TGGCAGAA","ATGCAGAA","CTGCAGAA","GTGCAGAA","TTGCAGAA",
+ "AATCAGAA","CATCAGAA","GATCAGAA","TATCAGAA","ACTCAGAA","CCTCAGAA","GCTCAGAA","TCTCAGAA",
+ "AGTCAGAA","CGTCAGAA","GGTCAGAA","TGTCAGAA","ATTCAGAA","CTTCAGAA","GTTCAGAA","TTTCAGAA",
+ "AAAGAGAA","CAAGAGAA","GAAGAGAA","TAAGAGAA","ACAGAGAA","CCAGAGAA","GCAGAGAA","TCAGAGAA",
+ "AGAGAGAA","CGAGAGAA","GGAGAGAA","TGAGAGAA","ATAGAGAA","CTAGAGAA","GTAGAGAA","TTAGAGAA",
+ "AACGAGAA","CACGAGAA","GACGAGAA","TACGAGAA","ACCGAGAA","CCCGAGAA","GCCGAGAA","TCCGAGAA",
+ "AGCGAGAA","CGCGAGAA","GGCGAGAA","TGCGAGAA","ATCGAGAA","CTCGAGAA","GTCGAGAA","TTCGAGAA",
+ "AAGGAGAA","CAGGAGAA","GAGGAGAA","TAGGAGAA","ACGGAGAA","CCGGAGAA","GCGGAGAA","TCGGAGAA",
+ "AGGGAGAA","CGGGAGAA","GGGGAGAA","TGGGAGAA","ATGGAGAA","CTGGAGAA","GTGGAGAA","TTGGAGAA",
+ "AATGAGAA","CATGAGAA","GATGAGAA","TATGAGAA","ACTGAGAA","CCTGAGAA","GCTGAGAA","TCTGAGAA",
+ "AGTGAGAA","CGTGAGAA","GGTGAGAA","TGTGAGAA","ATTGAGAA","CTTGAGAA","GTTGAGAA","TTTGAGAA",
+ "AAATAGAA","CAATAGAA","GAATAGAA","TAATAGAA","ACATAGAA","CCATAGAA","GCATAGAA","TCATAGAA",
+ "AGATAGAA","CGATAGAA","GGATAGAA","TGATAGAA","ATATAGAA","CTATAGAA","GTATAGAA","TTATAGAA",
+ "AACTAGAA","CACTAGAA","GACTAGAA","TACTAGAA","ACCTAGAA","CCCTAGAA","GCCTAGAA","TCCTAGAA",
+ "AGCTAGAA","CGCTAGAA","GGCTAGAA","TGCTAGAA","ATCTAGAA","CTCTAGAA","GTCTAGAA","TTCTAGAA",
+ "AAGTAGAA","CAGTAGAA","GAGTAGAA","TAGTAGAA","ACGTAGAA","CCGTAGAA","GCGTAGAA","TCGTAGAA",
+ "AGGTAGAA","CGGTAGAA","GGGTAGAA","TGGTAGAA","ATGTAGAA","CTGTAGAA","GTGTAGAA","TTGTAGAA",
+ "AATTAGAA","CATTAGAA","GATTAGAA","TATTAGAA","ACTTAGAA","CCTTAGAA","GCTTAGAA","TCTTAGAA",
+ "AGTTAGAA","CGTTAGAA","GGTTAGAA","TGTTAGAA","ATTTAGAA","CTTTAGAA","GTTTAGAA","TTTTAGAA",
+ "AAAACGAA","CAAACGAA","GAAACGAA","TAAACGAA","ACAACGAA","CCAACGAA","GCAACGAA","TCAACGAA",
+ "AGAACGAA","CGAACGAA","GGAACGAA","TGAACGAA","ATAACGAA","CTAACGAA","GTAACGAA","TTAACGAA",
+ "AACACGAA","CACACGAA","GACACGAA","TACACGAA","ACCACGAA","CCCACGAA","GCCACGAA","TCCACGAA",
+ "AGCACGAA","CGCACGAA","GGCACGAA","TGCACGAA","ATCACGAA","CTCACGAA","GTCACGAA","TTCACGAA",
+ "AAGACGAA","CAGACGAA","GAGACGAA","TAGACGAA","ACGACGAA","CCGACGAA","GCGACGAA","TCGACGAA",
+ "AGGACGAA","CGGACGAA","GGGACGAA","TGGACGAA","ATGACGAA","CTGACGAA","GTGACGAA","TTGACGAA",
+ "AATACGAA","CATACGAA","GATACGAA","TATACGAA","ACTACGAA","CCTACGAA","GCTACGAA","TCTACGAA",
+ "AGTACGAA","CGTACGAA","GGTACGAA","TGTACGAA","ATTACGAA","CTTACGAA","GTTACGAA","TTTACGAA",
+ "AAACCGAA","CAACCGAA","GAACCGAA","TAACCGAA","ACACCGAA","CCACCGAA","GCACCGAA","TCACCGAA",
+ "AGACCGAA","CGACCGAA","GGACCGAA","TGACCGAA","ATACCGAA","CTACCGAA","GTACCGAA","TTACCGAA",
+ "AACCCGAA","CACCCGAA","GACCCGAA","TACCCGAA","ACCCCGAA","CCCCCGAA","GCCCCGAA","TCCCCGAA",
+ "AGCCCGAA","CGCCCGAA","GGCCCGAA","TGCCCGAA","ATCCCGAA","CTCCCGAA","GTCCCGAA","TTCCCGAA",
+ "AAGCCGAA","CAGCCGAA","GAGCCGAA","TAGCCGAA","ACGCCGAA","CCGCCGAA","GCGCCGAA","TCGCCGAA",
+ "AGGCCGAA","CGGCCGAA","GGGCCGAA","TGGCCGAA","ATGCCGAA","CTGCCGAA","GTGCCGAA","TTGCCGAA",
+ "AATCCGAA","CATCCGAA","GATCCGAA","TATCCGAA","ACTCCGAA","CCTCCGAA","GCTCCGAA","TCTCCGAA",
+ "AGTCCGAA","CGTCCGAA","GGTCCGAA","TGTCCGAA","ATTCCGAA","CTTCCGAA","GTTCCGAA","TTTCCGAA",
+ "AAAGCGAA","CAAGCGAA","GAAGCGAA","TAAGCGAA","ACAGCGAA","CCAGCGAA","GCAGCGAA","TCAGCGAA",
+ "AGAGCGAA","CGAGCGAA","GGAGCGAA","TGAGCGAA","ATAGCGAA","CTAGCGAA","GTAGCGAA","TTAGCGAA",
+ "AACGCGAA","CACGCGAA","GACGCGAA","TACGCGAA","ACCGCGAA","CCCGCGAA","GCCGCGAA","TCCGCGAA",
+ "AGCGCGAA","CGCGCGAA","GGCGCGAA","TGCGCGAA","ATCGCGAA","CTCGCGAA","GTCGCGAA","TTCGCGAA",
+ "AAGGCGAA","CAGGCGAA","GAGGCGAA","TAGGCGAA","ACGGCGAA","CCGGCGAA","GCGGCGAA","TCGGCGAA",
+ "AGGGCGAA","CGGGCGAA","GGGGCGAA","TGGGCGAA","ATGGCGAA","CTGGCGAA","GTGGCGAA","TTGGCGAA",
+ "AATGCGAA","CATGCGAA","GATGCGAA","TATGCGAA","ACTGCGAA","CCTGCGAA","GCTGCGAA","TCTGCGAA",
+ "AGTGCGAA","CGTGCGAA","GGTGCGAA","TGTGCGAA","ATTGCGAA","CTTGCGAA","GTTGCGAA","TTTGCGAA",
+ "AAATCGAA","CAATCGAA","GAATCGAA","TAATCGAA","ACATCGAA","CCATCGAA","GCATCGAA","TCATCGAA",
+ "AGATCGAA","CGATCGAA","GGATCGAA","TGATCGAA","ATATCGAA","CTATCGAA","GTATCGAA","TTATCGAA",
+ "AACTCGAA","CACTCGAA","GACTCGAA","TACTCGAA","ACCTCGAA","CCCTCGAA","GCCTCGAA","TCCTCGAA",
+ "AGCTCGAA","CGCTCGAA","GGCTCGAA","TGCTCGAA","ATCTCGAA","CTCTCGAA","GTCTCGAA","TTCTCGAA",
+ "AAGTCGAA","CAGTCGAA","GAGTCGAA","TAGTCGAA","ACGTCGAA","CCGTCGAA","GCGTCGAA","TCGTCGAA",
+ "AGGTCGAA","CGGTCGAA","GGGTCGAA","TGGTCGAA","ATGTCGAA","CTGTCGAA","GTGTCGAA","TTGTCGAA",
+ "AATTCGAA","CATTCGAA","GATTCGAA","TATTCGAA","ACTTCGAA","CCTTCGAA","GCTTCGAA","TCTTCGAA",
+ "AGTTCGAA","CGTTCGAA","GGTTCGAA","TGTTCGAA","ATTTCGAA","CTTTCGAA","GTTTCGAA","TTTTCGAA",
+ "AAAAGGAA","CAAAGGAA","GAAAGGAA","TAAAGGAA","ACAAGGAA","CCAAGGAA","GCAAGGAA","TCAAGGAA",
+ "AGAAGGAA","CGAAGGAA","GGAAGGAA","TGAAGGAA","ATAAGGAA","CTAAGGAA","GTAAGGAA","TTAAGGAA",
+ "AACAGGAA","CACAGGAA","GACAGGAA","TACAGGAA","ACCAGGAA","CCCAGGAA","GCCAGGAA","TCCAGGAA",
+ "AGCAGGAA","CGCAGGAA","GGCAGGAA","TGCAGGAA","ATCAGGAA","CTCAGGAA","GTCAGGAA","TTCAGGAA",
+ "AAGAGGAA","CAGAGGAA","GAGAGGAA","TAGAGGAA","ACGAGGAA","CCGAGGAA","GCGAGGAA","TCGAGGAA",
+ "AGGAGGAA","CGGAGGAA","GGGAGGAA","TGGAGGAA","ATGAGGAA","CTGAGGAA","GTGAGGAA","TTGAGGAA",
+ "AATAGGAA","CATAGGAA","GATAGGAA","TATAGGAA","ACTAGGAA","CCTAGGAA","GCTAGGAA","TCTAGGAA",
+ "AGTAGGAA","CGTAGGAA","GGTAGGAA","TGTAGGAA","ATTAGGAA","CTTAGGAA","GTTAGGAA","TTTAGGAA",
+ "AAACGGAA","CAACGGAA","GAACGGAA","TAACGGAA","ACACGGAA","CCACGGAA","GCACGGAA","TCACGGAA",
+ "AGACGGAA","CGACGGAA","GGACGGAA","TGACGGAA","ATACGGAA","CTACGGAA","GTACGGAA","TTACGGAA",
+ "AACCGGAA","CACCGGAA","GACCGGAA","TACCGGAA","ACCCGGAA","CCCCGGAA","GCCCGGAA","TCCCGGAA",
+ "AGCCGGAA","CGCCGGAA","GGCCGGAA","TGCCGGAA","ATCCGGAA","CTCCGGAA","GTCCGGAA","TTCCGGAA",
+ "AAGCGGAA","CAGCGGAA","GAGCGGAA","TAGCGGAA","ACGCGGAA","CCGCGGAA","GCGCGGAA","TCGCGGAA",
+ "AGGCGGAA","CGGCGGAA","GGGCGGAA","TGGCGGAA","ATGCGGAA","CTGCGGAA","GTGCGGAA","TTGCGGAA",
+ "AATCGGAA","CATCGGAA","GATCGGAA","TATCGGAA","ACTCGGAA","CCTCGGAA","GCTCGGAA","TCTCGGAA",
+ "AGTCGGAA","CGTCGGAA","GGTCGGAA","TGTCGGAA","ATTCGGAA","CTTCGGAA","GTTCGGAA","TTTCGGAA",
+ "AAAGGGAA","CAAGGGAA","GAAGGGAA","TAAGGGAA","ACAGGGAA","CCAGGGAA","GCAGGGAA","TCAGGGAA",
+ "AGAGGGAA","CGAGGGAA","GGAGGGAA","TGAGGGAA","ATAGGGAA","CTAGGGAA","GTAGGGAA","TTAGGGAA",
+ "AACGGGAA","CACGGGAA","GACGGGAA","TACGGGAA","ACCGGGAA","CCCGGGAA","GCCGGGAA","TCCGGGAA",
+ "AGCGGGAA","CGCGGGAA","GGCGGGAA","TGCGGGAA","ATCGGGAA","CTCGGGAA","GTCGGGAA","TTCGGGAA",
+ "AAGGGGAA","CAGGGGAA","GAGGGGAA","TAGGGGAA","ACGGGGAA","CCGGGGAA","GCGGGGAA","TCGGGGAA",
+ "AGGGGGAA","CGGGGGAA","GGGGGGAA","TGGGGGAA","ATGGGGAA","CTGGGGAA","GTGGGGAA","TTGGGGAA",
+ "AATGGGAA","CATGGGAA","GATGGGAA","TATGGGAA","ACTGGGAA","CCTGGGAA","GCTGGGAA","TCTGGGAA",
+ "AGTGGGAA","CGTGGGAA","GGTGGGAA","TGTGGGAA","ATTGGGAA","CTTGGGAA","GTTGGGAA","TTTGGGAA",
+ "AAATGGAA","CAATGGAA","GAATGGAA","TAATGGAA","ACATGGAA","CCATGGAA","GCATGGAA","TCATGGAA",
+ "AGATGGAA","CGATGGAA","GGATGGAA","TGATGGAA","ATATGGAA","CTATGGAA","GTATGGAA","TTATGGAA",
+ "AACTGGAA","CACTGGAA","GACTGGAA","TACTGGAA","ACCTGGAA","CCCTGGAA","GCCTGGAA","TCCTGGAA",
+ "AGCTGGAA","CGCTGGAA","GGCTGGAA","TGCTGGAA","ATCTGGAA","CTCTGGAA","GTCTGGAA","TTCTGGAA",
+ "AAGTGGAA","CAGTGGAA","GAGTGGAA","TAGTGGAA","ACGTGGAA","CCGTGGAA","GCGTGGAA","TCGTGGAA",
+ "AGGTGGAA","CGGTGGAA","GGGTGGAA","TGGTGGAA","ATGTGGAA","CTGTGGAA","GTGTGGAA","TTGTGGAA",
+ "AATTGGAA","CATTGGAA","GATTGGAA","TATTGGAA","ACTTGGAA","CCTTGGAA","GCTTGGAA","TCTTGGAA",
+ "AGTTGGAA","CGTTGGAA","GGTTGGAA","TGTTGGAA","ATTTGGAA","CTTTGGAA","GTTTGGAA","TTTTGGAA",
+ "AAAATGAA","CAAATGAA","GAAATGAA","TAAATGAA","ACAATGAA","CCAATGAA","GCAATGAA","TCAATGAA",
+ "AGAATGAA","CGAATGAA","GGAATGAA","TGAATGAA","ATAATGAA","CTAATGAA","GTAATGAA","TTAATGAA",
+ "AACATGAA","CACATGAA","GACATGAA","TACATGAA","ACCATGAA","CCCATGAA","GCCATGAA","TCCATGAA",
+ "AGCATGAA","CGCATGAA","GGCATGAA","TGCATGAA","ATCATGAA","CTCATGAA","GTCATGAA","TTCATGAA",
+ "AAGATGAA","CAGATGAA","GAGATGAA","TAGATGAA","ACGATGAA","CCGATGAA","GCGATGAA","TCGATGAA",
+ "AGGATGAA","CGGATGAA","GGGATGAA","TGGATGAA","ATGATGAA","CTGATGAA","GTGATGAA","TTGATGAA",
+ "AATATGAA","CATATGAA","GATATGAA","TATATGAA","ACTATGAA","CCTATGAA","GCTATGAA","TCTATGAA",
+ "AGTATGAA","CGTATGAA","GGTATGAA","TGTATGAA","ATTATGAA","CTTATGAA","GTTATGAA","TTTATGAA",
+ "AAACTGAA","CAACTGAA","GAACTGAA","TAACTGAA","ACACTGAA","CCACTGAA","GCACTGAA","TCACTGAA",
+ "AGACTGAA","CGACTGAA","GGACTGAA","TGACTGAA","ATACTGAA","CTACTGAA","GTACTGAA","TTACTGAA",
+ "AACCTGAA","CACCTGAA","GACCTGAA","TACCTGAA","ACCCTGAA","CCCCTGAA","GCCCTGAA","TCCCTGAA",
+ "AGCCTGAA","CGCCTGAA","GGCCTGAA","TGCCTGAA","ATCCTGAA","CTCCTGAA","GTCCTGAA","TTCCTGAA",
+ "AAGCTGAA","CAGCTGAA","GAGCTGAA","TAGCTGAA","ACGCTGAA","CCGCTGAA","GCGCTGAA","TCGCTGAA",
+ "AGGCTGAA","CGGCTGAA","GGGCTGAA","TGGCTGAA","ATGCTGAA","CTGCTGAA","GTGCTGAA","TTGCTGAA",
+ "AATCTGAA","CATCTGAA","GATCTGAA","TATCTGAA","ACTCTGAA","CCTCTGAA","GCTCTGAA","TCTCTGAA",
+ "AGTCTGAA","CGTCTGAA","GGTCTGAA","TGTCTGAA","ATTCTGAA","CTTCTGAA","GTTCTGAA","TTTCTGAA",
+ "AAAGTGAA","CAAGTGAA","GAAGTGAA","TAAGTGAA","ACAGTGAA","CCAGTGAA","GCAGTGAA","TCAGTGAA",
+ "AGAGTGAA","CGAGTGAA","GGAGTGAA","TGAGTGAA","ATAGTGAA","CTAGTGAA","GTAGTGAA","TTAGTGAA",
+ "AACGTGAA","CACGTGAA","GACGTGAA","TACGTGAA","ACCGTGAA","CCCGTGAA","GCCGTGAA","TCCGTGAA",
+ "AGCGTGAA","CGCGTGAA","GGCGTGAA","TGCGTGAA","ATCGTGAA","CTCGTGAA","GTCGTGAA","TTCGTGAA",
+ "AAGGTGAA","CAGGTGAA","GAGGTGAA","TAGGTGAA","ACGGTGAA","CCGGTGAA","GCGGTGAA","TCGGTGAA",
+ "AGGGTGAA","CGGGTGAA","GGGGTGAA","TGGGTGAA","ATGGTGAA","CTGGTGAA","GTGGTGAA","TTGGTGAA",
+ "AATGTGAA","CATGTGAA","GATGTGAA","TATGTGAA","ACTGTGAA","CCTGTGAA","GCTGTGAA","TCTGTGAA",
+ "AGTGTGAA","CGTGTGAA","GGTGTGAA","TGTGTGAA","ATTGTGAA","CTTGTGAA","GTTGTGAA","TTTGTGAA",
+ "AAATTGAA","CAATTGAA","GAATTGAA","TAATTGAA","ACATTGAA","CCATTGAA","GCATTGAA","TCATTGAA",
+ "AGATTGAA","CGATTGAA","GGATTGAA","TGATTGAA","ATATTGAA","CTATTGAA","GTATTGAA","TTATTGAA",
+ "AACTTGAA","CACTTGAA","GACTTGAA","TACTTGAA","ACCTTGAA","CCCTTGAA","GCCTTGAA","TCCTTGAA",
+ "AGCTTGAA","CGCTTGAA","GGCTTGAA","TGCTTGAA","ATCTTGAA","CTCTTGAA","GTCTTGAA","TTCTTGAA",
+ "AAGTTGAA","CAGTTGAA","GAGTTGAA","TAGTTGAA","ACGTTGAA","CCGTTGAA","GCGTTGAA","TCGTTGAA",
+ "AGGTTGAA","CGGTTGAA","GGGTTGAA","TGGTTGAA","ATGTTGAA","CTGTTGAA","GTGTTGAA","TTGTTGAA",
+ "AATTTGAA","CATTTGAA","GATTTGAA","TATTTGAA","ACTTTGAA","CCTTTGAA","GCTTTGAA","TCTTTGAA",
+ "AGTTTGAA","CGTTTGAA","GGTTTGAA","TGTTTGAA","ATTTTGAA","CTTTTGAA","GTTTTGAA","TTTTTGAA",
+ "AAAAATAA","CAAAATAA","GAAAATAA","TAAAATAA","ACAAATAA","CCAAATAA","GCAAATAA","TCAAATAA",
+ "AGAAATAA","CGAAATAA","GGAAATAA","TGAAATAA","ATAAATAA","CTAAATAA","GTAAATAA","TTAAATAA",
+ "AACAATAA","CACAATAA","GACAATAA","TACAATAA","ACCAATAA","CCCAATAA","GCCAATAA","TCCAATAA",
+ "AGCAATAA","CGCAATAA","GGCAATAA","TGCAATAA","ATCAATAA","CTCAATAA","GTCAATAA","TTCAATAA",
+ "AAGAATAA","CAGAATAA","GAGAATAA","TAGAATAA","ACGAATAA","CCGAATAA","GCGAATAA","TCGAATAA",
+ "AGGAATAA","CGGAATAA","GGGAATAA","TGGAATAA","ATGAATAA","CTGAATAA","GTGAATAA","TTGAATAA",
+ "AATAATAA","CATAATAA","GATAATAA","TATAATAA","ACTAATAA","CCTAATAA","GCTAATAA","TCTAATAA",
+ "AGTAATAA","CGTAATAA","GGTAATAA","TGTAATAA","ATTAATAA","CTTAATAA","GTTAATAA","TTTAATAA",
+ "AAACATAA","CAACATAA","GAACATAA","TAACATAA","ACACATAA","CCACATAA","GCACATAA","TCACATAA",
+ "AGACATAA","CGACATAA","GGACATAA","TGACATAA","ATACATAA","CTACATAA","GTACATAA","TTACATAA",
+ "AACCATAA","CACCATAA","GACCATAA","TACCATAA","ACCCATAA","CCCCATAA","GCCCATAA","TCCCATAA",
+ "AGCCATAA","CGCCATAA","GGCCATAA","TGCCATAA","ATCCATAA","CTCCATAA","GTCCATAA","TTCCATAA",
+ "AAGCATAA","CAGCATAA","GAGCATAA","TAGCATAA","ACGCATAA","CCGCATAA","GCGCATAA","TCGCATAA",
+ "AGGCATAA","CGGCATAA","GGGCATAA","TGGCATAA","ATGCATAA","CTGCATAA","GTGCATAA","TTGCATAA",
+ "AATCATAA","CATCATAA","GATCATAA","TATCATAA","ACTCATAA","CCTCATAA","GCTCATAA","TCTCATAA",
+ "AGTCATAA","CGTCATAA","GGTCATAA","TGTCATAA","ATTCATAA","CTTCATAA","GTTCATAA","TTTCATAA",
+ "AAAGATAA","CAAGATAA","GAAGATAA","TAAGATAA","ACAGATAA","CCAGATAA","GCAGATAA","TCAGATAA",
+ "AGAGATAA","CGAGATAA","GGAGATAA","TGAGATAA","ATAGATAA","CTAGATAA","GTAGATAA","TTAGATAA",
+ "AACGATAA","CACGATAA","GACGATAA","TACGATAA","ACCGATAA","CCCGATAA","GCCGATAA","TCCGATAA",
+ "AGCGATAA","CGCGATAA","GGCGATAA","TGCGATAA","ATCGATAA","CTCGATAA","GTCGATAA","TTCGATAA",
+ "AAGGATAA","CAGGATAA","GAGGATAA","TAGGATAA","ACGGATAA","CCGGATAA","GCGGATAA","TCGGATAA",
+ "AGGGATAA","CGGGATAA","GGGGATAA","TGGGATAA","ATGGATAA","CTGGATAA","GTGGATAA","TTGGATAA",
+ "AATGATAA","CATGATAA","GATGATAA","TATGATAA","ACTGATAA","CCTGATAA","GCTGATAA","TCTGATAA",
+ "AGTGATAA","CGTGATAA","GGTGATAA","TGTGATAA","ATTGATAA","CTTGATAA","GTTGATAA","TTTGATAA",
+ "AAATATAA","CAATATAA","GAATATAA","TAATATAA","ACATATAA","CCATATAA","GCATATAA","TCATATAA",
+ "AGATATAA","CGATATAA","GGATATAA","TGATATAA","ATATATAA","CTATATAA","GTATATAA","TTATATAA",
+ "AACTATAA","CACTATAA","GACTATAA","TACTATAA","ACCTATAA","CCCTATAA","GCCTATAA","TCCTATAA",
+ "AGCTATAA","CGCTATAA","GGCTATAA","TGCTATAA","ATCTATAA","CTCTATAA","GTCTATAA","TTCTATAA",
+ "AAGTATAA","CAGTATAA","GAGTATAA","TAGTATAA","ACGTATAA","CCGTATAA","GCGTATAA","TCGTATAA",
+ "AGGTATAA","CGGTATAA","GGGTATAA","TGGTATAA","ATGTATAA","CTGTATAA","GTGTATAA","TTGTATAA",
+ "AATTATAA","CATTATAA","GATTATAA","TATTATAA","ACTTATAA","CCTTATAA","GCTTATAA","TCTTATAA",
+ "AGTTATAA","CGTTATAA","GGTTATAA","TGTTATAA","ATTTATAA","CTTTATAA","GTTTATAA","TTTTATAA",
+ "AAAACTAA","CAAACTAA","GAAACTAA","TAAACTAA","ACAACTAA","CCAACTAA","GCAACTAA","TCAACTAA",
+ "AGAACTAA","CGAACTAA","GGAACTAA","TGAACTAA","ATAACTAA","CTAACTAA","GTAACTAA","TTAACTAA",
+ "AACACTAA","CACACTAA","GACACTAA","TACACTAA","ACCACTAA","CCCACTAA","GCCACTAA","TCCACTAA",
+ "AGCACTAA","CGCACTAA","GGCACTAA","TGCACTAA","ATCACTAA","CTCACTAA","GTCACTAA","TTCACTAA",
+ "AAGACTAA","CAGACTAA","GAGACTAA","TAGACTAA","ACGACTAA","CCGACTAA","GCGACTAA","TCGACTAA",
+ "AGGACTAA","CGGACTAA","GGGACTAA","TGGACTAA","ATGACTAA","CTGACTAA","GTGACTAA","TTGACTAA",
+ "AATACTAA","CATACTAA","GATACTAA","TATACTAA","ACTACTAA","CCTACTAA","GCTACTAA","TCTACTAA",
+ "AGTACTAA","CGTACTAA","GGTACTAA","TGTACTAA","ATTACTAA","CTTACTAA","GTTACTAA","TTTACTAA",
+ "AAACCTAA","CAACCTAA","GAACCTAA","TAACCTAA","ACACCTAA","CCACCTAA","GCACCTAA","TCACCTAA",
+ "AGACCTAA","CGACCTAA","GGACCTAA","TGACCTAA","ATACCTAA","CTACCTAA","GTACCTAA","TTACCTAA",
+ "AACCCTAA","CACCCTAA","GACCCTAA","TACCCTAA","ACCCCTAA","CCCCCTAA","GCCCCTAA","TCCCCTAA",
+ "AGCCCTAA","CGCCCTAA","GGCCCTAA","TGCCCTAA","ATCCCTAA","CTCCCTAA","GTCCCTAA","TTCCCTAA",
+ "AAGCCTAA","CAGCCTAA","GAGCCTAA","TAGCCTAA","ACGCCTAA","CCGCCTAA","GCGCCTAA","TCGCCTAA",
+ "AGGCCTAA","CGGCCTAA","GGGCCTAA","TGGCCTAA","ATGCCTAA","CTGCCTAA","GTGCCTAA","TTGCCTAA",
+ "AATCCTAA","CATCCTAA","GATCCTAA","TATCCTAA","ACTCCTAA","CCTCCTAA","GCTCCTAA","TCTCCTAA",
+ "AGTCCTAA","CGTCCTAA","GGTCCTAA","TGTCCTAA","ATTCCTAA","CTTCCTAA","GTTCCTAA","TTTCCTAA",
+ "AAAGCTAA","CAAGCTAA","GAAGCTAA","TAAGCTAA","ACAGCTAA","CCAGCTAA","GCAGCTAA","TCAGCTAA",
+ "AGAGCTAA","CGAGCTAA","GGAGCTAA","TGAGCTAA","ATAGCTAA","CTAGCTAA","GTAGCTAA","TTAGCTAA",
+ "AACGCTAA","CACGCTAA","GACGCTAA","TACGCTAA","ACCGCTAA","CCCGCTAA","GCCGCTAA","TCCGCTAA",
+ "AGCGCTAA","CGCGCTAA","GGCGCTAA","TGCGCTAA","ATCGCTAA","CTCGCTAA","GTCGCTAA","TTCGCTAA",
+ "AAGGCTAA","CAGGCTAA","GAGGCTAA","TAGGCTAA","ACGGCTAA","CCGGCTAA","GCGGCTAA","TCGGCTAA",
+ "AGGGCTAA","CGGGCTAA","GGGGCTAA","TGGGCTAA","ATGGCTAA","CTGGCTAA","GTGGCTAA","TTGGCTAA",
+ "AATGCTAA","CATGCTAA","GATGCTAA","TATGCTAA","ACTGCTAA","CCTGCTAA","GCTGCTAA","TCTGCTAA",
+ "AGTGCTAA","CGTGCTAA","GGTGCTAA","TGTGCTAA","ATTGCTAA","CTTGCTAA","GTTGCTAA","TTTGCTAA",
+ "AAATCTAA","CAATCTAA","GAATCTAA","TAATCTAA","ACATCTAA","CCATCTAA","GCATCTAA","TCATCTAA",
+ "AGATCTAA","CGATCTAA","GGATCTAA","TGATCTAA","ATATCTAA","CTATCTAA","GTATCTAA","TTATCTAA",
+ "AACTCTAA","CACTCTAA","GACTCTAA","TACTCTAA","ACCTCTAA","CCCTCTAA","GCCTCTAA","TCCTCTAA",
+ "AGCTCTAA","CGCTCTAA","GGCTCTAA","TGCTCTAA","ATCTCTAA","CTCTCTAA","GTCTCTAA","TTCTCTAA",
+ "AAGTCTAA","CAGTCTAA","GAGTCTAA","TAGTCTAA","ACGTCTAA","CCGTCTAA","GCGTCTAA","TCGTCTAA",
+ "AGGTCTAA","CGGTCTAA","GGGTCTAA","TGGTCTAA","ATGTCTAA","CTGTCTAA","GTGTCTAA","TTGTCTAA",
+ "AATTCTAA","CATTCTAA","GATTCTAA","TATTCTAA","ACTTCTAA","CCTTCTAA","GCTTCTAA","TCTTCTAA",
+ "AGTTCTAA","CGTTCTAA","GGTTCTAA","TGTTCTAA","ATTTCTAA","CTTTCTAA","GTTTCTAA","TTTTCTAA",
+ "AAAAGTAA","CAAAGTAA","GAAAGTAA","TAAAGTAA","ACAAGTAA","CCAAGTAA","GCAAGTAA","TCAAGTAA",
+ "AGAAGTAA","CGAAGTAA","GGAAGTAA","TGAAGTAA","ATAAGTAA","CTAAGTAA","GTAAGTAA","TTAAGTAA",
+ "AACAGTAA","CACAGTAA","GACAGTAA","TACAGTAA","ACCAGTAA","CCCAGTAA","GCCAGTAA","TCCAGTAA",
+ "AGCAGTAA","CGCAGTAA","GGCAGTAA","TGCAGTAA","ATCAGTAA","CTCAGTAA","GTCAGTAA","TTCAGTAA",
+ "AAGAGTAA","CAGAGTAA","GAGAGTAA","TAGAGTAA","ACGAGTAA","CCGAGTAA","GCGAGTAA","TCGAGTAA",
+ "AGGAGTAA","CGGAGTAA","GGGAGTAA","TGGAGTAA","ATGAGTAA","CTGAGTAA","GTGAGTAA","TTGAGTAA",
+ "AATAGTAA","CATAGTAA","GATAGTAA","TATAGTAA","ACTAGTAA","CCTAGTAA","GCTAGTAA","TCTAGTAA",
+ "AGTAGTAA","CGTAGTAA","GGTAGTAA","TGTAGTAA","ATTAGTAA","CTTAGTAA","GTTAGTAA","TTTAGTAA",
+ "AAACGTAA","CAACGTAA","GAACGTAA","TAACGTAA","ACACGTAA","CCACGTAA","GCACGTAA","TCACGTAA",
+ "AGACGTAA","CGACGTAA","GGACGTAA","TGACGTAA","ATACGTAA","CTACGTAA","GTACGTAA","TTACGTAA",
+ "AACCGTAA","CACCGTAA","GACCGTAA","TACCGTAA","ACCCGTAA","CCCCGTAA","GCCCGTAA","TCCCGTAA",
+ "AGCCGTAA","CGCCGTAA","GGCCGTAA","TGCCGTAA","ATCCGTAA","CTCCGTAA","GTCCGTAA","TTCCGTAA",
+ "AAGCGTAA","CAGCGTAA","GAGCGTAA","TAGCGTAA","ACGCGTAA","CCGCGTAA","GCGCGTAA","TCGCGTAA",
+ "AGGCGTAA","CGGCGTAA","GGGCGTAA","TGGCGTAA","ATGCGTAA","CTGCGTAA","GTGCGTAA","TTGCGTAA",
+ "AATCGTAA","CATCGTAA","GATCGTAA","TATCGTAA","ACTCGTAA","CCTCGTAA","GCTCGTAA","TCTCGTAA",
+ "AGTCGTAA","CGTCGTAA","GGTCGTAA","TGTCGTAA","ATTCGTAA","CTTCGTAA","GTTCGTAA","TTTCGTAA",
+ "AAAGGTAA","CAAGGTAA","GAAGGTAA","TAAGGTAA","ACAGGTAA","CCAGGTAA","GCAGGTAA","TCAGGTAA",
+ "AGAGGTAA","CGAGGTAA","GGAGGTAA","TGAGGTAA","ATAGGTAA","CTAGGTAA","GTAGGTAA","TTAGGTAA",
+ "AACGGTAA","CACGGTAA","GACGGTAA","TACGGTAA","ACCGGTAA","CCCGGTAA","GCCGGTAA","TCCGGTAA",
+ "AGCGGTAA","CGCGGTAA","GGCGGTAA","TGCGGTAA","ATCGGTAA","CTCGGTAA","GTCGGTAA","TTCGGTAA",
+ "AAGGGTAA","CAGGGTAA","GAGGGTAA","TAGGGTAA","ACGGGTAA","CCGGGTAA","GCGGGTAA","TCGGGTAA",
+ "AGGGGTAA","CGGGGTAA","GGGGGTAA","TGGGGTAA","ATGGGTAA","CTGGGTAA","GTGGGTAA","TTGGGTAA",
+ "AATGGTAA","CATGGTAA","GATGGTAA","TATGGTAA","ACTGGTAA","CCTGGTAA","GCTGGTAA","TCTGGTAA",
+ "AGTGGTAA","CGTGGTAA","GGTGGTAA","TGTGGTAA","ATTGGTAA","CTTGGTAA","GTTGGTAA","TTTGGTAA",
+ "AAATGTAA","CAATGTAA","GAATGTAA","TAATGTAA","ACATGTAA","CCATGTAA","GCATGTAA","TCATGTAA",
+ "AGATGTAA","CGATGTAA","GGATGTAA","TGATGTAA","ATATGTAA","CTATGTAA","GTATGTAA","TTATGTAA",
+ "AACTGTAA","CACTGTAA","GACTGTAA","TACTGTAA","ACCTGTAA","CCCTGTAA","GCCTGTAA","TCCTGTAA",
+ "AGCTGTAA","CGCTGTAA","GGCTGTAA","TGCTGTAA","ATCTGTAA","CTCTGTAA","GTCTGTAA","TTCTGTAA",
+ "AAGTGTAA","CAGTGTAA","GAGTGTAA","TAGTGTAA","ACGTGTAA","CCGTGTAA","GCGTGTAA","TCGTGTAA",
+ "AGGTGTAA","CGGTGTAA","GGGTGTAA","TGGTGTAA","ATGTGTAA","CTGTGTAA","GTGTGTAA","TTGTGTAA",
+ "AATTGTAA","CATTGTAA","GATTGTAA","TATTGTAA","ACTTGTAA","CCTTGTAA","GCTTGTAA","TCTTGTAA",
+ "AGTTGTAA","CGTTGTAA","GGTTGTAA","TGTTGTAA","ATTTGTAA","CTTTGTAA","GTTTGTAA","TTTTGTAA",
+ "AAAATTAA","CAAATTAA","GAAATTAA","TAAATTAA","ACAATTAA","CCAATTAA","GCAATTAA","TCAATTAA",
+ "AGAATTAA","CGAATTAA","GGAATTAA","TGAATTAA","ATAATTAA","CTAATTAA","GTAATTAA","TTAATTAA",
+ "AACATTAA","CACATTAA","GACATTAA","TACATTAA","ACCATTAA","CCCATTAA","GCCATTAA","TCCATTAA",
+ "AGCATTAA","CGCATTAA","GGCATTAA","TGCATTAA","ATCATTAA","CTCATTAA","GTCATTAA","TTCATTAA",
+ "AAGATTAA","CAGATTAA","GAGATTAA","TAGATTAA","ACGATTAA","CCGATTAA","GCGATTAA","TCGATTAA",
+ "AGGATTAA","CGGATTAA","GGGATTAA","TGGATTAA","ATGATTAA","CTGATTAA","GTGATTAA","TTGATTAA",
+ "AATATTAA","CATATTAA","GATATTAA","TATATTAA","ACTATTAA","CCTATTAA","GCTATTAA","TCTATTAA",
+ "AGTATTAA","CGTATTAA","GGTATTAA","TGTATTAA","ATTATTAA","CTTATTAA","GTTATTAA","TTTATTAA",
+ "AAACTTAA","CAACTTAA","GAACTTAA","TAACTTAA","ACACTTAA","CCACTTAA","GCACTTAA","TCACTTAA",
+ "AGACTTAA","CGACTTAA","GGACTTAA","TGACTTAA","ATACTTAA","CTACTTAA","GTACTTAA","TTACTTAA",
+ "AACCTTAA","CACCTTAA","GACCTTAA","TACCTTAA","ACCCTTAA","CCCCTTAA","GCCCTTAA","TCCCTTAA",
+ "AGCCTTAA","CGCCTTAA","GGCCTTAA","TGCCTTAA","ATCCTTAA","CTCCTTAA","GTCCTTAA","TTCCTTAA",
+ "AAGCTTAA","CAGCTTAA","GAGCTTAA","TAGCTTAA","ACGCTTAA","CCGCTTAA","GCGCTTAA","TCGCTTAA",
+ "AGGCTTAA","CGGCTTAA","GGGCTTAA","TGGCTTAA","ATGCTTAA","CTGCTTAA","GTGCTTAA","TTGCTTAA",
+ "AATCTTAA","CATCTTAA","GATCTTAA","TATCTTAA","ACTCTTAA","CCTCTTAA","GCTCTTAA","TCTCTTAA",
+ "AGTCTTAA","CGTCTTAA","GGTCTTAA","TGTCTTAA","ATTCTTAA","CTTCTTAA","GTTCTTAA","TTTCTTAA",
+ "AAAGTTAA","CAAGTTAA","GAAGTTAA","TAAGTTAA","ACAGTTAA","CCAGTTAA","GCAGTTAA","TCAGTTAA",
+ "AGAGTTAA","CGAGTTAA","GGAGTTAA","TGAGTTAA","ATAGTTAA","CTAGTTAA","GTAGTTAA","TTAGTTAA",
+ "AACGTTAA","CACGTTAA","GACGTTAA","TACGTTAA","ACCGTTAA","CCCGTTAA","GCCGTTAA","TCCGTTAA",
+ "AGCGTTAA","CGCGTTAA","GGCGTTAA","TGCGTTAA","ATCGTTAA","CTCGTTAA","GTCGTTAA","TTCGTTAA",
+ "AAGGTTAA","CAGGTTAA","GAGGTTAA","TAGGTTAA","ACGGTTAA","CCGGTTAA","GCGGTTAA","TCGGTTAA",
+ "AGGGTTAA","CGGGTTAA","GGGGTTAA","TGGGTTAA","ATGGTTAA","CTGGTTAA","GTGGTTAA","TTGGTTAA",
+ "AATGTTAA","CATGTTAA","GATGTTAA","TATGTTAA","ACTGTTAA","CCTGTTAA","GCTGTTAA","TCTGTTAA",
+ "AGTGTTAA","CGTGTTAA","GGTGTTAA","TGTGTTAA","ATTGTTAA","CTTGTTAA","GTTGTTAA","TTTGTTAA",
+ "AAATTTAA","CAATTTAA","GAATTTAA","TAATTTAA","ACATTTAA","CCATTTAA","GCATTTAA","TCATTTAA",
+ "AGATTTAA","CGATTTAA","GGATTTAA","TGATTTAA","ATATTTAA","CTATTTAA","GTATTTAA","TTATTTAA",
+ "AACTTTAA","CACTTTAA","GACTTTAA","TACTTTAA","ACCTTTAA","CCCTTTAA","GCCTTTAA","TCCTTTAA",
+ "AGCTTTAA","CGCTTTAA","GGCTTTAA","TGCTTTAA","ATCTTTAA","CTCTTTAA","GTCTTTAA","TTCTTTAA",
+ "AAGTTTAA","CAGTTTAA","GAGTTTAA","TAGTTTAA","ACGTTTAA","CCGTTTAA","GCGTTTAA","TCGTTTAA",
+ "AGGTTTAA","CGGTTTAA","GGGTTTAA","TGGTTTAA","ATGTTTAA","CTGTTTAA","GTGTTTAA","TTGTTTAA",
+ "AATTTTAA","CATTTTAA","GATTTTAA","TATTTTAA","ACTTTTAA","CCTTTTAA","GCTTTTAA","TCTTTTAA",
+ "AGTTTTAA","CGTTTTAA","GGTTTTAA","TGTTTTAA","ATTTTTAA","CTTTTTAA","GTTTTTAA","TTTTTTAA",
+ "AAAAAACA","CAAAAACA","GAAAAACA","TAAAAACA","ACAAAACA","CCAAAACA","GCAAAACA","TCAAAACA",
+ "AGAAAACA","CGAAAACA","GGAAAACA","TGAAAACA","ATAAAACA","CTAAAACA","GTAAAACA","TTAAAACA",
+ "AACAAACA","CACAAACA","GACAAACA","TACAAACA","ACCAAACA","CCCAAACA","GCCAAACA","TCCAAACA",
+ "AGCAAACA","CGCAAACA","GGCAAACA","TGCAAACA","ATCAAACA","CTCAAACA","GTCAAACA","TTCAAACA",
+ "AAGAAACA","CAGAAACA","GAGAAACA","TAGAAACA","ACGAAACA","CCGAAACA","GCGAAACA","TCGAAACA",
+ "AGGAAACA","CGGAAACA","GGGAAACA","TGGAAACA","ATGAAACA","CTGAAACA","GTGAAACA","TTGAAACA",
+ "AATAAACA","CATAAACA","GATAAACA","TATAAACA","ACTAAACA","CCTAAACA","GCTAAACA","TCTAAACA",
+ "AGTAAACA","CGTAAACA","GGTAAACA","TGTAAACA","ATTAAACA","CTTAAACA","GTTAAACA","TTTAAACA",
+ "AAACAACA","CAACAACA","GAACAACA","TAACAACA","ACACAACA","CCACAACA","GCACAACA","TCACAACA",
+ "AGACAACA","CGACAACA","GGACAACA","TGACAACA","ATACAACA","CTACAACA","GTACAACA","TTACAACA",
+ "AACCAACA","CACCAACA","GACCAACA","TACCAACA","ACCCAACA","CCCCAACA","GCCCAACA","TCCCAACA",
+ "AGCCAACA","CGCCAACA","GGCCAACA","TGCCAACA","ATCCAACA","CTCCAACA","GTCCAACA","TTCCAACA",
+ "AAGCAACA","CAGCAACA","GAGCAACA","TAGCAACA","ACGCAACA","CCGCAACA","GCGCAACA","TCGCAACA",
+ "AGGCAACA","CGGCAACA","GGGCAACA","TGGCAACA","ATGCAACA","CTGCAACA","GTGCAACA","TTGCAACA",
+ "AATCAACA","CATCAACA","GATCAACA","TATCAACA","ACTCAACA","CCTCAACA","GCTCAACA","TCTCAACA",
+ "AGTCAACA","CGTCAACA","GGTCAACA","TGTCAACA","ATTCAACA","CTTCAACA","GTTCAACA","TTTCAACA",
+ "AAAGAACA","CAAGAACA","GAAGAACA","TAAGAACA","ACAGAACA","CCAGAACA","GCAGAACA","TCAGAACA",
+ "AGAGAACA","CGAGAACA","GGAGAACA","TGAGAACA","ATAGAACA","CTAGAACA","GTAGAACA","TTAGAACA",
+ "AACGAACA","CACGAACA","GACGAACA","TACGAACA","ACCGAACA","CCCGAACA","GCCGAACA","TCCGAACA",
+ "AGCGAACA","CGCGAACA","GGCGAACA","TGCGAACA","ATCGAACA","CTCGAACA","GTCGAACA","TTCGAACA",
+ "AAGGAACA","CAGGAACA","GAGGAACA","TAGGAACA","ACGGAACA","CCGGAACA","GCGGAACA","TCGGAACA",
+ "AGGGAACA","CGGGAACA","GGGGAACA","TGGGAACA","ATGGAACA","CTGGAACA","GTGGAACA","TTGGAACA",
+ "AATGAACA","CATGAACA","GATGAACA","TATGAACA","ACTGAACA","CCTGAACA","GCTGAACA","TCTGAACA",
+ "AGTGAACA","CGTGAACA","GGTGAACA","TGTGAACA","ATTGAACA","CTTGAACA","GTTGAACA","TTTGAACA",
+ "AAATAACA","CAATAACA","GAATAACA","TAATAACA","ACATAACA","CCATAACA","GCATAACA","TCATAACA",
+ "AGATAACA","CGATAACA","GGATAACA","TGATAACA","ATATAACA","CTATAACA","GTATAACA","TTATAACA",
+ "AACTAACA","CACTAACA","GACTAACA","TACTAACA","ACCTAACA","CCCTAACA","GCCTAACA","TCCTAACA",
+ "AGCTAACA","CGCTAACA","GGCTAACA","TGCTAACA","ATCTAACA","CTCTAACA","GTCTAACA","TTCTAACA",
+ "AAGTAACA","CAGTAACA","GAGTAACA","TAGTAACA","ACGTAACA","CCGTAACA","GCGTAACA","TCGTAACA",
+ "AGGTAACA","CGGTAACA","GGGTAACA","TGGTAACA","ATGTAACA","CTGTAACA","GTGTAACA","TTGTAACA",
+ "AATTAACA","CATTAACA","GATTAACA","TATTAACA","ACTTAACA","CCTTAACA","GCTTAACA","TCTTAACA",
+ "AGTTAACA","CGTTAACA","GGTTAACA","TGTTAACA","ATTTAACA","CTTTAACA","GTTTAACA","TTTTAACA",
+ "AAAACACA","CAAACACA","GAAACACA","TAAACACA","ACAACACA","CCAACACA","GCAACACA","TCAACACA",
+ "AGAACACA","CGAACACA","GGAACACA","TGAACACA","ATAACACA","CTAACACA","GTAACACA","TTAACACA",
+ "AACACACA","CACACACA","GACACACA","TACACACA","ACCACACA","CCCACACA","GCCACACA","TCCACACA",
+ "AGCACACA","CGCACACA","GGCACACA","TGCACACA","ATCACACA","CTCACACA","GTCACACA","TTCACACA",
+ "AAGACACA","CAGACACA","GAGACACA","TAGACACA","ACGACACA","CCGACACA","GCGACACA","TCGACACA",
+ "AGGACACA","CGGACACA","GGGACACA","TGGACACA","ATGACACA","CTGACACA","GTGACACA","TTGACACA",
+ "AATACACA","CATACACA","GATACACA","TATACACA","ACTACACA","CCTACACA","GCTACACA","TCTACACA",
+ "AGTACACA","CGTACACA","GGTACACA","TGTACACA","ATTACACA","CTTACACA","GTTACACA","TTTACACA",
+ "AAACCACA","CAACCACA","GAACCACA","TAACCACA","ACACCACA","CCACCACA","GCACCACA","TCACCACA",
+ "AGACCACA","CGACCACA","GGACCACA","TGACCACA","ATACCACA","CTACCACA","GTACCACA","TTACCACA",
+ "AACCCACA","CACCCACA","GACCCACA","TACCCACA","ACCCCACA","CCCCCACA","GCCCCACA","TCCCCACA",
+ "AGCCCACA","CGCCCACA","GGCCCACA","TGCCCACA","ATCCCACA","CTCCCACA","GTCCCACA","TTCCCACA",
+ "AAGCCACA","CAGCCACA","GAGCCACA","TAGCCACA","ACGCCACA","CCGCCACA","GCGCCACA","TCGCCACA",
+ "AGGCCACA","CGGCCACA","GGGCCACA","TGGCCACA","ATGCCACA","CTGCCACA","GTGCCACA","TTGCCACA",
+ "AATCCACA","CATCCACA","GATCCACA","TATCCACA","ACTCCACA","CCTCCACA","GCTCCACA","TCTCCACA",
+ "AGTCCACA","CGTCCACA","GGTCCACA","TGTCCACA","ATTCCACA","CTTCCACA","GTTCCACA","TTTCCACA",
+ "AAAGCACA","CAAGCACA","GAAGCACA","TAAGCACA","ACAGCACA","CCAGCACA","GCAGCACA","TCAGCACA",
+ "AGAGCACA","CGAGCACA","GGAGCACA","TGAGCACA","ATAGCACA","CTAGCACA","GTAGCACA","TTAGCACA",
+ "AACGCACA","CACGCACA","GACGCACA","TACGCACA","ACCGCACA","CCCGCACA","GCCGCACA","TCCGCACA",
+ "AGCGCACA","CGCGCACA","GGCGCACA","TGCGCACA","ATCGCACA","CTCGCACA","GTCGCACA","TTCGCACA",
+ "AAGGCACA","CAGGCACA","GAGGCACA","TAGGCACA","ACGGCACA","CCGGCACA","GCGGCACA","TCGGCACA",
+ "AGGGCACA","CGGGCACA","GGGGCACA","TGGGCACA","ATGGCACA","CTGGCACA","GTGGCACA","TTGGCACA",
+ "AATGCACA","CATGCACA","GATGCACA","TATGCACA","ACTGCACA","CCTGCACA","GCTGCACA","TCTGCACA",
+ "AGTGCACA","CGTGCACA","GGTGCACA","TGTGCACA","ATTGCACA","CTTGCACA","GTTGCACA","TTTGCACA",
+ "AAATCACA","CAATCACA","GAATCACA","TAATCACA","ACATCACA","CCATCACA","GCATCACA","TCATCACA",
+ "AGATCACA","CGATCACA","GGATCACA","TGATCACA","ATATCACA","CTATCACA","GTATCACA","TTATCACA",
+ "AACTCACA","CACTCACA","GACTCACA","TACTCACA","ACCTCACA","CCCTCACA","GCCTCACA","TCCTCACA",
+ "AGCTCACA","CGCTCACA","GGCTCACA","TGCTCACA","ATCTCACA","CTCTCACA","GTCTCACA","TTCTCACA",
+ "AAGTCACA","CAGTCACA","GAGTCACA","TAGTCACA","ACGTCACA","CCGTCACA","GCGTCACA","TCGTCACA",
+ "AGGTCACA","CGGTCACA","GGGTCACA","TGGTCACA","ATGTCACA","CTGTCACA","GTGTCACA","TTGTCACA",
+ "AATTCACA","CATTCACA","GATTCACA","TATTCACA","ACTTCACA","CCTTCACA","GCTTCACA","TCTTCACA",
+ "AGTTCACA","CGTTCACA","GGTTCACA","TGTTCACA","ATTTCACA","CTTTCACA","GTTTCACA","TTTTCACA",
+ "AAAAGACA","CAAAGACA","GAAAGACA","TAAAGACA","ACAAGACA","CCAAGACA","GCAAGACA","TCAAGACA",
+ "AGAAGACA","CGAAGACA","GGAAGACA","TGAAGACA","ATAAGACA","CTAAGACA","GTAAGACA","TTAAGACA",
+ "AACAGACA","CACAGACA","GACAGACA","TACAGACA","ACCAGACA","CCCAGACA","GCCAGACA","TCCAGACA",
+ "AGCAGACA","CGCAGACA","GGCAGACA","TGCAGACA","ATCAGACA","CTCAGACA","GTCAGACA","TTCAGACA",
+ "AAGAGACA","CAGAGACA","GAGAGACA","TAGAGACA","ACGAGACA","CCGAGACA","GCGAGACA","TCGAGACA",
+ "AGGAGACA","CGGAGACA","GGGAGACA","TGGAGACA","ATGAGACA","CTGAGACA","GTGAGACA","TTGAGACA",
+ "AATAGACA","CATAGACA","GATAGACA","TATAGACA","ACTAGACA","CCTAGACA","GCTAGACA","TCTAGACA",
+ "AGTAGACA","CGTAGACA","GGTAGACA","TGTAGACA","ATTAGACA","CTTAGACA","GTTAGACA","TTTAGACA",
+ "AAACGACA","CAACGACA","GAACGACA","TAACGACA","ACACGACA","CCACGACA","GCACGACA","TCACGACA",
+ "AGACGACA","CGACGACA","GGACGACA","TGACGACA","ATACGACA","CTACGACA","GTACGACA","TTACGACA",
+ "AACCGACA","CACCGACA","GACCGACA","TACCGACA","ACCCGACA","CCCCGACA","GCCCGACA","TCCCGACA",
+ "AGCCGACA","CGCCGACA","GGCCGACA","TGCCGACA","ATCCGACA","CTCCGACA","GTCCGACA","TTCCGACA",
+ "AAGCGACA","CAGCGACA","GAGCGACA","TAGCGACA","ACGCGACA","CCGCGACA","GCGCGACA","TCGCGACA",
+ "AGGCGACA","CGGCGACA","GGGCGACA","TGGCGACA","ATGCGACA","CTGCGACA","GTGCGACA","TTGCGACA",
+ "AATCGACA","CATCGACA","GATCGACA","TATCGACA","ACTCGACA","CCTCGACA","GCTCGACA","TCTCGACA",
+ "AGTCGACA","CGTCGACA","GGTCGACA","TGTCGACA","ATTCGACA","CTTCGACA","GTTCGACA","TTTCGACA",
+ "AAAGGACA","CAAGGACA","GAAGGACA","TAAGGACA","ACAGGACA","CCAGGACA","GCAGGACA","TCAGGACA",
+ "AGAGGACA","CGAGGACA","GGAGGACA","TGAGGACA","ATAGGACA","CTAGGACA","GTAGGACA","TTAGGACA",
+ "AACGGACA","CACGGACA","GACGGACA","TACGGACA","ACCGGACA","CCCGGACA","GCCGGACA","TCCGGACA",
+ "AGCGGACA","CGCGGACA","GGCGGACA","TGCGGACA","ATCGGACA","CTCGGACA","GTCGGACA","TTCGGACA",
+ "AAGGGACA","CAGGGACA","GAGGGACA","TAGGGACA","ACGGGACA","CCGGGACA","GCGGGACA","TCGGGACA",
+ "AGGGGACA","CGGGGACA","GGGGGACA","TGGGGACA","ATGGGACA","CTGGGACA","GTGGGACA","TTGGGACA",
+ "AATGGACA","CATGGACA","GATGGACA","TATGGACA","ACTGGACA","CCTGGACA","GCTGGACA","TCTGGACA",
+ "AGTGGACA","CGTGGACA","GGTGGACA","TGTGGACA","ATTGGACA","CTTGGACA","GTTGGACA","TTTGGACA",
+ "AAATGACA","CAATGACA","GAATGACA","TAATGACA","ACATGACA","CCATGACA","GCATGACA","TCATGACA",
+ "AGATGACA","CGATGACA","GGATGACA","TGATGACA","ATATGACA","CTATGACA","GTATGACA","TTATGACA",
+ "AACTGACA","CACTGACA","GACTGACA","TACTGACA","ACCTGACA","CCCTGACA","GCCTGACA","TCCTGACA",
+ "AGCTGACA","CGCTGACA","GGCTGACA","TGCTGACA","ATCTGACA","CTCTGACA","GTCTGACA","TTCTGACA",
+ "AAGTGACA","CAGTGACA","GAGTGACA","TAGTGACA","ACGTGACA","CCGTGACA","GCGTGACA","TCGTGACA",
+ "AGGTGACA","CGGTGACA","GGGTGACA","TGGTGACA","ATGTGACA","CTGTGACA","GTGTGACA","TTGTGACA",
+ "AATTGACA","CATTGACA","GATTGACA","TATTGACA","ACTTGACA","CCTTGACA","GCTTGACA","TCTTGACA",
+ "AGTTGACA","CGTTGACA","GGTTGACA","TGTTGACA","ATTTGACA","CTTTGACA","GTTTGACA","TTTTGACA",
+ "AAAATACA","CAAATACA","GAAATACA","TAAATACA","ACAATACA","CCAATACA","GCAATACA","TCAATACA",
+ "AGAATACA","CGAATACA","GGAATACA","TGAATACA","ATAATACA","CTAATACA","GTAATACA","TTAATACA",
+ "AACATACA","CACATACA","GACATACA","TACATACA","ACCATACA","CCCATACA","GCCATACA","TCCATACA",
+ "AGCATACA","CGCATACA","GGCATACA","TGCATACA","ATCATACA","CTCATACA","GTCATACA","TTCATACA",
+ "AAGATACA","CAGATACA","GAGATACA","TAGATACA","ACGATACA","CCGATACA","GCGATACA","TCGATACA",
+ "AGGATACA","CGGATACA","GGGATACA","TGGATACA","ATGATACA","CTGATACA","GTGATACA","TTGATACA",
+ "AATATACA","CATATACA","GATATACA","TATATACA","ACTATACA","CCTATACA","GCTATACA","TCTATACA",
+ "AGTATACA","CGTATACA","GGTATACA","TGTATACA","ATTATACA","CTTATACA","GTTATACA","TTTATACA",
+ "AAACTACA","CAACTACA","GAACTACA","TAACTACA","ACACTACA","CCACTACA","GCACTACA","TCACTACA",
+ "AGACTACA","CGACTACA","GGACTACA","TGACTACA","ATACTACA","CTACTACA","GTACTACA","TTACTACA",
+ "AACCTACA","CACCTACA","GACCTACA","TACCTACA","ACCCTACA","CCCCTACA","GCCCTACA","TCCCTACA",
+ "AGCCTACA","CGCCTACA","GGCCTACA","TGCCTACA","ATCCTACA","CTCCTACA","GTCCTACA","TTCCTACA",
+ "AAGCTACA","CAGCTACA","GAGCTACA","TAGCTACA","ACGCTACA","CCGCTACA","GCGCTACA","TCGCTACA",
+ "AGGCTACA","CGGCTACA","GGGCTACA","TGGCTACA","ATGCTACA","CTGCTACA","GTGCTACA","TTGCTACA",
+ "AATCTACA","CATCTACA","GATCTACA","TATCTACA","ACTCTACA","CCTCTACA","GCTCTACA","TCTCTACA",
+ "AGTCTACA","CGTCTACA","GGTCTACA","TGTCTACA","ATTCTACA","CTTCTACA","GTTCTACA","TTTCTACA",
+ "AAAGTACA","CAAGTACA","GAAGTACA","TAAGTACA","ACAGTACA","CCAGTACA","GCAGTACA","TCAGTACA",
+ "AGAGTACA","CGAGTACA","GGAGTACA","TGAGTACA","ATAGTACA","CTAGTACA","GTAGTACA","TTAGTACA",
+ "AACGTACA","CACGTACA","GACGTACA","TACGTACA","ACCGTACA","CCCGTACA","GCCGTACA","TCCGTACA",
+ "AGCGTACA","CGCGTACA","GGCGTACA","TGCGTACA","ATCGTACA","CTCGTACA","GTCGTACA","TTCGTACA",
+ "AAGGTACA","CAGGTACA","GAGGTACA","TAGGTACA","ACGGTACA","CCGGTACA","GCGGTACA","TCGGTACA",
+ "AGGGTACA","CGGGTACA","GGGGTACA","TGGGTACA","ATGGTACA","CTGGTACA","GTGGTACA","TTGGTACA",
+ "AATGTACA","CATGTACA","GATGTACA","TATGTACA","ACTGTACA","CCTGTACA","GCTGTACA","TCTGTACA",
+ "AGTGTACA","CGTGTACA","GGTGTACA","TGTGTACA","ATTGTACA","CTTGTACA","GTTGTACA","TTTGTACA",
+ "AAATTACA","CAATTACA","GAATTACA","TAATTACA","ACATTACA","CCATTACA","GCATTACA","TCATTACA",
+ "AGATTACA","CGATTACA","GGATTACA","TGATTACA","ATATTACA","CTATTACA","GTATTACA","TTATTACA",
+ "AACTTACA","CACTTACA","GACTTACA","TACTTACA","ACCTTACA","CCCTTACA","GCCTTACA","TCCTTACA",
+ "AGCTTACA","CGCTTACA","GGCTTACA","TGCTTACA","ATCTTACA","CTCTTACA","GTCTTACA","TTCTTACA",
+ "AAGTTACA","CAGTTACA","GAGTTACA","TAGTTACA","ACGTTACA","CCGTTACA","GCGTTACA","TCGTTACA",
+ "AGGTTACA","CGGTTACA","GGGTTACA","TGGTTACA","ATGTTACA","CTGTTACA","GTGTTACA","TTGTTACA",
+ "AATTTACA","CATTTACA","GATTTACA","TATTTACA","ACTTTACA","CCTTTACA","GCTTTACA","TCTTTACA",
+ "AGTTTACA","CGTTTACA","GGTTTACA","TGTTTACA","ATTTTACA","CTTTTACA","GTTTTACA","TTTTTACA",
+ "AAAAACCA","CAAAACCA","GAAAACCA","TAAAACCA","ACAAACCA","CCAAACCA","GCAAACCA","TCAAACCA",
+ "AGAAACCA","CGAAACCA","GGAAACCA","TGAAACCA","ATAAACCA","CTAAACCA","GTAAACCA","TTAAACCA",
+ "AACAACCA","CACAACCA","GACAACCA","TACAACCA","ACCAACCA","CCCAACCA","GCCAACCA","TCCAACCA",
+ "AGCAACCA","CGCAACCA","GGCAACCA","TGCAACCA","ATCAACCA","CTCAACCA","GTCAACCA","TTCAACCA",
+ "AAGAACCA","CAGAACCA","GAGAACCA","TAGAACCA","ACGAACCA","CCGAACCA","GCGAACCA","TCGAACCA",
+ "AGGAACCA","CGGAACCA","GGGAACCA","TGGAACCA","ATGAACCA","CTGAACCA","GTGAACCA","TTGAACCA",
+ "AATAACCA","CATAACCA","GATAACCA","TATAACCA","ACTAACCA","CCTAACCA","GCTAACCA","TCTAACCA",
+ "AGTAACCA","CGTAACCA","GGTAACCA","TGTAACCA","ATTAACCA","CTTAACCA","GTTAACCA","TTTAACCA",
+ "AAACACCA","CAACACCA","GAACACCA","TAACACCA","ACACACCA","CCACACCA","GCACACCA","TCACACCA",
+ "AGACACCA","CGACACCA","GGACACCA","TGACACCA","ATACACCA","CTACACCA","GTACACCA","TTACACCA",
+ "AACCACCA","CACCACCA","GACCACCA","TACCACCA","ACCCACCA","CCCCACCA","GCCCACCA","TCCCACCA",
+ "AGCCACCA","CGCCACCA","GGCCACCA","TGCCACCA","ATCCACCA","CTCCACCA","GTCCACCA","TTCCACCA",
+ "AAGCACCA","CAGCACCA","GAGCACCA","TAGCACCA","ACGCACCA","CCGCACCA","GCGCACCA","TCGCACCA",
+ "AGGCACCA","CGGCACCA","GGGCACCA","TGGCACCA","ATGCACCA","CTGCACCA","GTGCACCA","TTGCACCA",
+ "AATCACCA","CATCACCA","GATCACCA","TATCACCA","ACTCACCA","CCTCACCA","GCTCACCA","TCTCACCA",
+ "AGTCACCA","CGTCACCA","GGTCACCA","TGTCACCA","ATTCACCA","CTTCACCA","GTTCACCA","TTTCACCA",
+ "AAAGACCA","CAAGACCA","GAAGACCA","TAAGACCA","ACAGACCA","CCAGACCA","GCAGACCA","TCAGACCA",
+ "AGAGACCA","CGAGACCA","GGAGACCA","TGAGACCA","ATAGACCA","CTAGACCA","GTAGACCA","TTAGACCA",
+ "AACGACCA","CACGACCA","GACGACCA","TACGACCA","ACCGACCA","CCCGACCA","GCCGACCA","TCCGACCA",
+ "AGCGACCA","CGCGACCA","GGCGACCA","TGCGACCA","ATCGACCA","CTCGACCA","GTCGACCA","TTCGACCA",
+ "AAGGACCA","CAGGACCA","GAGGACCA","TAGGACCA","ACGGACCA","CCGGACCA","GCGGACCA","TCGGACCA",
+ "AGGGACCA","CGGGACCA","GGGGACCA","TGGGACCA","ATGGACCA","CTGGACCA","GTGGACCA","TTGGACCA",
+ "AATGACCA","CATGACCA","GATGACCA","TATGACCA","ACTGACCA","CCTGACCA","GCTGACCA","TCTGACCA",
+ "AGTGACCA","CGTGACCA","GGTGACCA","TGTGACCA","ATTGACCA","CTTGACCA","GTTGACCA","TTTGACCA",
+ "AAATACCA","CAATACCA","GAATACCA","TAATACCA","ACATACCA","CCATACCA","GCATACCA","TCATACCA",
+ "AGATACCA","CGATACCA","GGATACCA","TGATACCA","ATATACCA","CTATACCA","GTATACCA","TTATACCA",
+ "AACTACCA","CACTACCA","GACTACCA","TACTACCA","ACCTACCA","CCCTACCA","GCCTACCA","TCCTACCA",
+ "AGCTACCA","CGCTACCA","GGCTACCA","TGCTACCA","ATCTACCA","CTCTACCA","GTCTACCA","TTCTACCA",
+ "AAGTACCA","CAGTACCA","GAGTACCA","TAGTACCA","ACGTACCA","CCGTACCA","GCGTACCA","TCGTACCA",
+ "AGGTACCA","CGGTACCA","GGGTACCA","TGGTACCA","ATGTACCA","CTGTACCA","GTGTACCA","TTGTACCA",
+ "AATTACCA","CATTACCA","GATTACCA","TATTACCA","ACTTACCA","CCTTACCA","GCTTACCA","TCTTACCA",
+ "AGTTACCA","CGTTACCA","GGTTACCA","TGTTACCA","ATTTACCA","CTTTACCA","GTTTACCA","TTTTACCA",
+ "AAAACCCA","CAAACCCA","GAAACCCA","TAAACCCA","ACAACCCA","CCAACCCA","GCAACCCA","TCAACCCA",
+ "AGAACCCA","CGAACCCA","GGAACCCA","TGAACCCA","ATAACCCA","CTAACCCA","GTAACCCA","TTAACCCA",
+ "AACACCCA","CACACCCA","GACACCCA","TACACCCA","ACCACCCA","CCCACCCA","GCCACCCA","TCCACCCA",
+ "AGCACCCA","CGCACCCA","GGCACCCA","TGCACCCA","ATCACCCA","CTCACCCA","GTCACCCA","TTCACCCA",
+ "AAGACCCA","CAGACCCA","GAGACCCA","TAGACCCA","ACGACCCA","CCGACCCA","GCGACCCA","TCGACCCA",
+ "AGGACCCA","CGGACCCA","GGGACCCA","TGGACCCA","ATGACCCA","CTGACCCA","GTGACCCA","TTGACCCA",
+ "AATACCCA","CATACCCA","GATACCCA","TATACCCA","ACTACCCA","CCTACCCA","GCTACCCA","TCTACCCA",
+ "AGTACCCA","CGTACCCA","GGTACCCA","TGTACCCA","ATTACCCA","CTTACCCA","GTTACCCA","TTTACCCA",
+ "AAACCCCA","CAACCCCA","GAACCCCA","TAACCCCA","ACACCCCA","CCACCCCA","GCACCCCA","TCACCCCA",
+ "AGACCCCA","CGACCCCA","GGACCCCA","TGACCCCA","ATACCCCA","CTACCCCA","GTACCCCA","TTACCCCA",
+ "AACCCCCA","CACCCCCA","GACCCCCA","TACCCCCA","ACCCCCCA","CCCCCCCA","GCCCCCCA","TCCCCCCA",
+ "AGCCCCCA","CGCCCCCA","GGCCCCCA","TGCCCCCA","ATCCCCCA","CTCCCCCA","GTCCCCCA","TTCCCCCA",
+ "AAGCCCCA","CAGCCCCA","GAGCCCCA","TAGCCCCA","ACGCCCCA","CCGCCCCA","GCGCCCCA","TCGCCCCA",
+ "AGGCCCCA","CGGCCCCA","GGGCCCCA","TGGCCCCA","ATGCCCCA","CTGCCCCA","GTGCCCCA","TTGCCCCA",
+ "AATCCCCA","CATCCCCA","GATCCCCA","TATCCCCA","ACTCCCCA","CCTCCCCA","GCTCCCCA","TCTCCCCA",
+ "AGTCCCCA","CGTCCCCA","GGTCCCCA","TGTCCCCA","ATTCCCCA","CTTCCCCA","GTTCCCCA","TTTCCCCA",
+ "AAAGCCCA","CAAGCCCA","GAAGCCCA","TAAGCCCA","ACAGCCCA","CCAGCCCA","GCAGCCCA","TCAGCCCA",
+ "AGAGCCCA","CGAGCCCA","GGAGCCCA","TGAGCCCA","ATAGCCCA","CTAGCCCA","GTAGCCCA","TTAGCCCA",
+ "AACGCCCA","CACGCCCA","GACGCCCA","TACGCCCA","ACCGCCCA","CCCGCCCA","GCCGCCCA","TCCGCCCA",
+ "AGCGCCCA","CGCGCCCA","GGCGCCCA","TGCGCCCA","ATCGCCCA","CTCGCCCA","GTCGCCCA","TTCGCCCA",
+ "AAGGCCCA","CAGGCCCA","GAGGCCCA","TAGGCCCA","ACGGCCCA","CCGGCCCA","GCGGCCCA","TCGGCCCA",
+ "AGGGCCCA","CGGGCCCA","GGGGCCCA","TGGGCCCA","ATGGCCCA","CTGGCCCA","GTGGCCCA","TTGGCCCA",
+ "AATGCCCA","CATGCCCA","GATGCCCA","TATGCCCA","ACTGCCCA","CCTGCCCA","GCTGCCCA","TCTGCCCA",
+ "AGTGCCCA","CGTGCCCA","GGTGCCCA","TGTGCCCA","ATTGCCCA","CTTGCCCA","GTTGCCCA","TTTGCCCA",
+ "AAATCCCA","CAATCCCA","GAATCCCA","TAATCCCA","ACATCCCA","CCATCCCA","GCATCCCA","TCATCCCA",
+ "AGATCCCA","CGATCCCA","GGATCCCA","TGATCCCA","ATATCCCA","CTATCCCA","GTATCCCA","TTATCCCA",
+ "AACTCCCA","CACTCCCA","GACTCCCA","TACTCCCA","ACCTCCCA","CCCTCCCA","GCCTCCCA","TCCTCCCA",
+ "AGCTCCCA","CGCTCCCA","GGCTCCCA","TGCTCCCA","ATCTCCCA","CTCTCCCA","GTCTCCCA","TTCTCCCA",
+ "AAGTCCCA","CAGTCCCA","GAGTCCCA","TAGTCCCA","ACGTCCCA","CCGTCCCA","GCGTCCCA","TCGTCCCA",
+ "AGGTCCCA","CGGTCCCA","GGGTCCCA","TGGTCCCA","ATGTCCCA","CTGTCCCA","GTGTCCCA","TTGTCCCA",
+ "AATTCCCA","CATTCCCA","GATTCCCA","TATTCCCA","ACTTCCCA","CCTTCCCA","GCTTCCCA","TCTTCCCA",
+ "AGTTCCCA","CGTTCCCA","GGTTCCCA","TGTTCCCA","ATTTCCCA","CTTTCCCA","GTTTCCCA","TTTTCCCA",
+ "AAAAGCCA","CAAAGCCA","GAAAGCCA","TAAAGCCA","ACAAGCCA","CCAAGCCA","GCAAGCCA","TCAAGCCA",
+ "AGAAGCCA","CGAAGCCA","GGAAGCCA","TGAAGCCA","ATAAGCCA","CTAAGCCA","GTAAGCCA","TTAAGCCA",
+ "AACAGCCA","CACAGCCA","GACAGCCA","TACAGCCA","ACCAGCCA","CCCAGCCA","GCCAGCCA","TCCAGCCA",
+ "AGCAGCCA","CGCAGCCA","GGCAGCCA","TGCAGCCA","ATCAGCCA","CTCAGCCA","GTCAGCCA","TTCAGCCA",
+ "AAGAGCCA","CAGAGCCA","GAGAGCCA","TAGAGCCA","ACGAGCCA","CCGAGCCA","GCGAGCCA","TCGAGCCA",
+ "AGGAGCCA","CGGAGCCA","GGGAGCCA","TGGAGCCA","ATGAGCCA","CTGAGCCA","GTGAGCCA","TTGAGCCA",
+ "AATAGCCA","CATAGCCA","GATAGCCA","TATAGCCA","ACTAGCCA","CCTAGCCA","GCTAGCCA","TCTAGCCA",
+ "AGTAGCCA","CGTAGCCA","GGTAGCCA","TGTAGCCA","ATTAGCCA","CTTAGCCA","GTTAGCCA","TTTAGCCA",
+ "AAACGCCA","CAACGCCA","GAACGCCA","TAACGCCA","ACACGCCA","CCACGCCA","GCACGCCA","TCACGCCA",
+ "AGACGCCA","CGACGCCA","GGACGCCA","TGACGCCA","ATACGCCA","CTACGCCA","GTACGCCA","TTACGCCA",
+ "AACCGCCA","CACCGCCA","GACCGCCA","TACCGCCA","ACCCGCCA","CCCCGCCA","GCCCGCCA","TCCCGCCA",
+ "AGCCGCCA","CGCCGCCA","GGCCGCCA","TGCCGCCA","ATCCGCCA","CTCCGCCA","GTCCGCCA","TTCCGCCA",
+ "AAGCGCCA","CAGCGCCA","GAGCGCCA","TAGCGCCA","ACGCGCCA","CCGCGCCA","GCGCGCCA","TCGCGCCA",
+ "AGGCGCCA","CGGCGCCA","GGGCGCCA","TGGCGCCA","ATGCGCCA","CTGCGCCA","GTGCGCCA","TTGCGCCA",
+ "AATCGCCA","CATCGCCA","GATCGCCA","TATCGCCA","ACTCGCCA","CCTCGCCA","GCTCGCCA","TCTCGCCA",
+ "AGTCGCCA","CGTCGCCA","GGTCGCCA","TGTCGCCA","ATTCGCCA","CTTCGCCA","GTTCGCCA","TTTCGCCA",
+ "AAAGGCCA","CAAGGCCA","GAAGGCCA","TAAGGCCA","ACAGGCCA","CCAGGCCA","GCAGGCCA","TCAGGCCA",
+ "AGAGGCCA","CGAGGCCA","GGAGGCCA","TGAGGCCA","ATAGGCCA","CTAGGCCA","GTAGGCCA","TTAGGCCA",
+ "AACGGCCA","CACGGCCA","GACGGCCA","TACGGCCA","ACCGGCCA","CCCGGCCA","GCCGGCCA","TCCGGCCA",
+ "AGCGGCCA","CGCGGCCA","GGCGGCCA","TGCGGCCA","ATCGGCCA","CTCGGCCA","GTCGGCCA","TTCGGCCA",
+ "AAGGGCCA","CAGGGCCA","GAGGGCCA","TAGGGCCA","ACGGGCCA","CCGGGCCA","GCGGGCCA","TCGGGCCA",
+ "AGGGGCCA","CGGGGCCA","GGGGGCCA","TGGGGCCA","ATGGGCCA","CTGGGCCA","GTGGGCCA","TTGGGCCA",
+ "AATGGCCA","CATGGCCA","GATGGCCA","TATGGCCA","ACTGGCCA","CCTGGCCA","GCTGGCCA","TCTGGCCA",
+ "AGTGGCCA","CGTGGCCA","GGTGGCCA","TGTGGCCA","ATTGGCCA","CTTGGCCA","GTTGGCCA","TTTGGCCA",
+ "AAATGCCA","CAATGCCA","GAATGCCA","TAATGCCA","ACATGCCA","CCATGCCA","GCATGCCA","TCATGCCA",
+ "AGATGCCA","CGATGCCA","GGATGCCA","TGATGCCA","ATATGCCA","CTATGCCA","GTATGCCA","TTATGCCA",
+ "AACTGCCA","CACTGCCA","GACTGCCA","TACTGCCA","ACCTGCCA","CCCTGCCA","GCCTGCCA","TCCTGCCA",
+ "AGCTGCCA","CGCTGCCA","GGCTGCCA","TGCTGCCA","ATCTGCCA","CTCTGCCA","GTCTGCCA","TTCTGCCA",
+ "AAGTGCCA","CAGTGCCA","GAGTGCCA","TAGTGCCA","ACGTGCCA","CCGTGCCA","GCGTGCCA","TCGTGCCA",
+ "AGGTGCCA","CGGTGCCA","GGGTGCCA","TGGTGCCA","ATGTGCCA","CTGTGCCA","GTGTGCCA","TTGTGCCA",
+ "AATTGCCA","CATTGCCA","GATTGCCA","TATTGCCA","ACTTGCCA","CCTTGCCA","GCTTGCCA","TCTTGCCA",
+ "AGTTGCCA","CGTTGCCA","GGTTGCCA","TGTTGCCA","ATTTGCCA","CTTTGCCA","GTTTGCCA","TTTTGCCA",
+ "AAAATCCA","CAAATCCA","GAAATCCA","TAAATCCA","ACAATCCA","CCAATCCA","GCAATCCA","TCAATCCA",
+ "AGAATCCA","CGAATCCA","GGAATCCA","TGAATCCA","ATAATCCA","CTAATCCA","GTAATCCA","TTAATCCA",
+ "AACATCCA","CACATCCA","GACATCCA","TACATCCA","ACCATCCA","CCCATCCA","GCCATCCA","TCCATCCA",
+ "AGCATCCA","CGCATCCA","GGCATCCA","TGCATCCA","ATCATCCA","CTCATCCA","GTCATCCA","TTCATCCA",
+ "AAGATCCA","CAGATCCA","GAGATCCA","TAGATCCA","ACGATCCA","CCGATCCA","GCGATCCA","TCGATCCA",
+ "AGGATCCA","CGGATCCA","GGGATCCA","TGGATCCA","ATGATCCA","CTGATCCA","GTGATCCA","TTGATCCA",
+ "AATATCCA","CATATCCA","GATATCCA","TATATCCA","ACTATCCA","CCTATCCA","GCTATCCA","TCTATCCA",
+ "AGTATCCA","CGTATCCA","GGTATCCA","TGTATCCA","ATTATCCA","CTTATCCA","GTTATCCA","TTTATCCA",
+ "AAACTCCA","CAACTCCA","GAACTCCA","TAACTCCA","ACACTCCA","CCACTCCA","GCACTCCA","TCACTCCA",
+ "AGACTCCA","CGACTCCA","GGACTCCA","TGACTCCA","ATACTCCA","CTACTCCA","GTACTCCA","TTACTCCA",
+ "AACCTCCA","CACCTCCA","GACCTCCA","TACCTCCA","ACCCTCCA","CCCCTCCA","GCCCTCCA","TCCCTCCA",
+ "AGCCTCCA","CGCCTCCA","GGCCTCCA","TGCCTCCA","ATCCTCCA","CTCCTCCA","GTCCTCCA","TTCCTCCA",
+ "AAGCTCCA","CAGCTCCA","GAGCTCCA","TAGCTCCA","ACGCTCCA","CCGCTCCA","GCGCTCCA","TCGCTCCA",
+ "AGGCTCCA","CGGCTCCA","GGGCTCCA","TGGCTCCA","ATGCTCCA","CTGCTCCA","GTGCTCCA","TTGCTCCA",
+ "AATCTCCA","CATCTCCA","GATCTCCA","TATCTCCA","ACTCTCCA","CCTCTCCA","GCTCTCCA","TCTCTCCA",
+ "AGTCTCCA","CGTCTCCA","GGTCTCCA","TGTCTCCA","ATTCTCCA","CTTCTCCA","GTTCTCCA","TTTCTCCA",
+ "AAAGTCCA","CAAGTCCA","GAAGTCCA","TAAGTCCA","ACAGTCCA","CCAGTCCA","GCAGTCCA","TCAGTCCA",
+ "AGAGTCCA","CGAGTCCA","GGAGTCCA","TGAGTCCA","ATAGTCCA","CTAGTCCA","GTAGTCCA","TTAGTCCA",
+ "AACGTCCA","CACGTCCA","GACGTCCA","TACGTCCA","ACCGTCCA","CCCGTCCA","GCCGTCCA","TCCGTCCA",
+ "AGCGTCCA","CGCGTCCA","GGCGTCCA","TGCGTCCA","ATCGTCCA","CTCGTCCA","GTCGTCCA","TTCGTCCA",
+ "AAGGTCCA","CAGGTCCA","GAGGTCCA","TAGGTCCA","ACGGTCCA","CCGGTCCA","GCGGTCCA","TCGGTCCA",
+ "AGGGTCCA","CGGGTCCA","GGGGTCCA","TGGGTCCA","ATGGTCCA","CTGGTCCA","GTGGTCCA","TTGGTCCA",
+ "AATGTCCA","CATGTCCA","GATGTCCA","TATGTCCA","ACTGTCCA","CCTGTCCA","GCTGTCCA","TCTGTCCA",
+ "AGTGTCCA","CGTGTCCA","GGTGTCCA","TGTGTCCA","ATTGTCCA","CTTGTCCA","GTTGTCCA","TTTGTCCA",
+ "AAATTCCA","CAATTCCA","GAATTCCA","TAATTCCA","ACATTCCA","CCATTCCA","GCATTCCA","TCATTCCA",
+ "AGATTCCA","CGATTCCA","GGATTCCA","TGATTCCA","ATATTCCA","CTATTCCA","GTATTCCA","TTATTCCA",
+ "AACTTCCA","CACTTCCA","GACTTCCA","TACTTCCA","ACCTTCCA","CCCTTCCA","GCCTTCCA","TCCTTCCA",
+ "AGCTTCCA","CGCTTCCA","GGCTTCCA","TGCTTCCA","ATCTTCCA","CTCTTCCA","GTCTTCCA","TTCTTCCA",
+ "AAGTTCCA","CAGTTCCA","GAGTTCCA","TAGTTCCA","ACGTTCCA","CCGTTCCA","GCGTTCCA","TCGTTCCA",
+ "AGGTTCCA","CGGTTCCA","GGGTTCCA","TGGTTCCA","ATGTTCCA","CTGTTCCA","GTGTTCCA","TTGTTCCA",
+ "AATTTCCA","CATTTCCA","GATTTCCA","TATTTCCA","ACTTTCCA","CCTTTCCA","GCTTTCCA","TCTTTCCA",
+ "AGTTTCCA","CGTTTCCA","GGTTTCCA","TGTTTCCA","ATTTTCCA","CTTTTCCA","GTTTTCCA","TTTTTCCA",
+ "AAAAAGCA","CAAAAGCA","GAAAAGCA","TAAAAGCA","ACAAAGCA","CCAAAGCA","GCAAAGCA","TCAAAGCA",
+ "AGAAAGCA","CGAAAGCA","GGAAAGCA","TGAAAGCA","ATAAAGCA","CTAAAGCA","GTAAAGCA","TTAAAGCA",
+ "AACAAGCA","CACAAGCA","GACAAGCA","TACAAGCA","ACCAAGCA","CCCAAGCA","GCCAAGCA","TCCAAGCA",
+ "AGCAAGCA","CGCAAGCA","GGCAAGCA","TGCAAGCA","ATCAAGCA","CTCAAGCA","GTCAAGCA","TTCAAGCA",
+ "AAGAAGCA","CAGAAGCA","GAGAAGCA","TAGAAGCA","ACGAAGCA","CCGAAGCA","GCGAAGCA","TCGAAGCA",
+ "AGGAAGCA","CGGAAGCA","GGGAAGCA","TGGAAGCA","ATGAAGCA","CTGAAGCA","GTGAAGCA","TTGAAGCA",
+ "AATAAGCA","CATAAGCA","GATAAGCA","TATAAGCA","ACTAAGCA","CCTAAGCA","GCTAAGCA","TCTAAGCA",
+ "AGTAAGCA","CGTAAGCA","GGTAAGCA","TGTAAGCA","ATTAAGCA","CTTAAGCA","GTTAAGCA","TTTAAGCA",
+ "AAACAGCA","CAACAGCA","GAACAGCA","TAACAGCA","ACACAGCA","CCACAGCA","GCACAGCA","TCACAGCA",
+ "AGACAGCA","CGACAGCA","GGACAGCA","TGACAGCA","ATACAGCA","CTACAGCA","GTACAGCA","TTACAGCA",
+ "AACCAGCA","CACCAGCA","GACCAGCA","TACCAGCA","ACCCAGCA","CCCCAGCA","GCCCAGCA","TCCCAGCA",
+ "AGCCAGCA","CGCCAGCA","GGCCAGCA","TGCCAGCA","ATCCAGCA","CTCCAGCA","GTCCAGCA","TTCCAGCA",
+ "AAGCAGCA","CAGCAGCA","GAGCAGCA","TAGCAGCA","ACGCAGCA","CCGCAGCA","GCGCAGCA","TCGCAGCA",
+ "AGGCAGCA","CGGCAGCA","GGGCAGCA","TGGCAGCA","ATGCAGCA","CTGCAGCA","GTGCAGCA","TTGCAGCA",
+ "AATCAGCA","CATCAGCA","GATCAGCA","TATCAGCA","ACTCAGCA","CCTCAGCA","GCTCAGCA","TCTCAGCA",
+ "AGTCAGCA","CGTCAGCA","GGTCAGCA","TGTCAGCA","ATTCAGCA","CTTCAGCA","GTTCAGCA","TTTCAGCA",
+ "AAAGAGCA","CAAGAGCA","GAAGAGCA","TAAGAGCA","ACAGAGCA","CCAGAGCA","GCAGAGCA","TCAGAGCA",
+ "AGAGAGCA","CGAGAGCA","GGAGAGCA","TGAGAGCA","ATAGAGCA","CTAGAGCA","GTAGAGCA","TTAGAGCA",
+ "AACGAGCA","CACGAGCA","GACGAGCA","TACGAGCA","ACCGAGCA","CCCGAGCA","GCCGAGCA","TCCGAGCA",
+ "AGCGAGCA","CGCGAGCA","GGCGAGCA","TGCGAGCA","ATCGAGCA","CTCGAGCA","GTCGAGCA","TTCGAGCA",
+ "AAGGAGCA","CAGGAGCA","GAGGAGCA","TAGGAGCA","ACGGAGCA","CCGGAGCA","GCGGAGCA","TCGGAGCA",
+ "AGGGAGCA","CGGGAGCA","GGGGAGCA","TGGGAGCA","ATGGAGCA","CTGGAGCA","GTGGAGCA","TTGGAGCA",
+ "AATGAGCA","CATGAGCA","GATGAGCA","TATGAGCA","ACTGAGCA","CCTGAGCA","GCTGAGCA","TCTGAGCA",
+ "AGTGAGCA","CGTGAGCA","GGTGAGCA","TGTGAGCA","ATTGAGCA","CTTGAGCA","GTTGAGCA","TTTGAGCA",
+ "AAATAGCA","CAATAGCA","GAATAGCA","TAATAGCA","ACATAGCA","CCATAGCA","GCATAGCA","TCATAGCA",
+ "AGATAGCA","CGATAGCA","GGATAGCA","TGATAGCA","ATATAGCA","CTATAGCA","GTATAGCA","TTATAGCA",
+ "AACTAGCA","CACTAGCA","GACTAGCA","TACTAGCA","ACCTAGCA","CCCTAGCA","GCCTAGCA","TCCTAGCA",
+ "AGCTAGCA","CGCTAGCA","GGCTAGCA","TGCTAGCA","ATCTAGCA","CTCTAGCA","GTCTAGCA","TTCTAGCA",
+ "AAGTAGCA","CAGTAGCA","GAGTAGCA","TAGTAGCA","ACGTAGCA","CCGTAGCA","GCGTAGCA","TCGTAGCA",
+ "AGGTAGCA","CGGTAGCA","GGGTAGCA","TGGTAGCA","ATGTAGCA","CTGTAGCA","GTGTAGCA","TTGTAGCA",
+ "AATTAGCA","CATTAGCA","GATTAGCA","TATTAGCA","ACTTAGCA","CCTTAGCA","GCTTAGCA","TCTTAGCA",
+ "AGTTAGCA","CGTTAGCA","GGTTAGCA","TGTTAGCA","ATTTAGCA","CTTTAGCA","GTTTAGCA","TTTTAGCA",
+ "AAAACGCA","CAAACGCA","GAAACGCA","TAAACGCA","ACAACGCA","CCAACGCA","GCAACGCA","TCAACGCA",
+ "AGAACGCA","CGAACGCA","GGAACGCA","TGAACGCA","ATAACGCA","CTAACGCA","GTAACGCA","TTAACGCA",
+ "AACACGCA","CACACGCA","GACACGCA","TACACGCA","ACCACGCA","CCCACGCA","GCCACGCA","TCCACGCA",
+ "AGCACGCA","CGCACGCA","GGCACGCA","TGCACGCA","ATCACGCA","CTCACGCA","GTCACGCA","TTCACGCA",
+ "AAGACGCA","CAGACGCA","GAGACGCA","TAGACGCA","ACGACGCA","CCGACGCA","GCGACGCA","TCGACGCA",
+ "AGGACGCA","CGGACGCA","GGGACGCA","TGGACGCA","ATGACGCA","CTGACGCA","GTGACGCA","TTGACGCA",
+ "AATACGCA","CATACGCA","GATACGCA","TATACGCA","ACTACGCA","CCTACGCA","GCTACGCA","TCTACGCA",
+ "AGTACGCA","CGTACGCA","GGTACGCA","TGTACGCA","ATTACGCA","CTTACGCA","GTTACGCA","TTTACGCA",
+ "AAACCGCA","CAACCGCA","GAACCGCA","TAACCGCA","ACACCGCA","CCACCGCA","GCACCGCA","TCACCGCA",
+ "AGACCGCA","CGACCGCA","GGACCGCA","TGACCGCA","ATACCGCA","CTACCGCA","GTACCGCA","TTACCGCA",
+ "AACCCGCA","CACCCGCA","GACCCGCA","TACCCGCA","ACCCCGCA","CCCCCGCA","GCCCCGCA","TCCCCGCA",
+ "AGCCCGCA","CGCCCGCA","GGCCCGCA","TGCCCGCA","ATCCCGCA","CTCCCGCA","GTCCCGCA","TTCCCGCA",
+ "AAGCCGCA","CAGCCGCA","GAGCCGCA","TAGCCGCA","ACGCCGCA","CCGCCGCA","GCGCCGCA","TCGCCGCA",
+ "AGGCCGCA","CGGCCGCA","GGGCCGCA","TGGCCGCA","ATGCCGCA","CTGCCGCA","GTGCCGCA","TTGCCGCA",
+ "AATCCGCA","CATCCGCA","GATCCGCA","TATCCGCA","ACTCCGCA","CCTCCGCA","GCTCCGCA","TCTCCGCA",
+ "AGTCCGCA","CGTCCGCA","GGTCCGCA","TGTCCGCA","ATTCCGCA","CTTCCGCA","GTTCCGCA","TTTCCGCA",
+ "AAAGCGCA","CAAGCGCA","GAAGCGCA","TAAGCGCA","ACAGCGCA","CCAGCGCA","GCAGCGCA","TCAGCGCA",
+ "AGAGCGCA","CGAGCGCA","GGAGCGCA","TGAGCGCA","ATAGCGCA","CTAGCGCA","GTAGCGCA","TTAGCGCA",
+ "AACGCGCA","CACGCGCA","GACGCGCA","TACGCGCA","ACCGCGCA","CCCGCGCA","GCCGCGCA","TCCGCGCA",
+ "AGCGCGCA","CGCGCGCA","GGCGCGCA","TGCGCGCA","ATCGCGCA","CTCGCGCA","GTCGCGCA","TTCGCGCA",
+ "AAGGCGCA","CAGGCGCA","GAGGCGCA","TAGGCGCA","ACGGCGCA","CCGGCGCA","GCGGCGCA","TCGGCGCA",
+ "AGGGCGCA","CGGGCGCA","GGGGCGCA","TGGGCGCA","ATGGCGCA","CTGGCGCA","GTGGCGCA","TTGGCGCA",
+ "AATGCGCA","CATGCGCA","GATGCGCA","TATGCGCA","ACTGCGCA","CCTGCGCA","GCTGCGCA","TCTGCGCA",
+ "AGTGCGCA","CGTGCGCA","GGTGCGCA","TGTGCGCA","ATTGCGCA","CTTGCGCA","GTTGCGCA","TTTGCGCA",
+ "AAATCGCA","CAATCGCA","GAATCGCA","TAATCGCA","ACATCGCA","CCATCGCA","GCATCGCA","TCATCGCA",
+ "AGATCGCA","CGATCGCA","GGATCGCA","TGATCGCA","ATATCGCA","CTATCGCA","GTATCGCA","TTATCGCA",
+ "AACTCGCA","CACTCGCA","GACTCGCA","TACTCGCA","ACCTCGCA","CCCTCGCA","GCCTCGCA","TCCTCGCA",
+ "AGCTCGCA","CGCTCGCA","GGCTCGCA","TGCTCGCA","ATCTCGCA","CTCTCGCA","GTCTCGCA","TTCTCGCA",
+ "AAGTCGCA","CAGTCGCA","GAGTCGCA","TAGTCGCA","ACGTCGCA","CCGTCGCA","GCGTCGCA","TCGTCGCA",
+ "AGGTCGCA","CGGTCGCA","GGGTCGCA","TGGTCGCA","ATGTCGCA","CTGTCGCA","GTGTCGCA","TTGTCGCA",
+ "AATTCGCA","CATTCGCA","GATTCGCA","TATTCGCA","ACTTCGCA","CCTTCGCA","GCTTCGCA","TCTTCGCA",
+ "AGTTCGCA","CGTTCGCA","GGTTCGCA","TGTTCGCA","ATTTCGCA","CTTTCGCA","GTTTCGCA","TTTTCGCA",
+ "AAAAGGCA","CAAAGGCA","GAAAGGCA","TAAAGGCA","ACAAGGCA","CCAAGGCA","GCAAGGCA","TCAAGGCA",
+ "AGAAGGCA","CGAAGGCA","GGAAGGCA","TGAAGGCA","ATAAGGCA","CTAAGGCA","GTAAGGCA","TTAAGGCA",
+ "AACAGGCA","CACAGGCA","GACAGGCA","TACAGGCA","ACCAGGCA","CCCAGGCA","GCCAGGCA","TCCAGGCA",
+ "AGCAGGCA","CGCAGGCA","GGCAGGCA","TGCAGGCA","ATCAGGCA","CTCAGGCA","GTCAGGCA","TTCAGGCA",
+ "AAGAGGCA","CAGAGGCA","GAGAGGCA","TAGAGGCA","ACGAGGCA","CCGAGGCA","GCGAGGCA","TCGAGGCA",
+ "AGGAGGCA","CGGAGGCA","GGGAGGCA","TGGAGGCA","ATGAGGCA","CTGAGGCA","GTGAGGCA","TTGAGGCA",
+ "AATAGGCA","CATAGGCA","GATAGGCA","TATAGGCA","ACTAGGCA","CCTAGGCA","GCTAGGCA","TCTAGGCA",
+ "AGTAGGCA","CGTAGGCA","GGTAGGCA","TGTAGGCA","ATTAGGCA","CTTAGGCA","GTTAGGCA","TTTAGGCA",
+ "AAACGGCA","CAACGGCA","GAACGGCA","TAACGGCA","ACACGGCA","CCACGGCA","GCACGGCA","TCACGGCA",
+ "AGACGGCA","CGACGGCA","GGACGGCA","TGACGGCA","ATACGGCA","CTACGGCA","GTACGGCA","TTACGGCA",
+ "AACCGGCA","CACCGGCA","GACCGGCA","TACCGGCA","ACCCGGCA","CCCCGGCA","GCCCGGCA","TCCCGGCA",
+ "AGCCGGCA","CGCCGGCA","GGCCGGCA","TGCCGGCA","ATCCGGCA","CTCCGGCA","GTCCGGCA","TTCCGGCA",
+ "AAGCGGCA","CAGCGGCA","GAGCGGCA","TAGCGGCA","ACGCGGCA","CCGCGGCA","GCGCGGCA","TCGCGGCA",
+ "AGGCGGCA","CGGCGGCA","GGGCGGCA","TGGCGGCA","ATGCGGCA","CTGCGGCA","GTGCGGCA","TTGCGGCA",
+ "AATCGGCA","CATCGGCA","GATCGGCA","TATCGGCA","ACTCGGCA","CCTCGGCA","GCTCGGCA","TCTCGGCA",
+ "AGTCGGCA","CGTCGGCA","GGTCGGCA","TGTCGGCA","ATTCGGCA","CTTCGGCA","GTTCGGCA","TTTCGGCA",
+ "AAAGGGCA","CAAGGGCA","GAAGGGCA","TAAGGGCA","ACAGGGCA","CCAGGGCA","GCAGGGCA","TCAGGGCA",
+ "AGAGGGCA","CGAGGGCA","GGAGGGCA","TGAGGGCA","ATAGGGCA","CTAGGGCA","GTAGGGCA","TTAGGGCA",
+ "AACGGGCA","CACGGGCA","GACGGGCA","TACGGGCA","ACCGGGCA","CCCGGGCA","GCCGGGCA","TCCGGGCA",
+ "AGCGGGCA","CGCGGGCA","GGCGGGCA","TGCGGGCA","ATCGGGCA","CTCGGGCA","GTCGGGCA","TTCGGGCA",
+ "AAGGGGCA","CAGGGGCA","GAGGGGCA","TAGGGGCA","ACGGGGCA","CCGGGGCA","GCGGGGCA","TCGGGGCA",
+ "AGGGGGCA","CGGGGGCA","GGGGGGCA","TGGGGGCA","ATGGGGCA","CTGGGGCA","GTGGGGCA","TTGGGGCA",
+ "AATGGGCA","CATGGGCA","GATGGGCA","TATGGGCA","ACTGGGCA","CCTGGGCA","GCTGGGCA","TCTGGGCA",
+ "AGTGGGCA","CGTGGGCA","GGTGGGCA","TGTGGGCA","ATTGGGCA","CTTGGGCA","GTTGGGCA","TTTGGGCA",
+ "AAATGGCA","CAATGGCA","GAATGGCA","TAATGGCA","ACATGGCA","CCATGGCA","GCATGGCA","TCATGGCA",
+ "AGATGGCA","CGATGGCA","GGATGGCA","TGATGGCA","ATATGGCA","CTATGGCA","GTATGGCA","TTATGGCA",
+ "AACTGGCA","CACTGGCA","GACTGGCA","TACTGGCA","ACCTGGCA","CCCTGGCA","GCCTGGCA","TCCTGGCA",
+ "AGCTGGCA","CGCTGGCA","GGCTGGCA","TGCTGGCA","ATCTGGCA","CTCTGGCA","GTCTGGCA","TTCTGGCA",
+ "AAGTGGCA","CAGTGGCA","GAGTGGCA","TAGTGGCA","ACGTGGCA","CCGTGGCA","GCGTGGCA","TCGTGGCA",
+ "AGGTGGCA","CGGTGGCA","GGGTGGCA","TGGTGGCA","ATGTGGCA","CTGTGGCA","GTGTGGCA","TTGTGGCA",
+ "AATTGGCA","CATTGGCA","GATTGGCA","TATTGGCA","ACTTGGCA","CCTTGGCA","GCTTGGCA","TCTTGGCA",
+ "AGTTGGCA","CGTTGGCA","GGTTGGCA","TGTTGGCA","ATTTGGCA","CTTTGGCA","GTTTGGCA","TTTTGGCA",
+ "AAAATGCA","CAAATGCA","GAAATGCA","TAAATGCA","ACAATGCA","CCAATGCA","GCAATGCA","TCAATGCA",
+ "AGAATGCA","CGAATGCA","GGAATGCA","TGAATGCA","ATAATGCA","CTAATGCA","GTAATGCA","TTAATGCA",
+ "AACATGCA","CACATGCA","GACATGCA","TACATGCA","ACCATGCA","CCCATGCA","GCCATGCA","TCCATGCA",
+ "AGCATGCA","CGCATGCA","GGCATGCA","TGCATGCA","ATCATGCA","CTCATGCA","GTCATGCA","TTCATGCA",
+ "AAGATGCA","CAGATGCA","GAGATGCA","TAGATGCA","ACGATGCA","CCGATGCA","GCGATGCA","TCGATGCA",
+ "AGGATGCA","CGGATGCA","GGGATGCA","TGGATGCA","ATGATGCA","CTGATGCA","GTGATGCA","TTGATGCA",
+ "AATATGCA","CATATGCA","GATATGCA","TATATGCA","ACTATGCA","CCTATGCA","GCTATGCA","TCTATGCA",
+ "AGTATGCA","CGTATGCA","GGTATGCA","TGTATGCA","ATTATGCA","CTTATGCA","GTTATGCA","TTTATGCA",
+ "AAACTGCA","CAACTGCA","GAACTGCA","TAACTGCA","ACACTGCA","CCACTGCA","GCACTGCA","TCACTGCA",
+ "AGACTGCA","CGACTGCA","GGACTGCA","TGACTGCA","ATACTGCA","CTACTGCA","GTACTGCA","TTACTGCA",
+ "AACCTGCA","CACCTGCA","GACCTGCA","TACCTGCA","ACCCTGCA","CCCCTGCA","GCCCTGCA","TCCCTGCA",
+ "AGCCTGCA","CGCCTGCA","GGCCTGCA","TGCCTGCA","ATCCTGCA","CTCCTGCA","GTCCTGCA","TTCCTGCA",
+ "AAGCTGCA","CAGCTGCA","GAGCTGCA","TAGCTGCA","ACGCTGCA","CCGCTGCA","GCGCTGCA","TCGCTGCA",
+ "AGGCTGCA","CGGCTGCA","GGGCTGCA","TGGCTGCA","ATGCTGCA","CTGCTGCA","GTGCTGCA","TTGCTGCA",
+ "AATCTGCA","CATCTGCA","GATCTGCA","TATCTGCA","ACTCTGCA","CCTCTGCA","GCTCTGCA","TCTCTGCA",
+ "AGTCTGCA","CGTCTGCA","GGTCTGCA","TGTCTGCA","ATTCTGCA","CTTCTGCA","GTTCTGCA","TTTCTGCA",
+ "AAAGTGCA","CAAGTGCA","GAAGTGCA","TAAGTGCA","ACAGTGCA","CCAGTGCA","GCAGTGCA","TCAGTGCA",
+ "AGAGTGCA","CGAGTGCA","GGAGTGCA","TGAGTGCA","ATAGTGCA","CTAGTGCA","GTAGTGCA","TTAGTGCA",
+ "AACGTGCA","CACGTGCA","GACGTGCA","TACGTGCA","ACCGTGCA","CCCGTGCA","GCCGTGCA","TCCGTGCA",
+ "AGCGTGCA","CGCGTGCA","GGCGTGCA","TGCGTGCA","ATCGTGCA","CTCGTGCA","GTCGTGCA","TTCGTGCA",
+ "AAGGTGCA","CAGGTGCA","GAGGTGCA","TAGGTGCA","ACGGTGCA","CCGGTGCA","GCGGTGCA","TCGGTGCA",
+ "AGGGTGCA","CGGGTGCA","GGGGTGCA","TGGGTGCA","ATGGTGCA","CTGGTGCA","GTGGTGCA","TTGGTGCA",
+ "AATGTGCA","CATGTGCA","GATGTGCA","TATGTGCA","ACTGTGCA","CCTGTGCA","GCTGTGCA","TCTGTGCA",
+ "AGTGTGCA","CGTGTGCA","GGTGTGCA","TGTGTGCA","ATTGTGCA","CTTGTGCA","GTTGTGCA","TTTGTGCA",
+ "AAATTGCA","CAATTGCA","GAATTGCA","TAATTGCA","ACATTGCA","CCATTGCA","GCATTGCA","TCATTGCA",
+ "AGATTGCA","CGATTGCA","GGATTGCA","TGATTGCA","ATATTGCA","CTATTGCA","GTATTGCA","TTATTGCA",
+ "AACTTGCA","CACTTGCA","GACTTGCA","TACTTGCA","ACCTTGCA","CCCTTGCA","GCCTTGCA","TCCTTGCA",
+ "AGCTTGCA","CGCTTGCA","GGCTTGCA","TGCTTGCA","ATCTTGCA","CTCTTGCA","GTCTTGCA","TTCTTGCA",
+ "AAGTTGCA","CAGTTGCA","GAGTTGCA","TAGTTGCA","ACGTTGCA","CCGTTGCA","GCGTTGCA","TCGTTGCA",
+ "AGGTTGCA","CGGTTGCA","GGGTTGCA","TGGTTGCA","ATGTTGCA","CTGTTGCA","GTGTTGCA","TTGTTGCA",
+ "AATTTGCA","CATTTGCA","GATTTGCA","TATTTGCA","ACTTTGCA","CCTTTGCA","GCTTTGCA","TCTTTGCA",
+ "AGTTTGCA","CGTTTGCA","GGTTTGCA","TGTTTGCA","ATTTTGCA","CTTTTGCA","GTTTTGCA","TTTTTGCA",
+ "AAAAATCA","CAAAATCA","GAAAATCA","TAAAATCA","ACAAATCA","CCAAATCA","GCAAATCA","TCAAATCA",
+ "AGAAATCA","CGAAATCA","GGAAATCA","TGAAATCA","ATAAATCA","CTAAATCA","GTAAATCA","TTAAATCA",
+ "AACAATCA","CACAATCA","GACAATCA","TACAATCA","ACCAATCA","CCCAATCA","GCCAATCA","TCCAATCA",
+ "AGCAATCA","CGCAATCA","GGCAATCA","TGCAATCA","ATCAATCA","CTCAATCA","GTCAATCA","TTCAATCA",
+ "AAGAATCA","CAGAATCA","GAGAATCA","TAGAATCA","ACGAATCA","CCGAATCA","GCGAATCA","TCGAATCA",
+ "AGGAATCA","CGGAATCA","GGGAATCA","TGGAATCA","ATGAATCA","CTGAATCA","GTGAATCA","TTGAATCA",
+ "AATAATCA","CATAATCA","GATAATCA","TATAATCA","ACTAATCA","CCTAATCA","GCTAATCA","TCTAATCA",
+ "AGTAATCA","CGTAATCA","GGTAATCA","TGTAATCA","ATTAATCA","CTTAATCA","GTTAATCA","TTTAATCA",
+ "AAACATCA","CAACATCA","GAACATCA","TAACATCA","ACACATCA","CCACATCA","GCACATCA","TCACATCA",
+ "AGACATCA","CGACATCA","GGACATCA","TGACATCA","ATACATCA","CTACATCA","GTACATCA","TTACATCA",
+ "AACCATCA","CACCATCA","GACCATCA","TACCATCA","ACCCATCA","CCCCATCA","GCCCATCA","TCCCATCA",
+ "AGCCATCA","CGCCATCA","GGCCATCA","TGCCATCA","ATCCATCA","CTCCATCA","GTCCATCA","TTCCATCA",
+ "AAGCATCA","CAGCATCA","GAGCATCA","TAGCATCA","ACGCATCA","CCGCATCA","GCGCATCA","TCGCATCA",
+ "AGGCATCA","CGGCATCA","GGGCATCA","TGGCATCA","ATGCATCA","CTGCATCA","GTGCATCA","TTGCATCA",
+ "AATCATCA","CATCATCA","GATCATCA","TATCATCA","ACTCATCA","CCTCATCA","GCTCATCA","TCTCATCA",
+ "AGTCATCA","CGTCATCA","GGTCATCA","TGTCATCA","ATTCATCA","CTTCATCA","GTTCATCA","TTTCATCA",
+ "AAAGATCA","CAAGATCA","GAAGATCA","TAAGATCA","ACAGATCA","CCAGATCA","GCAGATCA","TCAGATCA",
+ "AGAGATCA","CGAGATCA","GGAGATCA","TGAGATCA","ATAGATCA","CTAGATCA","GTAGATCA","TTAGATCA",
+ "AACGATCA","CACGATCA","GACGATCA","TACGATCA","ACCGATCA","CCCGATCA","GCCGATCA","TCCGATCA",
+ "AGCGATCA","CGCGATCA","GGCGATCA","TGCGATCA","ATCGATCA","CTCGATCA","GTCGATCA","TTCGATCA",
+ "AAGGATCA","CAGGATCA","GAGGATCA","TAGGATCA","ACGGATCA","CCGGATCA","GCGGATCA","TCGGATCA",
+ "AGGGATCA","CGGGATCA","GGGGATCA","TGGGATCA","ATGGATCA","CTGGATCA","GTGGATCA","TTGGATCA",
+ "AATGATCA","CATGATCA","GATGATCA","TATGATCA","ACTGATCA","CCTGATCA","GCTGATCA","TCTGATCA",
+ "AGTGATCA","CGTGATCA","GGTGATCA","TGTGATCA","ATTGATCA","CTTGATCA","GTTGATCA","TTTGATCA",
+ "AAATATCA","CAATATCA","GAATATCA","TAATATCA","ACATATCA","CCATATCA","GCATATCA","TCATATCA",
+ "AGATATCA","CGATATCA","GGATATCA","TGATATCA","ATATATCA","CTATATCA","GTATATCA","TTATATCA",
+ "AACTATCA","CACTATCA","GACTATCA","TACTATCA","ACCTATCA","CCCTATCA","GCCTATCA","TCCTATCA",
+ "AGCTATCA","CGCTATCA","GGCTATCA","TGCTATCA","ATCTATCA","CTCTATCA","GTCTATCA","TTCTATCA",
+ "AAGTATCA","CAGTATCA","GAGTATCA","TAGTATCA","ACGTATCA","CCGTATCA","GCGTATCA","TCGTATCA",
+ "AGGTATCA","CGGTATCA","GGGTATCA","TGGTATCA","ATGTATCA","CTGTATCA","GTGTATCA","TTGTATCA",
+ "AATTATCA","CATTATCA","GATTATCA","TATTATCA","ACTTATCA","CCTTATCA","GCTTATCA","TCTTATCA",
+ "AGTTATCA","CGTTATCA","GGTTATCA","TGTTATCA","ATTTATCA","CTTTATCA","GTTTATCA","TTTTATCA",
+ "AAAACTCA","CAAACTCA","GAAACTCA","TAAACTCA","ACAACTCA","CCAACTCA","GCAACTCA","TCAACTCA",
+ "AGAACTCA","CGAACTCA","GGAACTCA","TGAACTCA","ATAACTCA","CTAACTCA","GTAACTCA","TTAACTCA",
+ "AACACTCA","CACACTCA","GACACTCA","TACACTCA","ACCACTCA","CCCACTCA","GCCACTCA","TCCACTCA",
+ "AGCACTCA","CGCACTCA","GGCACTCA","TGCACTCA","ATCACTCA","CTCACTCA","GTCACTCA","TTCACTCA",
+ "AAGACTCA","CAGACTCA","GAGACTCA","TAGACTCA","ACGACTCA","CCGACTCA","GCGACTCA","TCGACTCA",
+ "AGGACTCA","CGGACTCA","GGGACTCA","TGGACTCA","ATGACTCA","CTGACTCA","GTGACTCA","TTGACTCA",
+ "AATACTCA","CATACTCA","GATACTCA","TATACTCA","ACTACTCA","CCTACTCA","GCTACTCA","TCTACTCA",
+ "AGTACTCA","CGTACTCA","GGTACTCA","TGTACTCA","ATTACTCA","CTTACTCA","GTTACTCA","TTTACTCA",
+ "AAACCTCA","CAACCTCA","GAACCTCA","TAACCTCA","ACACCTCA","CCACCTCA","GCACCTCA","TCACCTCA",
+ "AGACCTCA","CGACCTCA","GGACCTCA","TGACCTCA","ATACCTCA","CTACCTCA","GTACCTCA","TTACCTCA",
+ "AACCCTCA","CACCCTCA","GACCCTCA","TACCCTCA","ACCCCTCA","CCCCCTCA","GCCCCTCA","TCCCCTCA",
+ "AGCCCTCA","CGCCCTCA","GGCCCTCA","TGCCCTCA","ATCCCTCA","CTCCCTCA","GTCCCTCA","TTCCCTCA",
+ "AAGCCTCA","CAGCCTCA","GAGCCTCA","TAGCCTCA","ACGCCTCA","CCGCCTCA","GCGCCTCA","TCGCCTCA",
+ "AGGCCTCA","CGGCCTCA","GGGCCTCA","TGGCCTCA","ATGCCTCA","CTGCCTCA","GTGCCTCA","TTGCCTCA",
+ "AATCCTCA","CATCCTCA","GATCCTCA","TATCCTCA","ACTCCTCA","CCTCCTCA","GCTCCTCA","TCTCCTCA",
+ "AGTCCTCA","CGTCCTCA","GGTCCTCA","TGTCCTCA","ATTCCTCA","CTTCCTCA","GTTCCTCA","TTTCCTCA",
+ "AAAGCTCA","CAAGCTCA","GAAGCTCA","TAAGCTCA","ACAGCTCA","CCAGCTCA","GCAGCTCA","TCAGCTCA",
+ "AGAGCTCA","CGAGCTCA","GGAGCTCA","TGAGCTCA","ATAGCTCA","CTAGCTCA","GTAGCTCA","TTAGCTCA",
+ "AACGCTCA","CACGCTCA","GACGCTCA","TACGCTCA","ACCGCTCA","CCCGCTCA","GCCGCTCA","TCCGCTCA",
+ "AGCGCTCA","CGCGCTCA","GGCGCTCA","TGCGCTCA","ATCGCTCA","CTCGCTCA","GTCGCTCA","TTCGCTCA",
+ "AAGGCTCA","CAGGCTCA","GAGGCTCA","TAGGCTCA","ACGGCTCA","CCGGCTCA","GCGGCTCA","TCGGCTCA",
+ "AGGGCTCA","CGGGCTCA","GGGGCTCA","TGGGCTCA","ATGGCTCA","CTGGCTCA","GTGGCTCA","TTGGCTCA",
+ "AATGCTCA","CATGCTCA","GATGCTCA","TATGCTCA","ACTGCTCA","CCTGCTCA","GCTGCTCA","TCTGCTCA",
+ "AGTGCTCA","CGTGCTCA","GGTGCTCA","TGTGCTCA","ATTGCTCA","CTTGCTCA","GTTGCTCA","TTTGCTCA",
+ "AAATCTCA","CAATCTCA","GAATCTCA","TAATCTCA","ACATCTCA","CCATCTCA","GCATCTCA","TCATCTCA",
+ "AGATCTCA","CGATCTCA","GGATCTCA","TGATCTCA","ATATCTCA","CTATCTCA","GTATCTCA","TTATCTCA",
+ "AACTCTCA","CACTCTCA","GACTCTCA","TACTCTCA","ACCTCTCA","CCCTCTCA","GCCTCTCA","TCCTCTCA",
+ "AGCTCTCA","CGCTCTCA","GGCTCTCA","TGCTCTCA","ATCTCTCA","CTCTCTCA","GTCTCTCA","TTCTCTCA",
+ "AAGTCTCA","CAGTCTCA","GAGTCTCA","TAGTCTCA","ACGTCTCA","CCGTCTCA","GCGTCTCA","TCGTCTCA",
+ "AGGTCTCA","CGGTCTCA","GGGTCTCA","TGGTCTCA","ATGTCTCA","CTGTCTCA","GTGTCTCA","TTGTCTCA",
+ "AATTCTCA","CATTCTCA","GATTCTCA","TATTCTCA","ACTTCTCA","CCTTCTCA","GCTTCTCA","TCTTCTCA",
+ "AGTTCTCA","CGTTCTCA","GGTTCTCA","TGTTCTCA","ATTTCTCA","CTTTCTCA","GTTTCTCA","TTTTCTCA",
+ "AAAAGTCA","CAAAGTCA","GAAAGTCA","TAAAGTCA","ACAAGTCA","CCAAGTCA","GCAAGTCA","TCAAGTCA",
+ "AGAAGTCA","CGAAGTCA","GGAAGTCA","TGAAGTCA","ATAAGTCA","CTAAGTCA","GTAAGTCA","TTAAGTCA",
+ "AACAGTCA","CACAGTCA","GACAGTCA","TACAGTCA","ACCAGTCA","CCCAGTCA","GCCAGTCA","TCCAGTCA",
+ "AGCAGTCA","CGCAGTCA","GGCAGTCA","TGCAGTCA","ATCAGTCA","CTCAGTCA","GTCAGTCA","TTCAGTCA",
+ "AAGAGTCA","CAGAGTCA","GAGAGTCA","TAGAGTCA","ACGAGTCA","CCGAGTCA","GCGAGTCA","TCGAGTCA",
+ "AGGAGTCA","CGGAGTCA","GGGAGTCA","TGGAGTCA","ATGAGTCA","CTGAGTCA","GTGAGTCA","TTGAGTCA",
+ "AATAGTCA","CATAGTCA","GATAGTCA","TATAGTCA","ACTAGTCA","CCTAGTCA","GCTAGTCA","TCTAGTCA",
+ "AGTAGTCA","CGTAGTCA","GGTAGTCA","TGTAGTCA","ATTAGTCA","CTTAGTCA","GTTAGTCA","TTTAGTCA",
+ "AAACGTCA","CAACGTCA","GAACGTCA","TAACGTCA","ACACGTCA","CCACGTCA","GCACGTCA","TCACGTCA",
+ "AGACGTCA","CGACGTCA","GGACGTCA","TGACGTCA","ATACGTCA","CTACGTCA","GTACGTCA","TTACGTCA",
+ "AACCGTCA","CACCGTCA","GACCGTCA","TACCGTCA","ACCCGTCA","CCCCGTCA","GCCCGTCA","TCCCGTCA",
+ "AGCCGTCA","CGCCGTCA","GGCCGTCA","TGCCGTCA","ATCCGTCA","CTCCGTCA","GTCCGTCA","TTCCGTCA",
+ "AAGCGTCA","CAGCGTCA","GAGCGTCA","TAGCGTCA","ACGCGTCA","CCGCGTCA","GCGCGTCA","TCGCGTCA",
+ "AGGCGTCA","CGGCGTCA","GGGCGTCA","TGGCGTCA","ATGCGTCA","CTGCGTCA","GTGCGTCA","TTGCGTCA",
+ "AATCGTCA","CATCGTCA","GATCGTCA","TATCGTCA","ACTCGTCA","CCTCGTCA","GCTCGTCA","TCTCGTCA",
+ "AGTCGTCA","CGTCGTCA","GGTCGTCA","TGTCGTCA","ATTCGTCA","CTTCGTCA","GTTCGTCA","TTTCGTCA",
+ "AAAGGTCA","CAAGGTCA","GAAGGTCA","TAAGGTCA","ACAGGTCA","CCAGGTCA","GCAGGTCA","TCAGGTCA",
+ "AGAGGTCA","CGAGGTCA","GGAGGTCA","TGAGGTCA","ATAGGTCA","CTAGGTCA","GTAGGTCA","TTAGGTCA",
+ "AACGGTCA","CACGGTCA","GACGGTCA","TACGGTCA","ACCGGTCA","CCCGGTCA","GCCGGTCA","TCCGGTCA",
+ "AGCGGTCA","CGCGGTCA","GGCGGTCA","TGCGGTCA","ATCGGTCA","CTCGGTCA","GTCGGTCA","TTCGGTCA",
+ "AAGGGTCA","CAGGGTCA","GAGGGTCA","TAGGGTCA","ACGGGTCA","CCGGGTCA","GCGGGTCA","TCGGGTCA",
+ "AGGGGTCA","CGGGGTCA","GGGGGTCA","TGGGGTCA","ATGGGTCA","CTGGGTCA","GTGGGTCA","TTGGGTCA",
+ "AATGGTCA","CATGGTCA","GATGGTCA","TATGGTCA","ACTGGTCA","CCTGGTCA","GCTGGTCA","TCTGGTCA",
+ "AGTGGTCA","CGTGGTCA","GGTGGTCA","TGTGGTCA","ATTGGTCA","CTTGGTCA","GTTGGTCA","TTTGGTCA",
+ "AAATGTCA","CAATGTCA","GAATGTCA","TAATGTCA","ACATGTCA","CCATGTCA","GCATGTCA","TCATGTCA",
+ "AGATGTCA","CGATGTCA","GGATGTCA","TGATGTCA","ATATGTCA","CTATGTCA","GTATGTCA","TTATGTCA",
+ "AACTGTCA","CACTGTCA","GACTGTCA","TACTGTCA","ACCTGTCA","CCCTGTCA","GCCTGTCA","TCCTGTCA",
+ "AGCTGTCA","CGCTGTCA","GGCTGTCA","TGCTGTCA","ATCTGTCA","CTCTGTCA","GTCTGTCA","TTCTGTCA",
+ "AAGTGTCA","CAGTGTCA","GAGTGTCA","TAGTGTCA","ACGTGTCA","CCGTGTCA","GCGTGTCA","TCGTGTCA",
+ "AGGTGTCA","CGGTGTCA","GGGTGTCA","TGGTGTCA","ATGTGTCA","CTGTGTCA","GTGTGTCA","TTGTGTCA",
+ "AATTGTCA","CATTGTCA","GATTGTCA","TATTGTCA","ACTTGTCA","CCTTGTCA","GCTTGTCA","TCTTGTCA",
+ "AGTTGTCA","CGTTGTCA","GGTTGTCA","TGTTGTCA","ATTTGTCA","CTTTGTCA","GTTTGTCA","TTTTGTCA",
+ "AAAATTCA","CAAATTCA","GAAATTCA","TAAATTCA","ACAATTCA","CCAATTCA","GCAATTCA","TCAATTCA",
+ "AGAATTCA","CGAATTCA","GGAATTCA","TGAATTCA","ATAATTCA","CTAATTCA","GTAATTCA","TTAATTCA",
+ "AACATTCA","CACATTCA","GACATTCA","TACATTCA","ACCATTCA","CCCATTCA","GCCATTCA","TCCATTCA",
+ "AGCATTCA","CGCATTCA","GGCATTCA","TGCATTCA","ATCATTCA","CTCATTCA","GTCATTCA","TTCATTCA",
+ "AAGATTCA","CAGATTCA","GAGATTCA","TAGATTCA","ACGATTCA","CCGATTCA","GCGATTCA","TCGATTCA",
+ "AGGATTCA","CGGATTCA","GGGATTCA","TGGATTCA","ATGATTCA","CTGATTCA","GTGATTCA","TTGATTCA",
+ "AATATTCA","CATATTCA","GATATTCA","TATATTCA","ACTATTCA","CCTATTCA","GCTATTCA","TCTATTCA",
+ "AGTATTCA","CGTATTCA","GGTATTCA","TGTATTCA","ATTATTCA","CTTATTCA","GTTATTCA","TTTATTCA",
+ "AAACTTCA","CAACTTCA","GAACTTCA","TAACTTCA","ACACTTCA","CCACTTCA","GCACTTCA","TCACTTCA",
+ "AGACTTCA","CGACTTCA","GGACTTCA","TGACTTCA","ATACTTCA","CTACTTCA","GTACTTCA","TTACTTCA",
+ "AACCTTCA","CACCTTCA","GACCTTCA","TACCTTCA","ACCCTTCA","CCCCTTCA","GCCCTTCA","TCCCTTCA",
+ "AGCCTTCA","CGCCTTCA","GGCCTTCA","TGCCTTCA","ATCCTTCA","CTCCTTCA","GTCCTTCA","TTCCTTCA",
+ "AAGCTTCA","CAGCTTCA","GAGCTTCA","TAGCTTCA","ACGCTTCA","CCGCTTCA","GCGCTTCA","TCGCTTCA",
+ "AGGCTTCA","CGGCTTCA","GGGCTTCA","TGGCTTCA","ATGCTTCA","CTGCTTCA","GTGCTTCA","TTGCTTCA",
+ "AATCTTCA","CATCTTCA","GATCTTCA","TATCTTCA","ACTCTTCA","CCTCTTCA","GCTCTTCA","TCTCTTCA",
+ "AGTCTTCA","CGTCTTCA","GGTCTTCA","TGTCTTCA","ATTCTTCA","CTTCTTCA","GTTCTTCA","TTTCTTCA",
+ "AAAGTTCA","CAAGTTCA","GAAGTTCA","TAAGTTCA","ACAGTTCA","CCAGTTCA","GCAGTTCA","TCAGTTCA",
+ "AGAGTTCA","CGAGTTCA","GGAGTTCA","TGAGTTCA","ATAGTTCA","CTAGTTCA","GTAGTTCA","TTAGTTCA",
+ "AACGTTCA","CACGTTCA","GACGTTCA","TACGTTCA","ACCGTTCA","CCCGTTCA","GCCGTTCA","TCCGTTCA",
+ "AGCGTTCA","CGCGTTCA","GGCGTTCA","TGCGTTCA","ATCGTTCA","CTCGTTCA","GTCGTTCA","TTCGTTCA",
+ "AAGGTTCA","CAGGTTCA","GAGGTTCA","TAGGTTCA","ACGGTTCA","CCGGTTCA","GCGGTTCA","TCGGTTCA",
+ "AGGGTTCA","CGGGTTCA","GGGGTTCA","TGGGTTCA","ATGGTTCA","CTGGTTCA","GTGGTTCA","TTGGTTCA",
+ "AATGTTCA","CATGTTCA","GATGTTCA","TATGTTCA","ACTGTTCA","CCTGTTCA","GCTGTTCA","TCTGTTCA",
+ "AGTGTTCA","CGTGTTCA","GGTGTTCA","TGTGTTCA","ATTGTTCA","CTTGTTCA","GTTGTTCA","TTTGTTCA",
+ "AAATTTCA","CAATTTCA","GAATTTCA","TAATTTCA","ACATTTCA","CCATTTCA","GCATTTCA","TCATTTCA",
+ "AGATTTCA","CGATTTCA","GGATTTCA","TGATTTCA","ATATTTCA","CTATTTCA","GTATTTCA","TTATTTCA",
+ "AACTTTCA","CACTTTCA","GACTTTCA","TACTTTCA","ACCTTTCA","CCCTTTCA","GCCTTTCA","TCCTTTCA",
+ "AGCTTTCA","CGCTTTCA","GGCTTTCA","TGCTTTCA","ATCTTTCA","CTCTTTCA","GTCTTTCA","TTCTTTCA",
+ "AAGTTTCA","CAGTTTCA","GAGTTTCA","TAGTTTCA","ACGTTTCA","CCGTTTCA","GCGTTTCA","TCGTTTCA",
+ "AGGTTTCA","CGGTTTCA","GGGTTTCA","TGGTTTCA","ATGTTTCA","CTGTTTCA","GTGTTTCA","TTGTTTCA",
+ "AATTTTCA","CATTTTCA","GATTTTCA","TATTTTCA","ACTTTTCA","CCTTTTCA","GCTTTTCA","TCTTTTCA",
+ "AGTTTTCA","CGTTTTCA","GGTTTTCA","TGTTTTCA","ATTTTTCA","CTTTTTCA","GTTTTTCA","TTTTTTCA",
+ "AAAAAAGA","CAAAAAGA","GAAAAAGA","TAAAAAGA","ACAAAAGA","CCAAAAGA","GCAAAAGA","TCAAAAGA",
+ "AGAAAAGA","CGAAAAGA","GGAAAAGA","TGAAAAGA","ATAAAAGA","CTAAAAGA","GTAAAAGA","TTAAAAGA",
+ "AACAAAGA","CACAAAGA","GACAAAGA","TACAAAGA","ACCAAAGA","CCCAAAGA","GCCAAAGA","TCCAAAGA",
+ "AGCAAAGA","CGCAAAGA","GGCAAAGA","TGCAAAGA","ATCAAAGA","CTCAAAGA","GTCAAAGA","TTCAAAGA",
+ "AAGAAAGA","CAGAAAGA","GAGAAAGA","TAGAAAGA","ACGAAAGA","CCGAAAGA","GCGAAAGA","TCGAAAGA",
+ "AGGAAAGA","CGGAAAGA","GGGAAAGA","TGGAAAGA","ATGAAAGA","CTGAAAGA","GTGAAAGA","TTGAAAGA",
+ "AATAAAGA","CATAAAGA","GATAAAGA","TATAAAGA","ACTAAAGA","CCTAAAGA","GCTAAAGA","TCTAAAGA",
+ "AGTAAAGA","CGTAAAGA","GGTAAAGA","TGTAAAGA","ATTAAAGA","CTTAAAGA","GTTAAAGA","TTTAAAGA",
+ "AAACAAGA","CAACAAGA","GAACAAGA","TAACAAGA","ACACAAGA","CCACAAGA","GCACAAGA","TCACAAGA",
+ "AGACAAGA","CGACAAGA","GGACAAGA","TGACAAGA","ATACAAGA","CTACAAGA","GTACAAGA","TTACAAGA",
+ "AACCAAGA","CACCAAGA","GACCAAGA","TACCAAGA","ACCCAAGA","CCCCAAGA","GCCCAAGA","TCCCAAGA",
+ "AGCCAAGA","CGCCAAGA","GGCCAAGA","TGCCAAGA","ATCCAAGA","CTCCAAGA","GTCCAAGA","TTCCAAGA",
+ "AAGCAAGA","CAGCAAGA","GAGCAAGA","TAGCAAGA","ACGCAAGA","CCGCAAGA","GCGCAAGA","TCGCAAGA",
+ "AGGCAAGA","CGGCAAGA","GGGCAAGA","TGGCAAGA","ATGCAAGA","CTGCAAGA","GTGCAAGA","TTGCAAGA",
+ "AATCAAGA","CATCAAGA","GATCAAGA","TATCAAGA","ACTCAAGA","CCTCAAGA","GCTCAAGA","TCTCAAGA",
+ "AGTCAAGA","CGTCAAGA","GGTCAAGA","TGTCAAGA","ATTCAAGA","CTTCAAGA","GTTCAAGA","TTTCAAGA",
+ "AAAGAAGA","CAAGAAGA","GAAGAAGA","TAAGAAGA","ACAGAAGA","CCAGAAGA","GCAGAAGA","TCAGAAGA",
+ "AGAGAAGA","CGAGAAGA","GGAGAAGA","TGAGAAGA","ATAGAAGA","CTAGAAGA","GTAGAAGA","TTAGAAGA",
+ "AACGAAGA","CACGAAGA","GACGAAGA","TACGAAGA","ACCGAAGA","CCCGAAGA","GCCGAAGA","TCCGAAGA",
+ "AGCGAAGA","CGCGAAGA","GGCGAAGA","TGCGAAGA","ATCGAAGA","CTCGAAGA","GTCGAAGA","TTCGAAGA",
+ "AAGGAAGA","CAGGAAGA","GAGGAAGA","TAGGAAGA","ACGGAAGA","CCGGAAGA","GCGGAAGA","TCGGAAGA",
+ "AGGGAAGA","CGGGAAGA","GGGGAAGA","TGGGAAGA","ATGGAAGA","CTGGAAGA","GTGGAAGA","TTGGAAGA",
+ "AATGAAGA","CATGAAGA","GATGAAGA","TATGAAGA","ACTGAAGA","CCTGAAGA","GCTGAAGA","TCTGAAGA",
+ "AGTGAAGA","CGTGAAGA","GGTGAAGA","TGTGAAGA","ATTGAAGA","CTTGAAGA","GTTGAAGA","TTTGAAGA",
+ "AAATAAGA","CAATAAGA","GAATAAGA","TAATAAGA","ACATAAGA","CCATAAGA","GCATAAGA","TCATAAGA",
+ "AGATAAGA","CGATAAGA","GGATAAGA","TGATAAGA","ATATAAGA","CTATAAGA","GTATAAGA","TTATAAGA",
+ "AACTAAGA","CACTAAGA","GACTAAGA","TACTAAGA","ACCTAAGA","CCCTAAGA","GCCTAAGA","TCCTAAGA",
+ "AGCTAAGA","CGCTAAGA","GGCTAAGA","TGCTAAGA","ATCTAAGA","CTCTAAGA","GTCTAAGA","TTCTAAGA",
+ "AAGTAAGA","CAGTAAGA","GAGTAAGA","TAGTAAGA","ACGTAAGA","CCGTAAGA","GCGTAAGA","TCGTAAGA",
+ "AGGTAAGA","CGGTAAGA","GGGTAAGA","TGGTAAGA","ATGTAAGA","CTGTAAGA","GTGTAAGA","TTGTAAGA",
+ "AATTAAGA","CATTAAGA","GATTAAGA","TATTAAGA","ACTTAAGA","CCTTAAGA","GCTTAAGA","TCTTAAGA",
+ "AGTTAAGA","CGTTAAGA","GGTTAAGA","TGTTAAGA","ATTTAAGA","CTTTAAGA","GTTTAAGA","TTTTAAGA",
+ "AAAACAGA","CAAACAGA","GAAACAGA","TAAACAGA","ACAACAGA","CCAACAGA","GCAACAGA","TCAACAGA",
+ "AGAACAGA","CGAACAGA","GGAACAGA","TGAACAGA","ATAACAGA","CTAACAGA","GTAACAGA","TTAACAGA",
+ "AACACAGA","CACACAGA","GACACAGA","TACACAGA","ACCACAGA","CCCACAGA","GCCACAGA","TCCACAGA",
+ "AGCACAGA","CGCACAGA","GGCACAGA","TGCACAGA","ATCACAGA","CTCACAGA","GTCACAGA","TTCACAGA",
+ "AAGACAGA","CAGACAGA","GAGACAGA","TAGACAGA","ACGACAGA","CCGACAGA","GCGACAGA","TCGACAGA",
+ "AGGACAGA","CGGACAGA","GGGACAGA","TGGACAGA","ATGACAGA","CTGACAGA","GTGACAGA","TTGACAGA",
+ "AATACAGA","CATACAGA","GATACAGA","TATACAGA","ACTACAGA","CCTACAGA","GCTACAGA","TCTACAGA",
+ "AGTACAGA","CGTACAGA","GGTACAGA","TGTACAGA","ATTACAGA","CTTACAGA","GTTACAGA","TTTACAGA",
+ "AAACCAGA","CAACCAGA","GAACCAGA","TAACCAGA","ACACCAGA","CCACCAGA","GCACCAGA","TCACCAGA",
+ "AGACCAGA","CGACCAGA","GGACCAGA","TGACCAGA","ATACCAGA","CTACCAGA","GTACCAGA","TTACCAGA",
+ "AACCCAGA","CACCCAGA","GACCCAGA","TACCCAGA","ACCCCAGA","CCCCCAGA","GCCCCAGA","TCCCCAGA",
+ "AGCCCAGA","CGCCCAGA","GGCCCAGA","TGCCCAGA","ATCCCAGA","CTCCCAGA","GTCCCAGA","TTCCCAGA",
+ "AAGCCAGA","CAGCCAGA","GAGCCAGA","TAGCCAGA","ACGCCAGA","CCGCCAGA","GCGCCAGA","TCGCCAGA",
+ "AGGCCAGA","CGGCCAGA","GGGCCAGA","TGGCCAGA","ATGCCAGA","CTGCCAGA","GTGCCAGA","TTGCCAGA",
+ "AATCCAGA","CATCCAGA","GATCCAGA","TATCCAGA","ACTCCAGA","CCTCCAGA","GCTCCAGA","TCTCCAGA",
+ "AGTCCAGA","CGTCCAGA","GGTCCAGA","TGTCCAGA","ATTCCAGA","CTTCCAGA","GTTCCAGA","TTTCCAGA",
+ "AAAGCAGA","CAAGCAGA","GAAGCAGA","TAAGCAGA","ACAGCAGA","CCAGCAGA","GCAGCAGA","TCAGCAGA",
+ "AGAGCAGA","CGAGCAGA","GGAGCAGA","TGAGCAGA","ATAGCAGA","CTAGCAGA","GTAGCAGA","TTAGCAGA",
+ "AACGCAGA","CACGCAGA","GACGCAGA","TACGCAGA","ACCGCAGA","CCCGCAGA","GCCGCAGA","TCCGCAGA",
+ "AGCGCAGA","CGCGCAGA","GGCGCAGA","TGCGCAGA","ATCGCAGA","CTCGCAGA","GTCGCAGA","TTCGCAGA",
+ "AAGGCAGA","CAGGCAGA","GAGGCAGA","TAGGCAGA","ACGGCAGA","CCGGCAGA","GCGGCAGA","TCGGCAGA",
+ "AGGGCAGA","CGGGCAGA","GGGGCAGA","TGGGCAGA","ATGGCAGA","CTGGCAGA","GTGGCAGA","TTGGCAGA",
+ "AATGCAGA","CATGCAGA","GATGCAGA","TATGCAGA","ACTGCAGA","CCTGCAGA","GCTGCAGA","TCTGCAGA",
+ "AGTGCAGA","CGTGCAGA","GGTGCAGA","TGTGCAGA","ATTGCAGA","CTTGCAGA","GTTGCAGA","TTTGCAGA",
+ "AAATCAGA","CAATCAGA","GAATCAGA","TAATCAGA","ACATCAGA","CCATCAGA","GCATCAGA","TCATCAGA",
+ "AGATCAGA","CGATCAGA","GGATCAGA","TGATCAGA","ATATCAGA","CTATCAGA","GTATCAGA","TTATCAGA",
+ "AACTCAGA","CACTCAGA","GACTCAGA","TACTCAGA","ACCTCAGA","CCCTCAGA","GCCTCAGA","TCCTCAGA",
+ "AGCTCAGA","CGCTCAGA","GGCTCAGA","TGCTCAGA","ATCTCAGA","CTCTCAGA","GTCTCAGA","TTCTCAGA",
+ "AAGTCAGA","CAGTCAGA","GAGTCAGA","TAGTCAGA","ACGTCAGA","CCGTCAGA","GCGTCAGA","TCGTCAGA",
+ "AGGTCAGA","CGGTCAGA","GGGTCAGA","TGGTCAGA","ATGTCAGA","CTGTCAGA","GTGTCAGA","TTGTCAGA",
+ "AATTCAGA","CATTCAGA","GATTCAGA","TATTCAGA","ACTTCAGA","CCTTCAGA","GCTTCAGA","TCTTCAGA",
+ "AGTTCAGA","CGTTCAGA","GGTTCAGA","TGTTCAGA","ATTTCAGA","CTTTCAGA","GTTTCAGA","TTTTCAGA",
+ "AAAAGAGA","CAAAGAGA","GAAAGAGA","TAAAGAGA","ACAAGAGA","CCAAGAGA","GCAAGAGA","TCAAGAGA",
+ "AGAAGAGA","CGAAGAGA","GGAAGAGA","TGAAGAGA","ATAAGAGA","CTAAGAGA","GTAAGAGA","TTAAGAGA",
+ "AACAGAGA","CACAGAGA","GACAGAGA","TACAGAGA","ACCAGAGA","CCCAGAGA","GCCAGAGA","TCCAGAGA",
+ "AGCAGAGA","CGCAGAGA","GGCAGAGA","TGCAGAGA","ATCAGAGA","CTCAGAGA","GTCAGAGA","TTCAGAGA",
+ "AAGAGAGA","CAGAGAGA","GAGAGAGA","TAGAGAGA","ACGAGAGA","CCGAGAGA","GCGAGAGA","TCGAGAGA",
+ "AGGAGAGA","CGGAGAGA","GGGAGAGA","TGGAGAGA","ATGAGAGA","CTGAGAGA","GTGAGAGA","TTGAGAGA",
+ "AATAGAGA","CATAGAGA","GATAGAGA","TATAGAGA","ACTAGAGA","CCTAGAGA","GCTAGAGA","TCTAGAGA",
+ "AGTAGAGA","CGTAGAGA","GGTAGAGA","TGTAGAGA","ATTAGAGA","CTTAGAGA","GTTAGAGA","TTTAGAGA",
+ "AAACGAGA","CAACGAGA","GAACGAGA","TAACGAGA","ACACGAGA","CCACGAGA","GCACGAGA","TCACGAGA",
+ "AGACGAGA","CGACGAGA","GGACGAGA","TGACGAGA","ATACGAGA","CTACGAGA","GTACGAGA","TTACGAGA",
+ "AACCGAGA","CACCGAGA","GACCGAGA","TACCGAGA","ACCCGAGA","CCCCGAGA","GCCCGAGA","TCCCGAGA",
+ "AGCCGAGA","CGCCGAGA","GGCCGAGA","TGCCGAGA","ATCCGAGA","CTCCGAGA","GTCCGAGA","TTCCGAGA",
+ "AAGCGAGA","CAGCGAGA","GAGCGAGA","TAGCGAGA","ACGCGAGA","CCGCGAGA","GCGCGAGA","TCGCGAGA",
+ "AGGCGAGA","CGGCGAGA","GGGCGAGA","TGGCGAGA","ATGCGAGA","CTGCGAGA","GTGCGAGA","TTGCGAGA",
+ "AATCGAGA","CATCGAGA","GATCGAGA","TATCGAGA","ACTCGAGA","CCTCGAGA","GCTCGAGA","TCTCGAGA",
+ "AGTCGAGA","CGTCGAGA","GGTCGAGA","TGTCGAGA","ATTCGAGA","CTTCGAGA","GTTCGAGA","TTTCGAGA",
+ "AAAGGAGA","CAAGGAGA","GAAGGAGA","TAAGGAGA","ACAGGAGA","CCAGGAGA","GCAGGAGA","TCAGGAGA",
+ "AGAGGAGA","CGAGGAGA","GGAGGAGA","TGAGGAGA","ATAGGAGA","CTAGGAGA","GTAGGAGA","TTAGGAGA",
+ "AACGGAGA","CACGGAGA","GACGGAGA","TACGGAGA","ACCGGAGA","CCCGGAGA","GCCGGAGA","TCCGGAGA",
+ "AGCGGAGA","CGCGGAGA","GGCGGAGA","TGCGGAGA","ATCGGAGA","CTCGGAGA","GTCGGAGA","TTCGGAGA",
+ "AAGGGAGA","CAGGGAGA","GAGGGAGA","TAGGGAGA","ACGGGAGA","CCGGGAGA","GCGGGAGA","TCGGGAGA",
+ "AGGGGAGA","CGGGGAGA","GGGGGAGA","TGGGGAGA","ATGGGAGA","CTGGGAGA","GTGGGAGA","TTGGGAGA",
+ "AATGGAGA","CATGGAGA","GATGGAGA","TATGGAGA","ACTGGAGA","CCTGGAGA","GCTGGAGA","TCTGGAGA",
+ "AGTGGAGA","CGTGGAGA","GGTGGAGA","TGTGGAGA","ATTGGAGA","CTTGGAGA","GTTGGAGA","TTTGGAGA",
+ "AAATGAGA","CAATGAGA","GAATGAGA","TAATGAGA","ACATGAGA","CCATGAGA","GCATGAGA","TCATGAGA",
+ "AGATGAGA","CGATGAGA","GGATGAGA","TGATGAGA","ATATGAGA","CTATGAGA","GTATGAGA","TTATGAGA",
+ "AACTGAGA","CACTGAGA","GACTGAGA","TACTGAGA","ACCTGAGA","CCCTGAGA","GCCTGAGA","TCCTGAGA",
+ "AGCTGAGA","CGCTGAGA","GGCTGAGA","TGCTGAGA","ATCTGAGA","CTCTGAGA","GTCTGAGA","TTCTGAGA",
+ "AAGTGAGA","CAGTGAGA","GAGTGAGA","TAGTGAGA","ACGTGAGA","CCGTGAGA","GCGTGAGA","TCGTGAGA",
+ "AGGTGAGA","CGGTGAGA","GGGTGAGA","TGGTGAGA","ATGTGAGA","CTGTGAGA","GTGTGAGA","TTGTGAGA",
+ "AATTGAGA","CATTGAGA","GATTGAGA","TATTGAGA","ACTTGAGA","CCTTGAGA","GCTTGAGA","TCTTGAGA",
+ "AGTTGAGA","CGTTGAGA","GGTTGAGA","TGTTGAGA","ATTTGAGA","CTTTGAGA","GTTTGAGA","TTTTGAGA",
+ "AAAATAGA","CAAATAGA","GAAATAGA","TAAATAGA","ACAATAGA","CCAATAGA","GCAATAGA","TCAATAGA",
+ "AGAATAGA","CGAATAGA","GGAATAGA","TGAATAGA","ATAATAGA","CTAATAGA","GTAATAGA","TTAATAGA",
+ "AACATAGA","CACATAGA","GACATAGA","TACATAGA","ACCATAGA","CCCATAGA","GCCATAGA","TCCATAGA",
+ "AGCATAGA","CGCATAGA","GGCATAGA","TGCATAGA","ATCATAGA","CTCATAGA","GTCATAGA","TTCATAGA",
+ "AAGATAGA","CAGATAGA","GAGATAGA","TAGATAGA","ACGATAGA","CCGATAGA","GCGATAGA","TCGATAGA",
+ "AGGATAGA","CGGATAGA","GGGATAGA","TGGATAGA","ATGATAGA","CTGATAGA","GTGATAGA","TTGATAGA",
+ "AATATAGA","CATATAGA","GATATAGA","TATATAGA","ACTATAGA","CCTATAGA","GCTATAGA","TCTATAGA",
+ "AGTATAGA","CGTATAGA","GGTATAGA","TGTATAGA","ATTATAGA","CTTATAGA","GTTATAGA","TTTATAGA",
+ "AAACTAGA","CAACTAGA","GAACTAGA","TAACTAGA","ACACTAGA","CCACTAGA","GCACTAGA","TCACTAGA",
+ "AGACTAGA","CGACTAGA","GGACTAGA","TGACTAGA","ATACTAGA","CTACTAGA","GTACTAGA","TTACTAGA",
+ "AACCTAGA","CACCTAGA","GACCTAGA","TACCTAGA","ACCCTAGA","CCCCTAGA","GCCCTAGA","TCCCTAGA",
+ "AGCCTAGA","CGCCTAGA","GGCCTAGA","TGCCTAGA","ATCCTAGA","CTCCTAGA","GTCCTAGA","TTCCTAGA",
+ "AAGCTAGA","CAGCTAGA","GAGCTAGA","TAGCTAGA","ACGCTAGA","CCGCTAGA","GCGCTAGA","TCGCTAGA",
+ "AGGCTAGA","CGGCTAGA","GGGCTAGA","TGGCTAGA","ATGCTAGA","CTGCTAGA","GTGCTAGA","TTGCTAGA",
+ "AATCTAGA","CATCTAGA","GATCTAGA","TATCTAGA","ACTCTAGA","CCTCTAGA","GCTCTAGA","TCTCTAGA",
+ "AGTCTAGA","CGTCTAGA","GGTCTAGA","TGTCTAGA","ATTCTAGA","CTTCTAGA","GTTCTAGA","TTTCTAGA",
+ "AAAGTAGA","CAAGTAGA","GAAGTAGA","TAAGTAGA","ACAGTAGA","CCAGTAGA","GCAGTAGA","TCAGTAGA",
+ "AGAGTAGA","CGAGTAGA","GGAGTAGA","TGAGTAGA","ATAGTAGA","CTAGTAGA","GTAGTAGA","TTAGTAGA",
+ "AACGTAGA","CACGTAGA","GACGTAGA","TACGTAGA","ACCGTAGA","CCCGTAGA","GCCGTAGA","TCCGTAGA",
+ "AGCGTAGA","CGCGTAGA","GGCGTAGA","TGCGTAGA","ATCGTAGA","CTCGTAGA","GTCGTAGA","TTCGTAGA",
+ "AAGGTAGA","CAGGTAGA","GAGGTAGA","TAGGTAGA","ACGGTAGA","CCGGTAGA","GCGGTAGA","TCGGTAGA",
+ "AGGGTAGA","CGGGTAGA","GGGGTAGA","TGGGTAGA","ATGGTAGA","CTGGTAGA","GTGGTAGA","TTGGTAGA",
+ "AATGTAGA","CATGTAGA","GATGTAGA","TATGTAGA","ACTGTAGA","CCTGTAGA","GCTGTAGA","TCTGTAGA",
+ "AGTGTAGA","CGTGTAGA","GGTGTAGA","TGTGTAGA","ATTGTAGA","CTTGTAGA","GTTGTAGA","TTTGTAGA",
+ "AAATTAGA","CAATTAGA","GAATTAGA","TAATTAGA","ACATTAGA","CCATTAGA","GCATTAGA","TCATTAGA",
+ "AGATTAGA","CGATTAGA","GGATTAGA","TGATTAGA","ATATTAGA","CTATTAGA","GTATTAGA","TTATTAGA",
+ "AACTTAGA","CACTTAGA","GACTTAGA","TACTTAGA","ACCTTAGA","CCCTTAGA","GCCTTAGA","TCCTTAGA",
+ "AGCTTAGA","CGCTTAGA","GGCTTAGA","TGCTTAGA","ATCTTAGA","CTCTTAGA","GTCTTAGA","TTCTTAGA",
+ "AAGTTAGA","CAGTTAGA","GAGTTAGA","TAGTTAGA","ACGTTAGA","CCGTTAGA","GCGTTAGA","TCGTTAGA",
+ "AGGTTAGA","CGGTTAGA","GGGTTAGA","TGGTTAGA","ATGTTAGA","CTGTTAGA","GTGTTAGA","TTGTTAGA",
+ "AATTTAGA","CATTTAGA","GATTTAGA","TATTTAGA","ACTTTAGA","CCTTTAGA","GCTTTAGA","TCTTTAGA",
+ "AGTTTAGA","CGTTTAGA","GGTTTAGA","TGTTTAGA","ATTTTAGA","CTTTTAGA","GTTTTAGA","TTTTTAGA",
+ "AAAAACGA","CAAAACGA","GAAAACGA","TAAAACGA","ACAAACGA","CCAAACGA","GCAAACGA","TCAAACGA",
+ "AGAAACGA","CGAAACGA","GGAAACGA","TGAAACGA","ATAAACGA","CTAAACGA","GTAAACGA","TTAAACGA",
+ "AACAACGA","CACAACGA","GACAACGA","TACAACGA","ACCAACGA","CCCAACGA","GCCAACGA","TCCAACGA",
+ "AGCAACGA","CGCAACGA","GGCAACGA","TGCAACGA","ATCAACGA","CTCAACGA","GTCAACGA","TTCAACGA",
+ "AAGAACGA","CAGAACGA","GAGAACGA","TAGAACGA","ACGAACGA","CCGAACGA","GCGAACGA","TCGAACGA",
+ "AGGAACGA","CGGAACGA","GGGAACGA","TGGAACGA","ATGAACGA","CTGAACGA","GTGAACGA","TTGAACGA",
+ "AATAACGA","CATAACGA","GATAACGA","TATAACGA","ACTAACGA","CCTAACGA","GCTAACGA","TCTAACGA",
+ "AGTAACGA","CGTAACGA","GGTAACGA","TGTAACGA","ATTAACGA","CTTAACGA","GTTAACGA","TTTAACGA",
+ "AAACACGA","CAACACGA","GAACACGA","TAACACGA","ACACACGA","CCACACGA","GCACACGA","TCACACGA",
+ "AGACACGA","CGACACGA","GGACACGA","TGACACGA","ATACACGA","CTACACGA","GTACACGA","TTACACGA",
+ "AACCACGA","CACCACGA","GACCACGA","TACCACGA","ACCCACGA","CCCCACGA","GCCCACGA","TCCCACGA",
+ "AGCCACGA","CGCCACGA","GGCCACGA","TGCCACGA","ATCCACGA","CTCCACGA","GTCCACGA","TTCCACGA",
+ "AAGCACGA","CAGCACGA","GAGCACGA","TAGCACGA","ACGCACGA","CCGCACGA","GCGCACGA","TCGCACGA",
+ "AGGCACGA","CGGCACGA","GGGCACGA","TGGCACGA","ATGCACGA","CTGCACGA","GTGCACGA","TTGCACGA",
+ "AATCACGA","CATCACGA","GATCACGA","TATCACGA","ACTCACGA","CCTCACGA","GCTCACGA","TCTCACGA",
+ "AGTCACGA","CGTCACGA","GGTCACGA","TGTCACGA","ATTCACGA","CTTCACGA","GTTCACGA","TTTCACGA",
+ "AAAGACGA","CAAGACGA","GAAGACGA","TAAGACGA","ACAGACGA","CCAGACGA","GCAGACGA","TCAGACGA",
+ "AGAGACGA","CGAGACGA","GGAGACGA","TGAGACGA","ATAGACGA","CTAGACGA","GTAGACGA","TTAGACGA",
+ "AACGACGA","CACGACGA","GACGACGA","TACGACGA","ACCGACGA","CCCGACGA","GCCGACGA","TCCGACGA",
+ "AGCGACGA","CGCGACGA","GGCGACGA","TGCGACGA","ATCGACGA","CTCGACGA","GTCGACGA","TTCGACGA",
+ "AAGGACGA","CAGGACGA","GAGGACGA","TAGGACGA","ACGGACGA","CCGGACGA","GCGGACGA","TCGGACGA",
+ "AGGGACGA","CGGGACGA","GGGGACGA","TGGGACGA","ATGGACGA","CTGGACGA","GTGGACGA","TTGGACGA",
+ "AATGACGA","CATGACGA","GATGACGA","TATGACGA","ACTGACGA","CCTGACGA","GCTGACGA","TCTGACGA",
+ "AGTGACGA","CGTGACGA","GGTGACGA","TGTGACGA","ATTGACGA","CTTGACGA","GTTGACGA","TTTGACGA",
+ "AAATACGA","CAATACGA","GAATACGA","TAATACGA","ACATACGA","CCATACGA","GCATACGA","TCATACGA",
+ "AGATACGA","CGATACGA","GGATACGA","TGATACGA","ATATACGA","CTATACGA","GTATACGA","TTATACGA",
+ "AACTACGA","CACTACGA","GACTACGA","TACTACGA","ACCTACGA","CCCTACGA","GCCTACGA","TCCTACGA",
+ "AGCTACGA","CGCTACGA","GGCTACGA","TGCTACGA","ATCTACGA","CTCTACGA","GTCTACGA","TTCTACGA",
+ "AAGTACGA","CAGTACGA","GAGTACGA","TAGTACGA","ACGTACGA","CCGTACGA","GCGTACGA","TCGTACGA",
+ "AGGTACGA","CGGTACGA","GGGTACGA","TGGTACGA","ATGTACGA","CTGTACGA","GTGTACGA","TTGTACGA",
+ "AATTACGA","CATTACGA","GATTACGA","TATTACGA","ACTTACGA","CCTTACGA","GCTTACGA","TCTTACGA",
+ "AGTTACGA","CGTTACGA","GGTTACGA","TGTTACGA","ATTTACGA","CTTTACGA","GTTTACGA","TTTTACGA",
+ "AAAACCGA","CAAACCGA","GAAACCGA","TAAACCGA","ACAACCGA","CCAACCGA","GCAACCGA","TCAACCGA",
+ "AGAACCGA","CGAACCGA","GGAACCGA","TGAACCGA","ATAACCGA","CTAACCGA","GTAACCGA","TTAACCGA",
+ "AACACCGA","CACACCGA","GACACCGA","TACACCGA","ACCACCGA","CCCACCGA","GCCACCGA","TCCACCGA",
+ "AGCACCGA","CGCACCGA","GGCACCGA","TGCACCGA","ATCACCGA","CTCACCGA","GTCACCGA","TTCACCGA",
+ "AAGACCGA","CAGACCGA","GAGACCGA","TAGACCGA","ACGACCGA","CCGACCGA","GCGACCGA","TCGACCGA",
+ "AGGACCGA","CGGACCGA","GGGACCGA","TGGACCGA","ATGACCGA","CTGACCGA","GTGACCGA","TTGACCGA",
+ "AATACCGA","CATACCGA","GATACCGA","TATACCGA","ACTACCGA","CCTACCGA","GCTACCGA","TCTACCGA",
+ "AGTACCGA","CGTACCGA","GGTACCGA","TGTACCGA","ATTACCGA","CTTACCGA","GTTACCGA","TTTACCGA",
+ "AAACCCGA","CAACCCGA","GAACCCGA","TAACCCGA","ACACCCGA","CCACCCGA","GCACCCGA","TCACCCGA",
+ "AGACCCGA","CGACCCGA","GGACCCGA","TGACCCGA","ATACCCGA","CTACCCGA","GTACCCGA","TTACCCGA",
+ "AACCCCGA","CACCCCGA","GACCCCGA","TACCCCGA","ACCCCCGA","CCCCCCGA","GCCCCCGA","TCCCCCGA",
+ "AGCCCCGA","CGCCCCGA","GGCCCCGA","TGCCCCGA","ATCCCCGA","CTCCCCGA","GTCCCCGA","TTCCCCGA",
+ "AAGCCCGA","CAGCCCGA","GAGCCCGA","TAGCCCGA","ACGCCCGA","CCGCCCGA","GCGCCCGA","TCGCCCGA",
+ "AGGCCCGA","CGGCCCGA","GGGCCCGA","TGGCCCGA","ATGCCCGA","CTGCCCGA","GTGCCCGA","TTGCCCGA",
+ "AATCCCGA","CATCCCGA","GATCCCGA","TATCCCGA","ACTCCCGA","CCTCCCGA","GCTCCCGA","TCTCCCGA",
+ "AGTCCCGA","CGTCCCGA","GGTCCCGA","TGTCCCGA","ATTCCCGA","CTTCCCGA","GTTCCCGA","TTTCCCGA",
+ "AAAGCCGA","CAAGCCGA","GAAGCCGA","TAAGCCGA","ACAGCCGA","CCAGCCGA","GCAGCCGA","TCAGCCGA",
+ "AGAGCCGA","CGAGCCGA","GGAGCCGA","TGAGCCGA","ATAGCCGA","CTAGCCGA","GTAGCCGA","TTAGCCGA",
+ "AACGCCGA","CACGCCGA","GACGCCGA","TACGCCGA","ACCGCCGA","CCCGCCGA","GCCGCCGA","TCCGCCGA",
+ "AGCGCCGA","CGCGCCGA","GGCGCCGA","TGCGCCGA","ATCGCCGA","CTCGCCGA","GTCGCCGA","TTCGCCGA",
+ "AAGGCCGA","CAGGCCGA","GAGGCCGA","TAGGCCGA","ACGGCCGA","CCGGCCGA","GCGGCCGA","TCGGCCGA",
+ "AGGGCCGA","CGGGCCGA","GGGGCCGA","TGGGCCGA","ATGGCCGA","CTGGCCGA","GTGGCCGA","TTGGCCGA",
+ "AATGCCGA","CATGCCGA","GATGCCGA","TATGCCGA","ACTGCCGA","CCTGCCGA","GCTGCCGA","TCTGCCGA",
+ "AGTGCCGA","CGTGCCGA","GGTGCCGA","TGTGCCGA","ATTGCCGA","CTTGCCGA","GTTGCCGA","TTTGCCGA",
+ "AAATCCGA","CAATCCGA","GAATCCGA","TAATCCGA","ACATCCGA","CCATCCGA","GCATCCGA","TCATCCGA",
+ "AGATCCGA","CGATCCGA","GGATCCGA","TGATCCGA","ATATCCGA","CTATCCGA","GTATCCGA","TTATCCGA",
+ "AACTCCGA","CACTCCGA","GACTCCGA","TACTCCGA","ACCTCCGA","CCCTCCGA","GCCTCCGA","TCCTCCGA",
+ "AGCTCCGA","CGCTCCGA","GGCTCCGA","TGCTCCGA","ATCTCCGA","CTCTCCGA","GTCTCCGA","TTCTCCGA",
+ "AAGTCCGA","CAGTCCGA","GAGTCCGA","TAGTCCGA","ACGTCCGA","CCGTCCGA","GCGTCCGA","TCGTCCGA",
+ "AGGTCCGA","CGGTCCGA","GGGTCCGA","TGGTCCGA","ATGTCCGA","CTGTCCGA","GTGTCCGA","TTGTCCGA",
+ "AATTCCGA","CATTCCGA","GATTCCGA","TATTCCGA","ACTTCCGA","CCTTCCGA","GCTTCCGA","TCTTCCGA",
+ "AGTTCCGA","CGTTCCGA","GGTTCCGA","TGTTCCGA","ATTTCCGA","CTTTCCGA","GTTTCCGA","TTTTCCGA",
+ "AAAAGCGA","CAAAGCGA","GAAAGCGA","TAAAGCGA","ACAAGCGA","CCAAGCGA","GCAAGCGA","TCAAGCGA",
+ "AGAAGCGA","CGAAGCGA","GGAAGCGA","TGAAGCGA","ATAAGCGA","CTAAGCGA","GTAAGCGA","TTAAGCGA",
+ "AACAGCGA","CACAGCGA","GACAGCGA","TACAGCGA","ACCAGCGA","CCCAGCGA","GCCAGCGA","TCCAGCGA",
+ "AGCAGCGA","CGCAGCGA","GGCAGCGA","TGCAGCGA","ATCAGCGA","CTCAGCGA","GTCAGCGA","TTCAGCGA",
+ "AAGAGCGA","CAGAGCGA","GAGAGCGA","TAGAGCGA","ACGAGCGA","CCGAGCGA","GCGAGCGA","TCGAGCGA",
+ "AGGAGCGA","CGGAGCGA","GGGAGCGA","TGGAGCGA","ATGAGCGA","CTGAGCGA","GTGAGCGA","TTGAGCGA",
+ "AATAGCGA","CATAGCGA","GATAGCGA","TATAGCGA","ACTAGCGA","CCTAGCGA","GCTAGCGA","TCTAGCGA",
+ "AGTAGCGA","CGTAGCGA","GGTAGCGA","TGTAGCGA","ATTAGCGA","CTTAGCGA","GTTAGCGA","TTTAGCGA",
+ "AAACGCGA","CAACGCGA","GAACGCGA","TAACGCGA","ACACGCGA","CCACGCGA","GCACGCGA","TCACGCGA",
+ "AGACGCGA","CGACGCGA","GGACGCGA","TGACGCGA","ATACGCGA","CTACGCGA","GTACGCGA","TTACGCGA",
+ "AACCGCGA","CACCGCGA","GACCGCGA","TACCGCGA","ACCCGCGA","CCCCGCGA","GCCCGCGA","TCCCGCGA",
+ "AGCCGCGA","CGCCGCGA","GGCCGCGA","TGCCGCGA","ATCCGCGA","CTCCGCGA","GTCCGCGA","TTCCGCGA",
+ "AAGCGCGA","CAGCGCGA","GAGCGCGA","TAGCGCGA","ACGCGCGA","CCGCGCGA","GCGCGCGA","TCGCGCGA",
+ "AGGCGCGA","CGGCGCGA","GGGCGCGA","TGGCGCGA","ATGCGCGA","CTGCGCGA","GTGCGCGA","TTGCGCGA",
+ "AATCGCGA","CATCGCGA","GATCGCGA","TATCGCGA","ACTCGCGA","CCTCGCGA","GCTCGCGA","TCTCGCGA",
+ "AGTCGCGA","CGTCGCGA","GGTCGCGA","TGTCGCGA","ATTCGCGA","CTTCGCGA","GTTCGCGA","TTTCGCGA",
+ "AAAGGCGA","CAAGGCGA","GAAGGCGA","TAAGGCGA","ACAGGCGA","CCAGGCGA","GCAGGCGA","TCAGGCGA",
+ "AGAGGCGA","CGAGGCGA","GGAGGCGA","TGAGGCGA","ATAGGCGA","CTAGGCGA","GTAGGCGA","TTAGGCGA",
+ "AACGGCGA","CACGGCGA","GACGGCGA","TACGGCGA","ACCGGCGA","CCCGGCGA","GCCGGCGA","TCCGGCGA",
+ "AGCGGCGA","CGCGGCGA","GGCGGCGA","TGCGGCGA","ATCGGCGA","CTCGGCGA","GTCGGCGA","TTCGGCGA",
+ "AAGGGCGA","CAGGGCGA","GAGGGCGA","TAGGGCGA","ACGGGCGA","CCGGGCGA","GCGGGCGA","TCGGGCGA",
+ "AGGGGCGA","CGGGGCGA","GGGGGCGA","TGGGGCGA","ATGGGCGA","CTGGGCGA","GTGGGCGA","TTGGGCGA",
+ "AATGGCGA","CATGGCGA","GATGGCGA","TATGGCGA","ACTGGCGA","CCTGGCGA","GCTGGCGA","TCTGGCGA",
+ "AGTGGCGA","CGTGGCGA","GGTGGCGA","TGTGGCGA","ATTGGCGA","CTTGGCGA","GTTGGCGA","TTTGGCGA",
+ "AAATGCGA","CAATGCGA","GAATGCGA","TAATGCGA","ACATGCGA","CCATGCGA","GCATGCGA","TCATGCGA",
+ "AGATGCGA","CGATGCGA","GGATGCGA","TGATGCGA","ATATGCGA","CTATGCGA","GTATGCGA","TTATGCGA",
+ "AACTGCGA","CACTGCGA","GACTGCGA","TACTGCGA","ACCTGCGA","CCCTGCGA","GCCTGCGA","TCCTGCGA",
+ "AGCTGCGA","CGCTGCGA","GGCTGCGA","TGCTGCGA","ATCTGCGA","CTCTGCGA","GTCTGCGA","TTCTGCGA",
+ "AAGTGCGA","CAGTGCGA","GAGTGCGA","TAGTGCGA","ACGTGCGA","CCGTGCGA","GCGTGCGA","TCGTGCGA",
+ "AGGTGCGA","CGGTGCGA","GGGTGCGA","TGGTGCGA","ATGTGCGA","CTGTGCGA","GTGTGCGA","TTGTGCGA",
+ "AATTGCGA","CATTGCGA","GATTGCGA","TATTGCGA","ACTTGCGA","CCTTGCGA","GCTTGCGA","TCTTGCGA",
+ "AGTTGCGA","CGTTGCGA","GGTTGCGA","TGTTGCGA","ATTTGCGA","CTTTGCGA","GTTTGCGA","TTTTGCGA",
+ "AAAATCGA","CAAATCGA","GAAATCGA","TAAATCGA","ACAATCGA","CCAATCGA","GCAATCGA","TCAATCGA",
+ "AGAATCGA","CGAATCGA","GGAATCGA","TGAATCGA","ATAATCGA","CTAATCGA","GTAATCGA","TTAATCGA",
+ "AACATCGA","CACATCGA","GACATCGA","TACATCGA","ACCATCGA","CCCATCGA","GCCATCGA","TCCATCGA",
+ "AGCATCGA","CGCATCGA","GGCATCGA","TGCATCGA","ATCATCGA","CTCATCGA","GTCATCGA","TTCATCGA",
+ "AAGATCGA","CAGATCGA","GAGATCGA","TAGATCGA","ACGATCGA","CCGATCGA","GCGATCGA","TCGATCGA",
+ "AGGATCGA","CGGATCGA","GGGATCGA","TGGATCGA","ATGATCGA","CTGATCGA","GTGATCGA","TTGATCGA",
+ "AATATCGA","CATATCGA","GATATCGA","TATATCGA","ACTATCGA","CCTATCGA","GCTATCGA","TCTATCGA",
+ "AGTATCGA","CGTATCGA","GGTATCGA","TGTATCGA","ATTATCGA","CTTATCGA","GTTATCGA","TTTATCGA",
+ "AAACTCGA","CAACTCGA","GAACTCGA","TAACTCGA","ACACTCGA","CCACTCGA","GCACTCGA","TCACTCGA",
+ "AGACTCGA","CGACTCGA","GGACTCGA","TGACTCGA","ATACTCGA","CTACTCGA","GTACTCGA","TTACTCGA",
+ "AACCTCGA","CACCTCGA","GACCTCGA","TACCTCGA","ACCCTCGA","CCCCTCGA","GCCCTCGA","TCCCTCGA",
+ "AGCCTCGA","CGCCTCGA","GGCCTCGA","TGCCTCGA","ATCCTCGA","CTCCTCGA","GTCCTCGA","TTCCTCGA",
+ "AAGCTCGA","CAGCTCGA","GAGCTCGA","TAGCTCGA","ACGCTCGA","CCGCTCGA","GCGCTCGA","TCGCTCGA",
+ "AGGCTCGA","CGGCTCGA","GGGCTCGA","TGGCTCGA","ATGCTCGA","CTGCTCGA","GTGCTCGA","TTGCTCGA",
+ "AATCTCGA","CATCTCGA","GATCTCGA","TATCTCGA","ACTCTCGA","CCTCTCGA","GCTCTCGA","TCTCTCGA",
+ "AGTCTCGA","CGTCTCGA","GGTCTCGA","TGTCTCGA","ATTCTCGA","CTTCTCGA","GTTCTCGA","TTTCTCGA",
+ "AAAGTCGA","CAAGTCGA","GAAGTCGA","TAAGTCGA","ACAGTCGA","CCAGTCGA","GCAGTCGA","TCAGTCGA",
+ "AGAGTCGA","CGAGTCGA","GGAGTCGA","TGAGTCGA","ATAGTCGA","CTAGTCGA","GTAGTCGA","TTAGTCGA",
+ "AACGTCGA","CACGTCGA","GACGTCGA","TACGTCGA","ACCGTCGA","CCCGTCGA","GCCGTCGA","TCCGTCGA",
+ "AGCGTCGA","CGCGTCGA","GGCGTCGA","TGCGTCGA","ATCGTCGA","CTCGTCGA","GTCGTCGA","TTCGTCGA",
+ "AAGGTCGA","CAGGTCGA","GAGGTCGA","TAGGTCGA","ACGGTCGA","CCGGTCGA","GCGGTCGA","TCGGTCGA",
+ "AGGGTCGA","CGGGTCGA","GGGGTCGA","TGGGTCGA","ATGGTCGA","CTGGTCGA","GTGGTCGA","TTGGTCGA",
+ "AATGTCGA","CATGTCGA","GATGTCGA","TATGTCGA","ACTGTCGA","CCTGTCGA","GCTGTCGA","TCTGTCGA",
+ "AGTGTCGA","CGTGTCGA","GGTGTCGA","TGTGTCGA","ATTGTCGA","CTTGTCGA","GTTGTCGA","TTTGTCGA",
+ "AAATTCGA","CAATTCGA","GAATTCGA","TAATTCGA","ACATTCGA","CCATTCGA","GCATTCGA","TCATTCGA",
+ "AGATTCGA","CGATTCGA","GGATTCGA","TGATTCGA","ATATTCGA","CTATTCGA","GTATTCGA","TTATTCGA",
+ "AACTTCGA","CACTTCGA","GACTTCGA","TACTTCGA","ACCTTCGA","CCCTTCGA","GCCTTCGA","TCCTTCGA",
+ "AGCTTCGA","CGCTTCGA","GGCTTCGA","TGCTTCGA","ATCTTCGA","CTCTTCGA","GTCTTCGA","TTCTTCGA",
+ "AAGTTCGA","CAGTTCGA","GAGTTCGA","TAGTTCGA","ACGTTCGA","CCGTTCGA","GCGTTCGA","TCGTTCGA",
+ "AGGTTCGA","CGGTTCGA","GGGTTCGA","TGGTTCGA","ATGTTCGA","CTGTTCGA","GTGTTCGA","TTGTTCGA",
+ "AATTTCGA","CATTTCGA","GATTTCGA","TATTTCGA","ACTTTCGA","CCTTTCGA","GCTTTCGA","TCTTTCGA",
+ "AGTTTCGA","CGTTTCGA","GGTTTCGA","TGTTTCGA","ATTTTCGA","CTTTTCGA","GTTTTCGA","TTTTTCGA",
+ "AAAAAGGA","CAAAAGGA","GAAAAGGA","TAAAAGGA","ACAAAGGA","CCAAAGGA","GCAAAGGA","TCAAAGGA",
+ "AGAAAGGA","CGAAAGGA","GGAAAGGA","TGAAAGGA","ATAAAGGA","CTAAAGGA","GTAAAGGA","TTAAAGGA",
+ "AACAAGGA","CACAAGGA","GACAAGGA","TACAAGGA","ACCAAGGA","CCCAAGGA","GCCAAGGA","TCCAAGGA",
+ "AGCAAGGA","CGCAAGGA","GGCAAGGA","TGCAAGGA","ATCAAGGA","CTCAAGGA","GTCAAGGA","TTCAAGGA",
+ "AAGAAGGA","CAGAAGGA","GAGAAGGA","TAGAAGGA","ACGAAGGA","CCGAAGGA","GCGAAGGA","TCGAAGGA",
+ "AGGAAGGA","CGGAAGGA","GGGAAGGA","TGGAAGGA","ATGAAGGA","CTGAAGGA","GTGAAGGA","TTGAAGGA",
+ "AATAAGGA","CATAAGGA","GATAAGGA","TATAAGGA","ACTAAGGA","CCTAAGGA","GCTAAGGA","TCTAAGGA",
+ "AGTAAGGA","CGTAAGGA","GGTAAGGA","TGTAAGGA","ATTAAGGA","CTTAAGGA","GTTAAGGA","TTTAAGGA",
+ "AAACAGGA","CAACAGGA","GAACAGGA","TAACAGGA","ACACAGGA","CCACAGGA","GCACAGGA","TCACAGGA",
+ "AGACAGGA","CGACAGGA","GGACAGGA","TGACAGGA","ATACAGGA","CTACAGGA","GTACAGGA","TTACAGGA",
+ "AACCAGGA","CACCAGGA","GACCAGGA","TACCAGGA","ACCCAGGA","CCCCAGGA","GCCCAGGA","TCCCAGGA",
+ "AGCCAGGA","CGCCAGGA","GGCCAGGA","TGCCAGGA","ATCCAGGA","CTCCAGGA","GTCCAGGA","TTCCAGGA",
+ "AAGCAGGA","CAGCAGGA","GAGCAGGA","TAGCAGGA","ACGCAGGA","CCGCAGGA","GCGCAGGA","TCGCAGGA",
+ "AGGCAGGA","CGGCAGGA","GGGCAGGA","TGGCAGGA","ATGCAGGA","CTGCAGGA","GTGCAGGA","TTGCAGGA",
+ "AATCAGGA","CATCAGGA","GATCAGGA","TATCAGGA","ACTCAGGA","CCTCAGGA","GCTCAGGA","TCTCAGGA",
+ "AGTCAGGA","CGTCAGGA","GGTCAGGA","TGTCAGGA","ATTCAGGA","CTTCAGGA","GTTCAGGA","TTTCAGGA",
+ "AAAGAGGA","CAAGAGGA","GAAGAGGA","TAAGAGGA","ACAGAGGA","CCAGAGGA","GCAGAGGA","TCAGAGGA",
+ "AGAGAGGA","CGAGAGGA","GGAGAGGA","TGAGAGGA","ATAGAGGA","CTAGAGGA","GTAGAGGA","TTAGAGGA",
+ "AACGAGGA","CACGAGGA","GACGAGGA","TACGAGGA","ACCGAGGA","CCCGAGGA","GCCGAGGA","TCCGAGGA",
+ "AGCGAGGA","CGCGAGGA","GGCGAGGA","TGCGAGGA","ATCGAGGA","CTCGAGGA","GTCGAGGA","TTCGAGGA",
+ "AAGGAGGA","CAGGAGGA","GAGGAGGA","TAGGAGGA","ACGGAGGA","CCGGAGGA","GCGGAGGA","TCGGAGGA",
+ "AGGGAGGA","CGGGAGGA","GGGGAGGA","TGGGAGGA","ATGGAGGA","CTGGAGGA","GTGGAGGA","TTGGAGGA",
+ "AATGAGGA","CATGAGGA","GATGAGGA","TATGAGGA","ACTGAGGA","CCTGAGGA","GCTGAGGA","TCTGAGGA",
+ "AGTGAGGA","CGTGAGGA","GGTGAGGA","TGTGAGGA","ATTGAGGA","CTTGAGGA","GTTGAGGA","TTTGAGGA",
+ "AAATAGGA","CAATAGGA","GAATAGGA","TAATAGGA","ACATAGGA","CCATAGGA","GCATAGGA","TCATAGGA",
+ "AGATAGGA","CGATAGGA","GGATAGGA","TGATAGGA","ATATAGGA","CTATAGGA","GTATAGGA","TTATAGGA",
+ "AACTAGGA","CACTAGGA","GACTAGGA","TACTAGGA","ACCTAGGA","CCCTAGGA","GCCTAGGA","TCCTAGGA",
+ "AGCTAGGA","CGCTAGGA","GGCTAGGA","TGCTAGGA","ATCTAGGA","CTCTAGGA","GTCTAGGA","TTCTAGGA",
+ "AAGTAGGA","CAGTAGGA","GAGTAGGA","TAGTAGGA","ACGTAGGA","CCGTAGGA","GCGTAGGA","TCGTAGGA",
+ "AGGTAGGA","CGGTAGGA","GGGTAGGA","TGGTAGGA","ATGTAGGA","CTGTAGGA","GTGTAGGA","TTGTAGGA",
+ "AATTAGGA","CATTAGGA","GATTAGGA","TATTAGGA","ACTTAGGA","CCTTAGGA","GCTTAGGA","TCTTAGGA",
+ "AGTTAGGA","CGTTAGGA","GGTTAGGA","TGTTAGGA","ATTTAGGA","CTTTAGGA","GTTTAGGA","TTTTAGGA",
+ "AAAACGGA","CAAACGGA","GAAACGGA","TAAACGGA","ACAACGGA","CCAACGGA","GCAACGGA","TCAACGGA",
+ "AGAACGGA","CGAACGGA","GGAACGGA","TGAACGGA","ATAACGGA","CTAACGGA","GTAACGGA","TTAACGGA",
+ "AACACGGA","CACACGGA","GACACGGA","TACACGGA","ACCACGGA","CCCACGGA","GCCACGGA","TCCACGGA",
+ "AGCACGGA","CGCACGGA","GGCACGGA","TGCACGGA","ATCACGGA","CTCACGGA","GTCACGGA","TTCACGGA",
+ "AAGACGGA","CAGACGGA","GAGACGGA","TAGACGGA","ACGACGGA","CCGACGGA","GCGACGGA","TCGACGGA",
+ "AGGACGGA","CGGACGGA","GGGACGGA","TGGACGGA","ATGACGGA","CTGACGGA","GTGACGGA","TTGACGGA",
+ "AATACGGA","CATACGGA","GATACGGA","TATACGGA","ACTACGGA","CCTACGGA","GCTACGGA","TCTACGGA",
+ "AGTACGGA","CGTACGGA","GGTACGGA","TGTACGGA","ATTACGGA","CTTACGGA","GTTACGGA","TTTACGGA",
+ "AAACCGGA","CAACCGGA","GAACCGGA","TAACCGGA","ACACCGGA","CCACCGGA","GCACCGGA","TCACCGGA",
+ "AGACCGGA","CGACCGGA","GGACCGGA","TGACCGGA","ATACCGGA","CTACCGGA","GTACCGGA","TTACCGGA",
+ "AACCCGGA","CACCCGGA","GACCCGGA","TACCCGGA","ACCCCGGA","CCCCCGGA","GCCCCGGA","TCCCCGGA",
+ "AGCCCGGA","CGCCCGGA","GGCCCGGA","TGCCCGGA","ATCCCGGA","CTCCCGGA","GTCCCGGA","TTCCCGGA",
+ "AAGCCGGA","CAGCCGGA","GAGCCGGA","TAGCCGGA","ACGCCGGA","CCGCCGGA","GCGCCGGA","TCGCCGGA",
+ "AGGCCGGA","CGGCCGGA","GGGCCGGA","TGGCCGGA","ATGCCGGA","CTGCCGGA","GTGCCGGA","TTGCCGGA",
+ "AATCCGGA","CATCCGGA","GATCCGGA","TATCCGGA","ACTCCGGA","CCTCCGGA","GCTCCGGA","TCTCCGGA",
+ "AGTCCGGA","CGTCCGGA","GGTCCGGA","TGTCCGGA","ATTCCGGA","CTTCCGGA","GTTCCGGA","TTTCCGGA",
+ "AAAGCGGA","CAAGCGGA","GAAGCGGA","TAAGCGGA","ACAGCGGA","CCAGCGGA","GCAGCGGA","TCAGCGGA",
+ "AGAGCGGA","CGAGCGGA","GGAGCGGA","TGAGCGGA","ATAGCGGA","CTAGCGGA","GTAGCGGA","TTAGCGGA",
+ "AACGCGGA","CACGCGGA","GACGCGGA","TACGCGGA","ACCGCGGA","CCCGCGGA","GCCGCGGA","TCCGCGGA",
+ "AGCGCGGA","CGCGCGGA","GGCGCGGA","TGCGCGGA","ATCGCGGA","CTCGCGGA","GTCGCGGA","TTCGCGGA",
+ "AAGGCGGA","CAGGCGGA","GAGGCGGA","TAGGCGGA","ACGGCGGA","CCGGCGGA","GCGGCGGA","TCGGCGGA",
+ "AGGGCGGA","CGGGCGGA","GGGGCGGA","TGGGCGGA","ATGGCGGA","CTGGCGGA","GTGGCGGA","TTGGCGGA",
+ "AATGCGGA","CATGCGGA","GATGCGGA","TATGCGGA","ACTGCGGA","CCTGCGGA","GCTGCGGA","TCTGCGGA",
+ "AGTGCGGA","CGTGCGGA","GGTGCGGA","TGTGCGGA","ATTGCGGA","CTTGCGGA","GTTGCGGA","TTTGCGGA",
+ "AAATCGGA","CAATCGGA","GAATCGGA","TAATCGGA","ACATCGGA","CCATCGGA","GCATCGGA","TCATCGGA",
+ "AGATCGGA","CGATCGGA","GGATCGGA","TGATCGGA","ATATCGGA","CTATCGGA","GTATCGGA","TTATCGGA",
+ "AACTCGGA","CACTCGGA","GACTCGGA","TACTCGGA","ACCTCGGA","CCCTCGGA","GCCTCGGA","TCCTCGGA",
+ "AGCTCGGA","CGCTCGGA","GGCTCGGA","TGCTCGGA","ATCTCGGA","CTCTCGGA","GTCTCGGA","TTCTCGGA",
+ "AAGTCGGA","CAGTCGGA","GAGTCGGA","TAGTCGGA","ACGTCGGA","CCGTCGGA","GCGTCGGA","TCGTCGGA",
+ "AGGTCGGA","CGGTCGGA","GGGTCGGA","TGGTCGGA","ATGTCGGA","CTGTCGGA","GTGTCGGA","TTGTCGGA",
+ "AATTCGGA","CATTCGGA","GATTCGGA","TATTCGGA","ACTTCGGA","CCTTCGGA","GCTTCGGA","TCTTCGGA",
+ "AGTTCGGA","CGTTCGGA","GGTTCGGA","TGTTCGGA","ATTTCGGA","CTTTCGGA","GTTTCGGA","TTTTCGGA",
+ "AAAAGGGA","CAAAGGGA","GAAAGGGA","TAAAGGGA","ACAAGGGA","CCAAGGGA","GCAAGGGA","TCAAGGGA",
+ "AGAAGGGA","CGAAGGGA","GGAAGGGA","TGAAGGGA","ATAAGGGA","CTAAGGGA","GTAAGGGA","TTAAGGGA",
+ "AACAGGGA","CACAGGGA","GACAGGGA","TACAGGGA","ACCAGGGA","CCCAGGGA","GCCAGGGA","TCCAGGGA",
+ "AGCAGGGA","CGCAGGGA","GGCAGGGA","TGCAGGGA","ATCAGGGA","CTCAGGGA","GTCAGGGA","TTCAGGGA",
+ "AAGAGGGA","CAGAGGGA","GAGAGGGA","TAGAGGGA","ACGAGGGA","CCGAGGGA","GCGAGGGA","TCGAGGGA",
+ "AGGAGGGA","CGGAGGGA","GGGAGGGA","TGGAGGGA","ATGAGGGA","CTGAGGGA","GTGAGGGA","TTGAGGGA",
+ "AATAGGGA","CATAGGGA","GATAGGGA","TATAGGGA","ACTAGGGA","CCTAGGGA","GCTAGGGA","TCTAGGGA",
+ "AGTAGGGA","CGTAGGGA","GGTAGGGA","TGTAGGGA","ATTAGGGA","CTTAGGGA","GTTAGGGA","TTTAGGGA",
+ "AAACGGGA","CAACGGGA","GAACGGGA","TAACGGGA","ACACGGGA","CCACGGGA","GCACGGGA","TCACGGGA",
+ "AGACGGGA","CGACGGGA","GGACGGGA","TGACGGGA","ATACGGGA","CTACGGGA","GTACGGGA","TTACGGGA",
+ "AACCGGGA","CACCGGGA","GACCGGGA","TACCGGGA","ACCCGGGA","CCCCGGGA","GCCCGGGA","TCCCGGGA",
+ "AGCCGGGA","CGCCGGGA","GGCCGGGA","TGCCGGGA","ATCCGGGA","CTCCGGGA","GTCCGGGA","TTCCGGGA",
+ "AAGCGGGA","CAGCGGGA","GAGCGGGA","TAGCGGGA","ACGCGGGA","CCGCGGGA","GCGCGGGA","TCGCGGGA",
+ "AGGCGGGA","CGGCGGGA","GGGCGGGA","TGGCGGGA","ATGCGGGA","CTGCGGGA","GTGCGGGA","TTGCGGGA",
+ "AATCGGGA","CATCGGGA","GATCGGGA","TATCGGGA","ACTCGGGA","CCTCGGGA","GCTCGGGA","TCTCGGGA",
+ "AGTCGGGA","CGTCGGGA","GGTCGGGA","TGTCGGGA","ATTCGGGA","CTTCGGGA","GTTCGGGA","TTTCGGGA",
+ "AAAGGGGA","CAAGGGGA","GAAGGGGA","TAAGGGGA","ACAGGGGA","CCAGGGGA","GCAGGGGA","TCAGGGGA",
+ "AGAGGGGA","CGAGGGGA","GGAGGGGA","TGAGGGGA","ATAGGGGA","CTAGGGGA","GTAGGGGA","TTAGGGGA",
+ "AACGGGGA","CACGGGGA","GACGGGGA","TACGGGGA","ACCGGGGA","CCCGGGGA","GCCGGGGA","TCCGGGGA",
+ "AGCGGGGA","CGCGGGGA","GGCGGGGA","TGCGGGGA","ATCGGGGA","CTCGGGGA","GTCGGGGA","TTCGGGGA",
+ "AAGGGGGA","CAGGGGGA","GAGGGGGA","TAGGGGGA","ACGGGGGA","CCGGGGGA","GCGGGGGA","TCGGGGGA",
+ "AGGGGGGA","CGGGGGGA","GGGGGGGA","TGGGGGGA","ATGGGGGA","CTGGGGGA","GTGGGGGA","TTGGGGGA",
+ "AATGGGGA","CATGGGGA","GATGGGGA","TATGGGGA","ACTGGGGA","CCTGGGGA","GCTGGGGA","TCTGGGGA",
+ "AGTGGGGA","CGTGGGGA","GGTGGGGA","TGTGGGGA","ATTGGGGA","CTTGGGGA","GTTGGGGA","TTTGGGGA",
+ "AAATGGGA","CAATGGGA","GAATGGGA","TAATGGGA","ACATGGGA","CCATGGGA","GCATGGGA","TCATGGGA",
+ "AGATGGGA","CGATGGGA","GGATGGGA","TGATGGGA","ATATGGGA","CTATGGGA","GTATGGGA","TTATGGGA",
+ "AACTGGGA","CACTGGGA","GACTGGGA","TACTGGGA","ACCTGGGA","CCCTGGGA","GCCTGGGA","TCCTGGGA",
+ "AGCTGGGA","CGCTGGGA","GGCTGGGA","TGCTGGGA","ATCTGGGA","CTCTGGGA","GTCTGGGA","TTCTGGGA",
+ "AAGTGGGA","CAGTGGGA","GAGTGGGA","TAGTGGGA","ACGTGGGA","CCGTGGGA","GCGTGGGA","TCGTGGGA",
+ "AGGTGGGA","CGGTGGGA","GGGTGGGA","TGGTGGGA","ATGTGGGA","CTGTGGGA","GTGTGGGA","TTGTGGGA",
+ "AATTGGGA","CATTGGGA","GATTGGGA","TATTGGGA","ACTTGGGA","CCTTGGGA","GCTTGGGA","TCTTGGGA",
+ "AGTTGGGA","CGTTGGGA","GGTTGGGA","TGTTGGGA","ATTTGGGA","CTTTGGGA","GTTTGGGA","TTTTGGGA",
+ "AAAATGGA","CAAATGGA","GAAATGGA","TAAATGGA","ACAATGGA","CCAATGGA","GCAATGGA","TCAATGGA",
+ "AGAATGGA","CGAATGGA","GGAATGGA","TGAATGGA","ATAATGGA","CTAATGGA","GTAATGGA","TTAATGGA",
+ "AACATGGA","CACATGGA","GACATGGA","TACATGGA","ACCATGGA","CCCATGGA","GCCATGGA","TCCATGGA",
+ "AGCATGGA","CGCATGGA","GGCATGGA","TGCATGGA","ATCATGGA","CTCATGGA","GTCATGGA","TTCATGGA",
+ "AAGATGGA","CAGATGGA","GAGATGGA","TAGATGGA","ACGATGGA","CCGATGGA","GCGATGGA","TCGATGGA",
+ "AGGATGGA","CGGATGGA","GGGATGGA","TGGATGGA","ATGATGGA","CTGATGGA","GTGATGGA","TTGATGGA",
+ "AATATGGA","CATATGGA","GATATGGA","TATATGGA","ACTATGGA","CCTATGGA","GCTATGGA","TCTATGGA",
+ "AGTATGGA","CGTATGGA","GGTATGGA","TGTATGGA","ATTATGGA","CTTATGGA","GTTATGGA","TTTATGGA",
+ "AAACTGGA","CAACTGGA","GAACTGGA","TAACTGGA","ACACTGGA","CCACTGGA","GCACTGGA","TCACTGGA",
+ "AGACTGGA","CGACTGGA","GGACTGGA","TGACTGGA","ATACTGGA","CTACTGGA","GTACTGGA","TTACTGGA",
+ "AACCTGGA","CACCTGGA","GACCTGGA","TACCTGGA","ACCCTGGA","CCCCTGGA","GCCCTGGA","TCCCTGGA",
+ "AGCCTGGA","CGCCTGGA","GGCCTGGA","TGCCTGGA","ATCCTGGA","CTCCTGGA","GTCCTGGA","TTCCTGGA",
+ "AAGCTGGA","CAGCTGGA","GAGCTGGA","TAGCTGGA","ACGCTGGA","CCGCTGGA","GCGCTGGA","TCGCTGGA",
+ "AGGCTGGA","CGGCTGGA","GGGCTGGA","TGGCTGGA","ATGCTGGA","CTGCTGGA","GTGCTGGA","TTGCTGGA",
+ "AATCTGGA","CATCTGGA","GATCTGGA","TATCTGGA","ACTCTGGA","CCTCTGGA","GCTCTGGA","TCTCTGGA",
+ "AGTCTGGA","CGTCTGGA","GGTCTGGA","TGTCTGGA","ATTCTGGA","CTTCTGGA","GTTCTGGA","TTTCTGGA",
+ "AAAGTGGA","CAAGTGGA","GAAGTGGA","TAAGTGGA","ACAGTGGA","CCAGTGGA","GCAGTGGA","TCAGTGGA",
+ "AGAGTGGA","CGAGTGGA","GGAGTGGA","TGAGTGGA","ATAGTGGA","CTAGTGGA","GTAGTGGA","TTAGTGGA",
+ "AACGTGGA","CACGTGGA","GACGTGGA","TACGTGGA","ACCGTGGA","CCCGTGGA","GCCGTGGA","TCCGTGGA",
+ "AGCGTGGA","CGCGTGGA","GGCGTGGA","TGCGTGGA","ATCGTGGA","CTCGTGGA","GTCGTGGA","TTCGTGGA",
+ "AAGGTGGA","CAGGTGGA","GAGGTGGA","TAGGTGGA","ACGGTGGA","CCGGTGGA","GCGGTGGA","TCGGTGGA",
+ "AGGGTGGA","CGGGTGGA","GGGGTGGA","TGGGTGGA","ATGGTGGA","CTGGTGGA","GTGGTGGA","TTGGTGGA",
+ "AATGTGGA","CATGTGGA","GATGTGGA","TATGTGGA","ACTGTGGA","CCTGTGGA","GCTGTGGA","TCTGTGGA",
+ "AGTGTGGA","CGTGTGGA","GGTGTGGA","TGTGTGGA","ATTGTGGA","CTTGTGGA","GTTGTGGA","TTTGTGGA",
+ "AAATTGGA","CAATTGGA","GAATTGGA","TAATTGGA","ACATTGGA","CCATTGGA","GCATTGGA","TCATTGGA",
+ "AGATTGGA","CGATTGGA","GGATTGGA","TGATTGGA","ATATTGGA","CTATTGGA","GTATTGGA","TTATTGGA",
+ "AACTTGGA","CACTTGGA","GACTTGGA","TACTTGGA","ACCTTGGA","CCCTTGGA","GCCTTGGA","TCCTTGGA",
+ "AGCTTGGA","CGCTTGGA","GGCTTGGA","TGCTTGGA","ATCTTGGA","CTCTTGGA","GTCTTGGA","TTCTTGGA",
+ "AAGTTGGA","CAGTTGGA","GAGTTGGA","TAGTTGGA","ACGTTGGA","CCGTTGGA","GCGTTGGA","TCGTTGGA",
+ "AGGTTGGA","CGGTTGGA","GGGTTGGA","TGGTTGGA","ATGTTGGA","CTGTTGGA","GTGTTGGA","TTGTTGGA",
+ "AATTTGGA","CATTTGGA","GATTTGGA","TATTTGGA","ACTTTGGA","CCTTTGGA","GCTTTGGA","TCTTTGGA",
+ "AGTTTGGA","CGTTTGGA","GGTTTGGA","TGTTTGGA","ATTTTGGA","CTTTTGGA","GTTTTGGA","TTTTTGGA",
+ "AAAAATGA","CAAAATGA","GAAAATGA","TAAAATGA","ACAAATGA","CCAAATGA","GCAAATGA","TCAAATGA",
+ "AGAAATGA","CGAAATGA","GGAAATGA","TGAAATGA","ATAAATGA","CTAAATGA","GTAAATGA","TTAAATGA",
+ "AACAATGA","CACAATGA","GACAATGA","TACAATGA","ACCAATGA","CCCAATGA","GCCAATGA","TCCAATGA",
+ "AGCAATGA","CGCAATGA","GGCAATGA","TGCAATGA","ATCAATGA","CTCAATGA","GTCAATGA","TTCAATGA",
+ "AAGAATGA","CAGAATGA","GAGAATGA","TAGAATGA","ACGAATGA","CCGAATGA","GCGAATGA","TCGAATGA",
+ "AGGAATGA","CGGAATGA","GGGAATGA","TGGAATGA","ATGAATGA","CTGAATGA","GTGAATGA","TTGAATGA",
+ "AATAATGA","CATAATGA","GATAATGA","TATAATGA","ACTAATGA","CCTAATGA","GCTAATGA","TCTAATGA",
+ "AGTAATGA","CGTAATGA","GGTAATGA","TGTAATGA","ATTAATGA","CTTAATGA","GTTAATGA","TTTAATGA",
+ "AAACATGA","CAACATGA","GAACATGA","TAACATGA","ACACATGA","CCACATGA","GCACATGA","TCACATGA",
+ "AGACATGA","CGACATGA","GGACATGA","TGACATGA","ATACATGA","CTACATGA","GTACATGA","TTACATGA",
+ "AACCATGA","CACCATGA","GACCATGA","TACCATGA","ACCCATGA","CCCCATGA","GCCCATGA","TCCCATGA",
+ "AGCCATGA","CGCCATGA","GGCCATGA","TGCCATGA","ATCCATGA","CTCCATGA","GTCCATGA","TTCCATGA",
+ "AAGCATGA","CAGCATGA","GAGCATGA","TAGCATGA","ACGCATGA","CCGCATGA","GCGCATGA","TCGCATGA",
+ "AGGCATGA","CGGCATGA","GGGCATGA","TGGCATGA","ATGCATGA","CTGCATGA","GTGCATGA","TTGCATGA",
+ "AATCATGA","CATCATGA","GATCATGA","TATCATGA","ACTCATGA","CCTCATGA","GCTCATGA","TCTCATGA",
+ "AGTCATGA","CGTCATGA","GGTCATGA","TGTCATGA","ATTCATGA","CTTCATGA","GTTCATGA","TTTCATGA",
+ "AAAGATGA","CAAGATGA","GAAGATGA","TAAGATGA","ACAGATGA","CCAGATGA","GCAGATGA","TCAGATGA",
+ "AGAGATGA","CGAGATGA","GGAGATGA","TGAGATGA","ATAGATGA","CTAGATGA","GTAGATGA","TTAGATGA",
+ "AACGATGA","CACGATGA","GACGATGA","TACGATGA","ACCGATGA","CCCGATGA","GCCGATGA","TCCGATGA",
+ "AGCGATGA","CGCGATGA","GGCGATGA","TGCGATGA","ATCGATGA","CTCGATGA","GTCGATGA","TTCGATGA",
+ "AAGGATGA","CAGGATGA","GAGGATGA","TAGGATGA","ACGGATGA","CCGGATGA","GCGGATGA","TCGGATGA",
+ "AGGGATGA","CGGGATGA","GGGGATGA","TGGGATGA","ATGGATGA","CTGGATGA","GTGGATGA","TTGGATGA",
+ "AATGATGA","CATGATGA","GATGATGA","TATGATGA","ACTGATGA","CCTGATGA","GCTGATGA","TCTGATGA",
+ "AGTGATGA","CGTGATGA","GGTGATGA","TGTGATGA","ATTGATGA","CTTGATGA","GTTGATGA","TTTGATGA",
+ "AAATATGA","CAATATGA","GAATATGA","TAATATGA","ACATATGA","CCATATGA","GCATATGA","TCATATGA",
+ "AGATATGA","CGATATGA","GGATATGA","TGATATGA","ATATATGA","CTATATGA","GTATATGA","TTATATGA",
+ "AACTATGA","CACTATGA","GACTATGA","TACTATGA","ACCTATGA","CCCTATGA","GCCTATGA","TCCTATGA",
+ "AGCTATGA","CGCTATGA","GGCTATGA","TGCTATGA","ATCTATGA","CTCTATGA","GTCTATGA","TTCTATGA",
+ "AAGTATGA","CAGTATGA","GAGTATGA","TAGTATGA","ACGTATGA","CCGTATGA","GCGTATGA","TCGTATGA",
+ "AGGTATGA","CGGTATGA","GGGTATGA","TGGTATGA","ATGTATGA","CTGTATGA","GTGTATGA","TTGTATGA",
+ "AATTATGA","CATTATGA","GATTATGA","TATTATGA","ACTTATGA","CCTTATGA","GCTTATGA","TCTTATGA",
+ "AGTTATGA","CGTTATGA","GGTTATGA","TGTTATGA","ATTTATGA","CTTTATGA","GTTTATGA","TTTTATGA",
+ "AAAACTGA","CAAACTGA","GAAACTGA","TAAACTGA","ACAACTGA","CCAACTGA","GCAACTGA","TCAACTGA",
+ "AGAACTGA","CGAACTGA","GGAACTGA","TGAACTGA","ATAACTGA","CTAACTGA","GTAACTGA","TTAACTGA",
+ "AACACTGA","CACACTGA","GACACTGA","TACACTGA","ACCACTGA","CCCACTGA","GCCACTGA","TCCACTGA",
+ "AGCACTGA","CGCACTGA","GGCACTGA","TGCACTGA","ATCACTGA","CTCACTGA","GTCACTGA","TTCACTGA",
+ "AAGACTGA","CAGACTGA","GAGACTGA","TAGACTGA","ACGACTGA","CCGACTGA","GCGACTGA","TCGACTGA",
+ "AGGACTGA","CGGACTGA","GGGACTGA","TGGACTGA","ATGACTGA","CTGACTGA","GTGACTGA","TTGACTGA",
+ "AATACTGA","CATACTGA","GATACTGA","TATACTGA","ACTACTGA","CCTACTGA","GCTACTGA","TCTACTGA",
+ "AGTACTGA","CGTACTGA","GGTACTGA","TGTACTGA","ATTACTGA","CTTACTGA","GTTACTGA","TTTACTGA",
+ "AAACCTGA","CAACCTGA","GAACCTGA","TAACCTGA","ACACCTGA","CCACCTGA","GCACCTGA","TCACCTGA",
+ "AGACCTGA","CGACCTGA","GGACCTGA","TGACCTGA","ATACCTGA","CTACCTGA","GTACCTGA","TTACCTGA",
+ "AACCCTGA","CACCCTGA","GACCCTGA","TACCCTGA","ACCCCTGA","CCCCCTGA","GCCCCTGA","TCCCCTGA",
+ "AGCCCTGA","CGCCCTGA","GGCCCTGA","TGCCCTGA","ATCCCTGA","CTCCCTGA","GTCCCTGA","TTCCCTGA",
+ "AAGCCTGA","CAGCCTGA","GAGCCTGA","TAGCCTGA","ACGCCTGA","CCGCCTGA","GCGCCTGA","TCGCCTGA",
+ "AGGCCTGA","CGGCCTGA","GGGCCTGA","TGGCCTGA","ATGCCTGA","CTGCCTGA","GTGCCTGA","TTGCCTGA",
+ "AATCCTGA","CATCCTGA","GATCCTGA","TATCCTGA","ACTCCTGA","CCTCCTGA","GCTCCTGA","TCTCCTGA",
+ "AGTCCTGA","CGTCCTGA","GGTCCTGA","TGTCCTGA","ATTCCTGA","CTTCCTGA","GTTCCTGA","TTTCCTGA",
+ "AAAGCTGA","CAAGCTGA","GAAGCTGA","TAAGCTGA","ACAGCTGA","CCAGCTGA","GCAGCTGA","TCAGCTGA",
+ "AGAGCTGA","CGAGCTGA","GGAGCTGA","TGAGCTGA","ATAGCTGA","CTAGCTGA","GTAGCTGA","TTAGCTGA",
+ "AACGCTGA","CACGCTGA","GACGCTGA","TACGCTGA","ACCGCTGA","CCCGCTGA","GCCGCTGA","TCCGCTGA",
+ "AGCGCTGA","CGCGCTGA","GGCGCTGA","TGCGCTGA","ATCGCTGA","CTCGCTGA","GTCGCTGA","TTCGCTGA",
+ "AAGGCTGA","CAGGCTGA","GAGGCTGA","TAGGCTGA","ACGGCTGA","CCGGCTGA","GCGGCTGA","TCGGCTGA",
+ "AGGGCTGA","CGGGCTGA","GGGGCTGA","TGGGCTGA","ATGGCTGA","CTGGCTGA","GTGGCTGA","TTGGCTGA",
+ "AATGCTGA","CATGCTGA","GATGCTGA","TATGCTGA","ACTGCTGA","CCTGCTGA","GCTGCTGA","TCTGCTGA",
+ "AGTGCTGA","CGTGCTGA","GGTGCTGA","TGTGCTGA","ATTGCTGA","CTTGCTGA","GTTGCTGA","TTTGCTGA",
+ "AAATCTGA","CAATCTGA","GAATCTGA","TAATCTGA","ACATCTGA","CCATCTGA","GCATCTGA","TCATCTGA",
+ "AGATCTGA","CGATCTGA","GGATCTGA","TGATCTGA","ATATCTGA","CTATCTGA","GTATCTGA","TTATCTGA",
+ "AACTCTGA","CACTCTGA","GACTCTGA","TACTCTGA","ACCTCTGA","CCCTCTGA","GCCTCTGA","TCCTCTGA",
+ "AGCTCTGA","CGCTCTGA","GGCTCTGA","TGCTCTGA","ATCTCTGA","CTCTCTGA","GTCTCTGA","TTCTCTGA",
+ "AAGTCTGA","CAGTCTGA","GAGTCTGA","TAGTCTGA","ACGTCTGA","CCGTCTGA","GCGTCTGA","TCGTCTGA",
+ "AGGTCTGA","CGGTCTGA","GGGTCTGA","TGGTCTGA","ATGTCTGA","CTGTCTGA","GTGTCTGA","TTGTCTGA",
+ "AATTCTGA","CATTCTGA","GATTCTGA","TATTCTGA","ACTTCTGA","CCTTCTGA","GCTTCTGA","TCTTCTGA",
+ "AGTTCTGA","CGTTCTGA","GGTTCTGA","TGTTCTGA","ATTTCTGA","CTTTCTGA","GTTTCTGA","TTTTCTGA",
+ "AAAAGTGA","CAAAGTGA","GAAAGTGA","TAAAGTGA","ACAAGTGA","CCAAGTGA","GCAAGTGA","TCAAGTGA",
+ "AGAAGTGA","CGAAGTGA","GGAAGTGA","TGAAGTGA","ATAAGTGA","CTAAGTGA","GTAAGTGA","TTAAGTGA",
+ "AACAGTGA","CACAGTGA","GACAGTGA","TACAGTGA","ACCAGTGA","CCCAGTGA","GCCAGTGA","TCCAGTGA",
+ "AGCAGTGA","CGCAGTGA","GGCAGTGA","TGCAGTGA","ATCAGTGA","CTCAGTGA","GTCAGTGA","TTCAGTGA",
+ "AAGAGTGA","CAGAGTGA","GAGAGTGA","TAGAGTGA","ACGAGTGA","CCGAGTGA","GCGAGTGA","TCGAGTGA",
+ "AGGAGTGA","CGGAGTGA","GGGAGTGA","TGGAGTGA","ATGAGTGA","CTGAGTGA","GTGAGTGA","TTGAGTGA",
+ "AATAGTGA","CATAGTGA","GATAGTGA","TATAGTGA","ACTAGTGA","CCTAGTGA","GCTAGTGA","TCTAGTGA",
+ "AGTAGTGA","CGTAGTGA","GGTAGTGA","TGTAGTGA","ATTAGTGA","CTTAGTGA","GTTAGTGA","TTTAGTGA",
+ "AAACGTGA","CAACGTGA","GAACGTGA","TAACGTGA","ACACGTGA","CCACGTGA","GCACGTGA","TCACGTGA",
+ "AGACGTGA","CGACGTGA","GGACGTGA","TGACGTGA","ATACGTGA","CTACGTGA","GTACGTGA","TTACGTGA",
+ "AACCGTGA","CACCGTGA","GACCGTGA","TACCGTGA","ACCCGTGA","CCCCGTGA","GCCCGTGA","TCCCGTGA",
+ "AGCCGTGA","CGCCGTGA","GGCCGTGA","TGCCGTGA","ATCCGTGA","CTCCGTGA","GTCCGTGA","TTCCGTGA",
+ "AAGCGTGA","CAGCGTGA","GAGCGTGA","TAGCGTGA","ACGCGTGA","CCGCGTGA","GCGCGTGA","TCGCGTGA",
+ "AGGCGTGA","CGGCGTGA","GGGCGTGA","TGGCGTGA","ATGCGTGA","CTGCGTGA","GTGCGTGA","TTGCGTGA",
+ "AATCGTGA","CATCGTGA","GATCGTGA","TATCGTGA","ACTCGTGA","CCTCGTGA","GCTCGTGA","TCTCGTGA",
+ "AGTCGTGA","CGTCGTGA","GGTCGTGA","TGTCGTGA","ATTCGTGA","CTTCGTGA","GTTCGTGA","TTTCGTGA",
+ "AAAGGTGA","CAAGGTGA","GAAGGTGA","TAAGGTGA","ACAGGTGA","CCAGGTGA","GCAGGTGA","TCAGGTGA",
+ "AGAGGTGA","CGAGGTGA","GGAGGTGA","TGAGGTGA","ATAGGTGA","CTAGGTGA","GTAGGTGA","TTAGGTGA",
+ "AACGGTGA","CACGGTGA","GACGGTGA","TACGGTGA","ACCGGTGA","CCCGGTGA","GCCGGTGA","TCCGGTGA",
+ "AGCGGTGA","CGCGGTGA","GGCGGTGA","TGCGGTGA","ATCGGTGA","CTCGGTGA","GTCGGTGA","TTCGGTGA",
+ "AAGGGTGA","CAGGGTGA","GAGGGTGA","TAGGGTGA","ACGGGTGA","CCGGGTGA","GCGGGTGA","TCGGGTGA",
+ "AGGGGTGA","CGGGGTGA","GGGGGTGA","TGGGGTGA","ATGGGTGA","CTGGGTGA","GTGGGTGA","TTGGGTGA",
+ "AATGGTGA","CATGGTGA","GATGGTGA","TATGGTGA","ACTGGTGA","CCTGGTGA","GCTGGTGA","TCTGGTGA",
+ "AGTGGTGA","CGTGGTGA","GGTGGTGA","TGTGGTGA","ATTGGTGA","CTTGGTGA","GTTGGTGA","TTTGGTGA",
+ "AAATGTGA","CAATGTGA","GAATGTGA","TAATGTGA","ACATGTGA","CCATGTGA","GCATGTGA","TCATGTGA",
+ "AGATGTGA","CGATGTGA","GGATGTGA","TGATGTGA","ATATGTGA","CTATGTGA","GTATGTGA","TTATGTGA",
+ "AACTGTGA","CACTGTGA","GACTGTGA","TACTGTGA","ACCTGTGA","CCCTGTGA","GCCTGTGA","TCCTGTGA",
+ "AGCTGTGA","CGCTGTGA","GGCTGTGA","TGCTGTGA","ATCTGTGA","CTCTGTGA","GTCTGTGA","TTCTGTGA",
+ "AAGTGTGA","CAGTGTGA","GAGTGTGA","TAGTGTGA","ACGTGTGA","CCGTGTGA","GCGTGTGA","TCGTGTGA",
+ "AGGTGTGA","CGGTGTGA","GGGTGTGA","TGGTGTGA","ATGTGTGA","CTGTGTGA","GTGTGTGA","TTGTGTGA",
+ "AATTGTGA","CATTGTGA","GATTGTGA","TATTGTGA","ACTTGTGA","CCTTGTGA","GCTTGTGA","TCTTGTGA",
+ "AGTTGTGA","CGTTGTGA","GGTTGTGA","TGTTGTGA","ATTTGTGA","CTTTGTGA","GTTTGTGA","TTTTGTGA",
+ "AAAATTGA","CAAATTGA","GAAATTGA","TAAATTGA","ACAATTGA","CCAATTGA","GCAATTGA","TCAATTGA",
+ "AGAATTGA","CGAATTGA","GGAATTGA","TGAATTGA","ATAATTGA","CTAATTGA","GTAATTGA","TTAATTGA",
+ "AACATTGA","CACATTGA","GACATTGA","TACATTGA","ACCATTGA","CCCATTGA","GCCATTGA","TCCATTGA",
+ "AGCATTGA","CGCATTGA","GGCATTGA","TGCATTGA","ATCATTGA","CTCATTGA","GTCATTGA","TTCATTGA",
+ "AAGATTGA","CAGATTGA","GAGATTGA","TAGATTGA","ACGATTGA","CCGATTGA","GCGATTGA","TCGATTGA",
+ "AGGATTGA","CGGATTGA","GGGATTGA","TGGATTGA","ATGATTGA","CTGATTGA","GTGATTGA","TTGATTGA",
+ "AATATTGA","CATATTGA","GATATTGA","TATATTGA","ACTATTGA","CCTATTGA","GCTATTGA","TCTATTGA",
+ "AGTATTGA","CGTATTGA","GGTATTGA","TGTATTGA","ATTATTGA","CTTATTGA","GTTATTGA","TTTATTGA",
+ "AAACTTGA","CAACTTGA","GAACTTGA","TAACTTGA","ACACTTGA","CCACTTGA","GCACTTGA","TCACTTGA",
+ "AGACTTGA","CGACTTGA","GGACTTGA","TGACTTGA","ATACTTGA","CTACTTGA","GTACTTGA","TTACTTGA",
+ "AACCTTGA","CACCTTGA","GACCTTGA","TACCTTGA","ACCCTTGA","CCCCTTGA","GCCCTTGA","TCCCTTGA",
+ "AGCCTTGA","CGCCTTGA","GGCCTTGA","TGCCTTGA","ATCCTTGA","CTCCTTGA","GTCCTTGA","TTCCTTGA",
+ "AAGCTTGA","CAGCTTGA","GAGCTTGA","TAGCTTGA","ACGCTTGA","CCGCTTGA","GCGCTTGA","TCGCTTGA",
+ "AGGCTTGA","CGGCTTGA","GGGCTTGA","TGGCTTGA","ATGCTTGA","CTGCTTGA","GTGCTTGA","TTGCTTGA",
+ "AATCTTGA","CATCTTGA","GATCTTGA","TATCTTGA","ACTCTTGA","CCTCTTGA","GCTCTTGA","TCTCTTGA",
+ "AGTCTTGA","CGTCTTGA","GGTCTTGA","TGTCTTGA","ATTCTTGA","CTTCTTGA","GTTCTTGA","TTTCTTGA",
+ "AAAGTTGA","CAAGTTGA","GAAGTTGA","TAAGTTGA","ACAGTTGA","CCAGTTGA","GCAGTTGA","TCAGTTGA",
+ "AGAGTTGA","CGAGTTGA","GGAGTTGA","TGAGTTGA","ATAGTTGA","CTAGTTGA","GTAGTTGA","TTAGTTGA",
+ "AACGTTGA","CACGTTGA","GACGTTGA","TACGTTGA","ACCGTTGA","CCCGTTGA","GCCGTTGA","TCCGTTGA",
+ "AGCGTTGA","CGCGTTGA","GGCGTTGA","TGCGTTGA","ATCGTTGA","CTCGTTGA","GTCGTTGA","TTCGTTGA",
+ "AAGGTTGA","CAGGTTGA","GAGGTTGA","TAGGTTGA","ACGGTTGA","CCGGTTGA","GCGGTTGA","TCGGTTGA",
+ "AGGGTTGA","CGGGTTGA","GGGGTTGA","TGGGTTGA","ATGGTTGA","CTGGTTGA","GTGGTTGA","TTGGTTGA",
+ "AATGTTGA","CATGTTGA","GATGTTGA","TATGTTGA","ACTGTTGA","CCTGTTGA","GCTGTTGA","TCTGTTGA",
+ "AGTGTTGA","CGTGTTGA","GGTGTTGA","TGTGTTGA","ATTGTTGA","CTTGTTGA","GTTGTTGA","TTTGTTGA",
+ "AAATTTGA","CAATTTGA","GAATTTGA","TAATTTGA","ACATTTGA","CCATTTGA","GCATTTGA","TCATTTGA",
+ "AGATTTGA","CGATTTGA","GGATTTGA","TGATTTGA","ATATTTGA","CTATTTGA","GTATTTGA","TTATTTGA",
+ "AACTTTGA","CACTTTGA","GACTTTGA","TACTTTGA","ACCTTTGA","CCCTTTGA","GCCTTTGA","TCCTTTGA",
+ "AGCTTTGA","CGCTTTGA","GGCTTTGA","TGCTTTGA","ATCTTTGA","CTCTTTGA","GTCTTTGA","TTCTTTGA",
+ "AAGTTTGA","CAGTTTGA","GAGTTTGA","TAGTTTGA","ACGTTTGA","CCGTTTGA","GCGTTTGA","TCGTTTGA",
+ "AGGTTTGA","CGGTTTGA","GGGTTTGA","TGGTTTGA","ATGTTTGA","CTGTTTGA","GTGTTTGA","TTGTTTGA",
+ "AATTTTGA","CATTTTGA","GATTTTGA","TATTTTGA","ACTTTTGA","CCTTTTGA","GCTTTTGA","TCTTTTGA",
+ "AGTTTTGA","CGTTTTGA","GGTTTTGA","TGTTTTGA","ATTTTTGA","CTTTTTGA","GTTTTTGA","TTTTTTGA",
+ "AAAAAATA","CAAAAATA","GAAAAATA","TAAAAATA","ACAAAATA","CCAAAATA","GCAAAATA","TCAAAATA",
+ "AGAAAATA","CGAAAATA","GGAAAATA","TGAAAATA","ATAAAATA","CTAAAATA","GTAAAATA","TTAAAATA",
+ "AACAAATA","CACAAATA","GACAAATA","TACAAATA","ACCAAATA","CCCAAATA","GCCAAATA","TCCAAATA",
+ "AGCAAATA","CGCAAATA","GGCAAATA","TGCAAATA","ATCAAATA","CTCAAATA","GTCAAATA","TTCAAATA",
+ "AAGAAATA","CAGAAATA","GAGAAATA","TAGAAATA","ACGAAATA","CCGAAATA","GCGAAATA","TCGAAATA",
+ "AGGAAATA","CGGAAATA","GGGAAATA","TGGAAATA","ATGAAATA","CTGAAATA","GTGAAATA","TTGAAATA",
+ "AATAAATA","CATAAATA","GATAAATA","TATAAATA","ACTAAATA","CCTAAATA","GCTAAATA","TCTAAATA",
+ "AGTAAATA","CGTAAATA","GGTAAATA","TGTAAATA","ATTAAATA","CTTAAATA","GTTAAATA","TTTAAATA",
+ "AAACAATA","CAACAATA","GAACAATA","TAACAATA","ACACAATA","CCACAATA","GCACAATA","TCACAATA",
+ "AGACAATA","CGACAATA","GGACAATA","TGACAATA","ATACAATA","CTACAATA","GTACAATA","TTACAATA",
+ "AACCAATA","CACCAATA","GACCAATA","TACCAATA","ACCCAATA","CCCCAATA","GCCCAATA","TCCCAATA",
+ "AGCCAATA","CGCCAATA","GGCCAATA","TGCCAATA","ATCCAATA","CTCCAATA","GTCCAATA","TTCCAATA",
+ "AAGCAATA","CAGCAATA","GAGCAATA","TAGCAATA","ACGCAATA","CCGCAATA","GCGCAATA","TCGCAATA",
+ "AGGCAATA","CGGCAATA","GGGCAATA","TGGCAATA","ATGCAATA","CTGCAATA","GTGCAATA","TTGCAATA",
+ "AATCAATA","CATCAATA","GATCAATA","TATCAATA","ACTCAATA","CCTCAATA","GCTCAATA","TCTCAATA",
+ "AGTCAATA","CGTCAATA","GGTCAATA","TGTCAATA","ATTCAATA","CTTCAATA","GTTCAATA","TTTCAATA",
+ "AAAGAATA","CAAGAATA","GAAGAATA","TAAGAATA","ACAGAATA","CCAGAATA","GCAGAATA","TCAGAATA",
+ "AGAGAATA","CGAGAATA","GGAGAATA","TGAGAATA","ATAGAATA","CTAGAATA","GTAGAATA","TTAGAATA",
+ "AACGAATA","CACGAATA","GACGAATA","TACGAATA","ACCGAATA","CCCGAATA","GCCGAATA","TCCGAATA",
+ "AGCGAATA","CGCGAATA","GGCGAATA","TGCGAATA","ATCGAATA","CTCGAATA","GTCGAATA","TTCGAATA",
+ "AAGGAATA","CAGGAATA","GAGGAATA","TAGGAATA","ACGGAATA","CCGGAATA","GCGGAATA","TCGGAATA",
+ "AGGGAATA","CGGGAATA","GGGGAATA","TGGGAATA","ATGGAATA","CTGGAATA","GTGGAATA","TTGGAATA",
+ "AATGAATA","CATGAATA","GATGAATA","TATGAATA","ACTGAATA","CCTGAATA","GCTGAATA","TCTGAATA",
+ "AGTGAATA","CGTGAATA","GGTGAATA","TGTGAATA","ATTGAATA","CTTGAATA","GTTGAATA","TTTGAATA",
+ "AAATAATA","CAATAATA","GAATAATA","TAATAATA","ACATAATA","CCATAATA","GCATAATA","TCATAATA",
+ "AGATAATA","CGATAATA","GGATAATA","TGATAATA","ATATAATA","CTATAATA","GTATAATA","TTATAATA",
+ "AACTAATA","CACTAATA","GACTAATA","TACTAATA","ACCTAATA","CCCTAATA","GCCTAATA","TCCTAATA",
+ "AGCTAATA","CGCTAATA","GGCTAATA","TGCTAATA","ATCTAATA","CTCTAATA","GTCTAATA","TTCTAATA",
+ "AAGTAATA","CAGTAATA","GAGTAATA","TAGTAATA","ACGTAATA","CCGTAATA","GCGTAATA","TCGTAATA",
+ "AGGTAATA","CGGTAATA","GGGTAATA","TGGTAATA","ATGTAATA","CTGTAATA","GTGTAATA","TTGTAATA",
+ "AATTAATA","CATTAATA","GATTAATA","TATTAATA","ACTTAATA","CCTTAATA","GCTTAATA","TCTTAATA",
+ "AGTTAATA","CGTTAATA","GGTTAATA","TGTTAATA","ATTTAATA","CTTTAATA","GTTTAATA","TTTTAATA",
+ "AAAACATA","CAAACATA","GAAACATA","TAAACATA","ACAACATA","CCAACATA","GCAACATA","TCAACATA",
+ "AGAACATA","CGAACATA","GGAACATA","TGAACATA","ATAACATA","CTAACATA","GTAACATA","TTAACATA",
+ "AACACATA","CACACATA","GACACATA","TACACATA","ACCACATA","CCCACATA","GCCACATA","TCCACATA",
+ "AGCACATA","CGCACATA","GGCACATA","TGCACATA","ATCACATA","CTCACATA","GTCACATA","TTCACATA",
+ "AAGACATA","CAGACATA","GAGACATA","TAGACATA","ACGACATA","CCGACATA","GCGACATA","TCGACATA",
+ "AGGACATA","CGGACATA","GGGACATA","TGGACATA","ATGACATA","CTGACATA","GTGACATA","TTGACATA",
+ "AATACATA","CATACATA","GATACATA","TATACATA","ACTACATA","CCTACATA","GCTACATA","TCTACATA",
+ "AGTACATA","CGTACATA","GGTACATA","TGTACATA","ATTACATA","CTTACATA","GTTACATA","TTTACATA",
+ "AAACCATA","CAACCATA","GAACCATA","TAACCATA","ACACCATA","CCACCATA","GCACCATA","TCACCATA",
+ "AGACCATA","CGACCATA","GGACCATA","TGACCATA","ATACCATA","CTACCATA","GTACCATA","TTACCATA",
+ "AACCCATA","CACCCATA","GACCCATA","TACCCATA","ACCCCATA","CCCCCATA","GCCCCATA","TCCCCATA",
+ "AGCCCATA","CGCCCATA","GGCCCATA","TGCCCATA","ATCCCATA","CTCCCATA","GTCCCATA","TTCCCATA",
+ "AAGCCATA","CAGCCATA","GAGCCATA","TAGCCATA","ACGCCATA","CCGCCATA","GCGCCATA","TCGCCATA",
+ "AGGCCATA","CGGCCATA","GGGCCATA","TGGCCATA","ATGCCATA","CTGCCATA","GTGCCATA","TTGCCATA",
+ "AATCCATA","CATCCATA","GATCCATA","TATCCATA","ACTCCATA","CCTCCATA","GCTCCATA","TCTCCATA",
+ "AGTCCATA","CGTCCATA","GGTCCATA","TGTCCATA","ATTCCATA","CTTCCATA","GTTCCATA","TTTCCATA",
+ "AAAGCATA","CAAGCATA","GAAGCATA","TAAGCATA","ACAGCATA","CCAGCATA","GCAGCATA","TCAGCATA",
+ "AGAGCATA","CGAGCATA","GGAGCATA","TGAGCATA","ATAGCATA","CTAGCATA","GTAGCATA","TTAGCATA",
+ "AACGCATA","CACGCATA","GACGCATA","TACGCATA","ACCGCATA","CCCGCATA","GCCGCATA","TCCGCATA",
+ "AGCGCATA","CGCGCATA","GGCGCATA","TGCGCATA","ATCGCATA","CTCGCATA","GTCGCATA","TTCGCATA",
+ "AAGGCATA","CAGGCATA","GAGGCATA","TAGGCATA","ACGGCATA","CCGGCATA","GCGGCATA","TCGGCATA",
+ "AGGGCATA","CGGGCATA","GGGGCATA","TGGGCATA","ATGGCATA","CTGGCATA","GTGGCATA","TTGGCATA",
+ "AATGCATA","CATGCATA","GATGCATA","TATGCATA","ACTGCATA","CCTGCATA","GCTGCATA","TCTGCATA",
+ "AGTGCATA","CGTGCATA","GGTGCATA","TGTGCATA","ATTGCATA","CTTGCATA","GTTGCATA","TTTGCATA",
+ "AAATCATA","CAATCATA","GAATCATA","TAATCATA","ACATCATA","CCATCATA","GCATCATA","TCATCATA",
+ "AGATCATA","CGATCATA","GGATCATA","TGATCATA","ATATCATA","CTATCATA","GTATCATA","TTATCATA",
+ "AACTCATA","CACTCATA","GACTCATA","TACTCATA","ACCTCATA","CCCTCATA","GCCTCATA","TCCTCATA",
+ "AGCTCATA","CGCTCATA","GGCTCATA","TGCTCATA","ATCTCATA","CTCTCATA","GTCTCATA","TTCTCATA",
+ "AAGTCATA","CAGTCATA","GAGTCATA","TAGTCATA","ACGTCATA","CCGTCATA","GCGTCATA","TCGTCATA",
+ "AGGTCATA","CGGTCATA","GGGTCATA","TGGTCATA","ATGTCATA","CTGTCATA","GTGTCATA","TTGTCATA",
+ "AATTCATA","CATTCATA","GATTCATA","TATTCATA","ACTTCATA","CCTTCATA","GCTTCATA","TCTTCATA",
+ "AGTTCATA","CGTTCATA","GGTTCATA","TGTTCATA","ATTTCATA","CTTTCATA","GTTTCATA","TTTTCATA",
+ "AAAAGATA","CAAAGATA","GAAAGATA","TAAAGATA","ACAAGATA","CCAAGATA","GCAAGATA","TCAAGATA",
+ "AGAAGATA","CGAAGATA","GGAAGATA","TGAAGATA","ATAAGATA","CTAAGATA","GTAAGATA","TTAAGATA",
+ "AACAGATA","CACAGATA","GACAGATA","TACAGATA","ACCAGATA","CCCAGATA","GCCAGATA","TCCAGATA",
+ "AGCAGATA","CGCAGATA","GGCAGATA","TGCAGATA","ATCAGATA","CTCAGATA","GTCAGATA","TTCAGATA",
+ "AAGAGATA","CAGAGATA","GAGAGATA","TAGAGATA","ACGAGATA","CCGAGATA","GCGAGATA","TCGAGATA",
+ "AGGAGATA","CGGAGATA","GGGAGATA","TGGAGATA","ATGAGATA","CTGAGATA","GTGAGATA","TTGAGATA",
+ "AATAGATA","CATAGATA","GATAGATA","TATAGATA","ACTAGATA","CCTAGATA","GCTAGATA","TCTAGATA",
+ "AGTAGATA","CGTAGATA","GGTAGATA","TGTAGATA","ATTAGATA","CTTAGATA","GTTAGATA","TTTAGATA",
+ "AAACGATA","CAACGATA","GAACGATA","TAACGATA","ACACGATA","CCACGATA","GCACGATA","TCACGATA",
+ "AGACGATA","CGACGATA","GGACGATA","TGACGATA","ATACGATA","CTACGATA","GTACGATA","TTACGATA",
+ "AACCGATA","CACCGATA","GACCGATA","TACCGATA","ACCCGATA","CCCCGATA","GCCCGATA","TCCCGATA",
+ "AGCCGATA","CGCCGATA","GGCCGATA","TGCCGATA","ATCCGATA","CTCCGATA","GTCCGATA","TTCCGATA",
+ "AAGCGATA","CAGCGATA","GAGCGATA","TAGCGATA","ACGCGATA","CCGCGATA","GCGCGATA","TCGCGATA",
+ "AGGCGATA","CGGCGATA","GGGCGATA","TGGCGATA","ATGCGATA","CTGCGATA","GTGCGATA","TTGCGATA",
+ "AATCGATA","CATCGATA","GATCGATA","TATCGATA","ACTCGATA","CCTCGATA","GCTCGATA","TCTCGATA",
+ "AGTCGATA","CGTCGATA","GGTCGATA","TGTCGATA","ATTCGATA","CTTCGATA","GTTCGATA","TTTCGATA",
+ "AAAGGATA","CAAGGATA","GAAGGATA","TAAGGATA","ACAGGATA","CCAGGATA","GCAGGATA","TCAGGATA",
+ "AGAGGATA","CGAGGATA","GGAGGATA","TGAGGATA","ATAGGATA","CTAGGATA","GTAGGATA","TTAGGATA",
+ "AACGGATA","CACGGATA","GACGGATA","TACGGATA","ACCGGATA","CCCGGATA","GCCGGATA","TCCGGATA",
+ "AGCGGATA","CGCGGATA","GGCGGATA","TGCGGATA","ATCGGATA","CTCGGATA","GTCGGATA","TTCGGATA",
+ "AAGGGATA","CAGGGATA","GAGGGATA","TAGGGATA","ACGGGATA","CCGGGATA","GCGGGATA","TCGGGATA",
+ "AGGGGATA","CGGGGATA","GGGGGATA","TGGGGATA","ATGGGATA","CTGGGATA","GTGGGATA","TTGGGATA",
+ "AATGGATA","CATGGATA","GATGGATA","TATGGATA","ACTGGATA","CCTGGATA","GCTGGATA","TCTGGATA",
+ "AGTGGATA","CGTGGATA","GGTGGATA","TGTGGATA","ATTGGATA","CTTGGATA","GTTGGATA","TTTGGATA",
+ "AAATGATA","CAATGATA","GAATGATA","TAATGATA","ACATGATA","CCATGATA","GCATGATA","TCATGATA",
+ "AGATGATA","CGATGATA","GGATGATA","TGATGATA","ATATGATA","CTATGATA","GTATGATA","TTATGATA",
+ "AACTGATA","CACTGATA","GACTGATA","TACTGATA","ACCTGATA","CCCTGATA","GCCTGATA","TCCTGATA",
+ "AGCTGATA","CGCTGATA","GGCTGATA","TGCTGATA","ATCTGATA","CTCTGATA","GTCTGATA","TTCTGATA",
+ "AAGTGATA","CAGTGATA","GAGTGATA","TAGTGATA","ACGTGATA","CCGTGATA","GCGTGATA","TCGTGATA",
+ "AGGTGATA","CGGTGATA","GGGTGATA","TGGTGATA","ATGTGATA","CTGTGATA","GTGTGATA","TTGTGATA",
+ "AATTGATA","CATTGATA","GATTGATA","TATTGATA","ACTTGATA","CCTTGATA","GCTTGATA","TCTTGATA",
+ "AGTTGATA","CGTTGATA","GGTTGATA","TGTTGATA","ATTTGATA","CTTTGATA","GTTTGATA","TTTTGATA",
+ "AAAATATA","CAAATATA","GAAATATA","TAAATATA","ACAATATA","CCAATATA","GCAATATA","TCAATATA",
+ "AGAATATA","CGAATATA","GGAATATA","TGAATATA","ATAATATA","CTAATATA","GTAATATA","TTAATATA",
+ "AACATATA","CACATATA","GACATATA","TACATATA","ACCATATA","CCCATATA","GCCATATA","TCCATATA",
+ "AGCATATA","CGCATATA","GGCATATA","TGCATATA","ATCATATA","CTCATATA","GTCATATA","TTCATATA",
+ "AAGATATA","CAGATATA","GAGATATA","TAGATATA","ACGATATA","CCGATATA","GCGATATA","TCGATATA",
+ "AGGATATA","CGGATATA","GGGATATA","TGGATATA","ATGATATA","CTGATATA","GTGATATA","TTGATATA",
+ "AATATATA","CATATATA","GATATATA","TATATATA","ACTATATA","CCTATATA","GCTATATA","TCTATATA",
+ "AGTATATA","CGTATATA","GGTATATA","TGTATATA","ATTATATA","CTTATATA","GTTATATA","TTTATATA",
+ "AAACTATA","CAACTATA","GAACTATA","TAACTATA","ACACTATA","CCACTATA","GCACTATA","TCACTATA",
+ "AGACTATA","CGACTATA","GGACTATA","TGACTATA","ATACTATA","CTACTATA","GTACTATA","TTACTATA",
+ "AACCTATA","CACCTATA","GACCTATA","TACCTATA","ACCCTATA","CCCCTATA","GCCCTATA","TCCCTATA",
+ "AGCCTATA","CGCCTATA","GGCCTATA","TGCCTATA","ATCCTATA","CTCCTATA","GTCCTATA","TTCCTATA",
+ "AAGCTATA","CAGCTATA","GAGCTATA","TAGCTATA","ACGCTATA","CCGCTATA","GCGCTATA","TCGCTATA",
+ "AGGCTATA","CGGCTATA","GGGCTATA","TGGCTATA","ATGCTATA","CTGCTATA","GTGCTATA","TTGCTATA",
+ "AATCTATA","CATCTATA","GATCTATA","TATCTATA","ACTCTATA","CCTCTATA","GCTCTATA","TCTCTATA",
+ "AGTCTATA","CGTCTATA","GGTCTATA","TGTCTATA","ATTCTATA","CTTCTATA","GTTCTATA","TTTCTATA",
+ "AAAGTATA","CAAGTATA","GAAGTATA","TAAGTATA","ACAGTATA","CCAGTATA","GCAGTATA","TCAGTATA",
+ "AGAGTATA","CGAGTATA","GGAGTATA","TGAGTATA","ATAGTATA","CTAGTATA","GTAGTATA","TTAGTATA",
+ "AACGTATA","CACGTATA","GACGTATA","TACGTATA","ACCGTATA","CCCGTATA","GCCGTATA","TCCGTATA",
+ "AGCGTATA","CGCGTATA","GGCGTATA","TGCGTATA","ATCGTATA","CTCGTATA","GTCGTATA","TTCGTATA",
+ "AAGGTATA","CAGGTATA","GAGGTATA","TAGGTATA","ACGGTATA","CCGGTATA","GCGGTATA","TCGGTATA",
+ "AGGGTATA","CGGGTATA","GGGGTATA","TGGGTATA","ATGGTATA","CTGGTATA","GTGGTATA","TTGGTATA",
+ "AATGTATA","CATGTATA","GATGTATA","TATGTATA","ACTGTATA","CCTGTATA","GCTGTATA","TCTGTATA",
+ "AGTGTATA","CGTGTATA","GGTGTATA","TGTGTATA","ATTGTATA","CTTGTATA","GTTGTATA","TTTGTATA",
+ "AAATTATA","CAATTATA","GAATTATA","TAATTATA","ACATTATA","CCATTATA","GCATTATA","TCATTATA",
+ "AGATTATA","CGATTATA","GGATTATA","TGATTATA","ATATTATA","CTATTATA","GTATTATA","TTATTATA",
+ "AACTTATA","CACTTATA","GACTTATA","TACTTATA","ACCTTATA","CCCTTATA","GCCTTATA","TCCTTATA",
+ "AGCTTATA","CGCTTATA","GGCTTATA","TGCTTATA","ATCTTATA","CTCTTATA","GTCTTATA","TTCTTATA",
+ "AAGTTATA","CAGTTATA","GAGTTATA","TAGTTATA","ACGTTATA","CCGTTATA","GCGTTATA","TCGTTATA",
+ "AGGTTATA","CGGTTATA","GGGTTATA","TGGTTATA","ATGTTATA","CTGTTATA","GTGTTATA","TTGTTATA",
+ "AATTTATA","CATTTATA","GATTTATA","TATTTATA","ACTTTATA","CCTTTATA","GCTTTATA","TCTTTATA",
+ "AGTTTATA","CGTTTATA","GGTTTATA","TGTTTATA","ATTTTATA","CTTTTATA","GTTTTATA","TTTTTATA",
+ "AAAAACTA","CAAAACTA","GAAAACTA","TAAAACTA","ACAAACTA","CCAAACTA","GCAAACTA","TCAAACTA",
+ "AGAAACTA","CGAAACTA","GGAAACTA","TGAAACTA","ATAAACTA","CTAAACTA","GTAAACTA","TTAAACTA",
+ "AACAACTA","CACAACTA","GACAACTA","TACAACTA","ACCAACTA","CCCAACTA","GCCAACTA","TCCAACTA",
+ "AGCAACTA","CGCAACTA","GGCAACTA","TGCAACTA","ATCAACTA","CTCAACTA","GTCAACTA","TTCAACTA",
+ "AAGAACTA","CAGAACTA","GAGAACTA","TAGAACTA","ACGAACTA","CCGAACTA","GCGAACTA","TCGAACTA",
+ "AGGAACTA","CGGAACTA","GGGAACTA","TGGAACTA","ATGAACTA","CTGAACTA","GTGAACTA","TTGAACTA",
+ "AATAACTA","CATAACTA","GATAACTA","TATAACTA","ACTAACTA","CCTAACTA","GCTAACTA","TCTAACTA",
+ "AGTAACTA","CGTAACTA","GGTAACTA","TGTAACTA","ATTAACTA","CTTAACTA","GTTAACTA","TTTAACTA",
+ "AAACACTA","CAACACTA","GAACACTA","TAACACTA","ACACACTA","CCACACTA","GCACACTA","TCACACTA",
+ "AGACACTA","CGACACTA","GGACACTA","TGACACTA","ATACACTA","CTACACTA","GTACACTA","TTACACTA",
+ "AACCACTA","CACCACTA","GACCACTA","TACCACTA","ACCCACTA","CCCCACTA","GCCCACTA","TCCCACTA",
+ "AGCCACTA","CGCCACTA","GGCCACTA","TGCCACTA","ATCCACTA","CTCCACTA","GTCCACTA","TTCCACTA",
+ "AAGCACTA","CAGCACTA","GAGCACTA","TAGCACTA","ACGCACTA","CCGCACTA","GCGCACTA","TCGCACTA",
+ "AGGCACTA","CGGCACTA","GGGCACTA","TGGCACTA","ATGCACTA","CTGCACTA","GTGCACTA","TTGCACTA",
+ "AATCACTA","CATCACTA","GATCACTA","TATCACTA","ACTCACTA","CCTCACTA","GCTCACTA","TCTCACTA",
+ "AGTCACTA","CGTCACTA","GGTCACTA","TGTCACTA","ATTCACTA","CTTCACTA","GTTCACTA","TTTCACTA",
+ "AAAGACTA","CAAGACTA","GAAGACTA","TAAGACTA","ACAGACTA","CCAGACTA","GCAGACTA","TCAGACTA",
+ "AGAGACTA","CGAGACTA","GGAGACTA","TGAGACTA","ATAGACTA","CTAGACTA","GTAGACTA","TTAGACTA",
+ "AACGACTA","CACGACTA","GACGACTA","TACGACTA","ACCGACTA","CCCGACTA","GCCGACTA","TCCGACTA",
+ "AGCGACTA","CGCGACTA","GGCGACTA","TGCGACTA","ATCGACTA","CTCGACTA","GTCGACTA","TTCGACTA",
+ "AAGGACTA","CAGGACTA","GAGGACTA","TAGGACTA","ACGGACTA","CCGGACTA","GCGGACTA","TCGGACTA",
+ "AGGGACTA","CGGGACTA","GGGGACTA","TGGGACTA","ATGGACTA","CTGGACTA","GTGGACTA","TTGGACTA",
+ "AATGACTA","CATGACTA","GATGACTA","TATGACTA","ACTGACTA","CCTGACTA","GCTGACTA","TCTGACTA",
+ "AGTGACTA","CGTGACTA","GGTGACTA","TGTGACTA","ATTGACTA","CTTGACTA","GTTGACTA","TTTGACTA",
+ "AAATACTA","CAATACTA","GAATACTA","TAATACTA","ACATACTA","CCATACTA","GCATACTA","TCATACTA",
+ "AGATACTA","CGATACTA","GGATACTA","TGATACTA","ATATACTA","CTATACTA","GTATACTA","TTATACTA",
+ "AACTACTA","CACTACTA","GACTACTA","TACTACTA","ACCTACTA","CCCTACTA","GCCTACTA","TCCTACTA",
+ "AGCTACTA","CGCTACTA","GGCTACTA","TGCTACTA","ATCTACTA","CTCTACTA","GTCTACTA","TTCTACTA",
+ "AAGTACTA","CAGTACTA","GAGTACTA","TAGTACTA","ACGTACTA","CCGTACTA","GCGTACTA","TCGTACTA",
+ "AGGTACTA","CGGTACTA","GGGTACTA","TGGTACTA","ATGTACTA","CTGTACTA","GTGTACTA","TTGTACTA",
+ "AATTACTA","CATTACTA","GATTACTA","TATTACTA","ACTTACTA","CCTTACTA","GCTTACTA","TCTTACTA",
+ "AGTTACTA","CGTTACTA","GGTTACTA","TGTTACTA","ATTTACTA","CTTTACTA","GTTTACTA","TTTTACTA",
+ "AAAACCTA","CAAACCTA","GAAACCTA","TAAACCTA","ACAACCTA","CCAACCTA","GCAACCTA","TCAACCTA",
+ "AGAACCTA","CGAACCTA","GGAACCTA","TGAACCTA","ATAACCTA","CTAACCTA","GTAACCTA","TTAACCTA",
+ "AACACCTA","CACACCTA","GACACCTA","TACACCTA","ACCACCTA","CCCACCTA","GCCACCTA","TCCACCTA",
+ "AGCACCTA","CGCACCTA","GGCACCTA","TGCACCTA","ATCACCTA","CTCACCTA","GTCACCTA","TTCACCTA",
+ "AAGACCTA","CAGACCTA","GAGACCTA","TAGACCTA","ACGACCTA","CCGACCTA","GCGACCTA","TCGACCTA",
+ "AGGACCTA","CGGACCTA","GGGACCTA","TGGACCTA","ATGACCTA","CTGACCTA","GTGACCTA","TTGACCTA",
+ "AATACCTA","CATACCTA","GATACCTA","TATACCTA","ACTACCTA","CCTACCTA","GCTACCTA","TCTACCTA",
+ "AGTACCTA","CGTACCTA","GGTACCTA","TGTACCTA","ATTACCTA","CTTACCTA","GTTACCTA","TTTACCTA",
+ "AAACCCTA","CAACCCTA","GAACCCTA","TAACCCTA","ACACCCTA","CCACCCTA","GCACCCTA","TCACCCTA",
+ "AGACCCTA","CGACCCTA","GGACCCTA","TGACCCTA","ATACCCTA","CTACCCTA","GTACCCTA","TTACCCTA",
+ "AACCCCTA","CACCCCTA","GACCCCTA","TACCCCTA","ACCCCCTA","CCCCCCTA","GCCCCCTA","TCCCCCTA",
+ "AGCCCCTA","CGCCCCTA","GGCCCCTA","TGCCCCTA","ATCCCCTA","CTCCCCTA","GTCCCCTA","TTCCCCTA",
+ "AAGCCCTA","CAGCCCTA","GAGCCCTA","TAGCCCTA","ACGCCCTA","CCGCCCTA","GCGCCCTA","TCGCCCTA",
+ "AGGCCCTA","CGGCCCTA","GGGCCCTA","TGGCCCTA","ATGCCCTA","CTGCCCTA","GTGCCCTA","TTGCCCTA",
+ "AATCCCTA","CATCCCTA","GATCCCTA","TATCCCTA","ACTCCCTA","CCTCCCTA","GCTCCCTA","TCTCCCTA",
+ "AGTCCCTA","CGTCCCTA","GGTCCCTA","TGTCCCTA","ATTCCCTA","CTTCCCTA","GTTCCCTA","TTTCCCTA",
+ "AAAGCCTA","CAAGCCTA","GAAGCCTA","TAAGCCTA","ACAGCCTA","CCAGCCTA","GCAGCCTA","TCAGCCTA",
+ "AGAGCCTA","CGAGCCTA","GGAGCCTA","TGAGCCTA","ATAGCCTA","CTAGCCTA","GTAGCCTA","TTAGCCTA",
+ "AACGCCTA","CACGCCTA","GACGCCTA","TACGCCTA","ACCGCCTA","CCCGCCTA","GCCGCCTA","TCCGCCTA",
+ "AGCGCCTA","CGCGCCTA","GGCGCCTA","TGCGCCTA","ATCGCCTA","CTCGCCTA","GTCGCCTA","TTCGCCTA",
+ "AAGGCCTA","CAGGCCTA","GAGGCCTA","TAGGCCTA","ACGGCCTA","CCGGCCTA","GCGGCCTA","TCGGCCTA",
+ "AGGGCCTA","CGGGCCTA","GGGGCCTA","TGGGCCTA","ATGGCCTA","CTGGCCTA","GTGGCCTA","TTGGCCTA",
+ "AATGCCTA","CATGCCTA","GATGCCTA","TATGCCTA","ACTGCCTA","CCTGCCTA","GCTGCCTA","TCTGCCTA",
+ "AGTGCCTA","CGTGCCTA","GGTGCCTA","TGTGCCTA","ATTGCCTA","CTTGCCTA","GTTGCCTA","TTTGCCTA",
+ "AAATCCTA","CAATCCTA","GAATCCTA","TAATCCTA","ACATCCTA","CCATCCTA","GCATCCTA","TCATCCTA",
+ "AGATCCTA","CGATCCTA","GGATCCTA","TGATCCTA","ATATCCTA","CTATCCTA","GTATCCTA","TTATCCTA",
+ "AACTCCTA","CACTCCTA","GACTCCTA","TACTCCTA","ACCTCCTA","CCCTCCTA","GCCTCCTA","TCCTCCTA",
+ "AGCTCCTA","CGCTCCTA","GGCTCCTA","TGCTCCTA","ATCTCCTA","CTCTCCTA","GTCTCCTA","TTCTCCTA",
+ "AAGTCCTA","CAGTCCTA","GAGTCCTA","TAGTCCTA","ACGTCCTA","CCGTCCTA","GCGTCCTA","TCGTCCTA",
+ "AGGTCCTA","CGGTCCTA","GGGTCCTA","TGGTCCTA","ATGTCCTA","CTGTCCTA","GTGTCCTA","TTGTCCTA",
+ "AATTCCTA","CATTCCTA","GATTCCTA","TATTCCTA","ACTTCCTA","CCTTCCTA","GCTTCCTA","TCTTCCTA",
+ "AGTTCCTA","CGTTCCTA","GGTTCCTA","TGTTCCTA","ATTTCCTA","CTTTCCTA","GTTTCCTA","TTTTCCTA",
+ "AAAAGCTA","CAAAGCTA","GAAAGCTA","TAAAGCTA","ACAAGCTA","CCAAGCTA","GCAAGCTA","TCAAGCTA",
+ "AGAAGCTA","CGAAGCTA","GGAAGCTA","TGAAGCTA","ATAAGCTA","CTAAGCTA","GTAAGCTA","TTAAGCTA",
+ "AACAGCTA","CACAGCTA","GACAGCTA","TACAGCTA","ACCAGCTA","CCCAGCTA","GCCAGCTA","TCCAGCTA",
+ "AGCAGCTA","CGCAGCTA","GGCAGCTA","TGCAGCTA","ATCAGCTA","CTCAGCTA","GTCAGCTA","TTCAGCTA",
+ "AAGAGCTA","CAGAGCTA","GAGAGCTA","TAGAGCTA","ACGAGCTA","CCGAGCTA","GCGAGCTA","TCGAGCTA",
+ "AGGAGCTA","CGGAGCTA","GGGAGCTA","TGGAGCTA","ATGAGCTA","CTGAGCTA","GTGAGCTA","TTGAGCTA",
+ "AATAGCTA","CATAGCTA","GATAGCTA","TATAGCTA","ACTAGCTA","CCTAGCTA","GCTAGCTA","TCTAGCTA",
+ "AGTAGCTA","CGTAGCTA","GGTAGCTA","TGTAGCTA","ATTAGCTA","CTTAGCTA","GTTAGCTA","TTTAGCTA",
+ "AAACGCTA","CAACGCTA","GAACGCTA","TAACGCTA","ACACGCTA","CCACGCTA","GCACGCTA","TCACGCTA",
+ "AGACGCTA","CGACGCTA","GGACGCTA","TGACGCTA","ATACGCTA","CTACGCTA","GTACGCTA","TTACGCTA",
+ "AACCGCTA","CACCGCTA","GACCGCTA","TACCGCTA","ACCCGCTA","CCCCGCTA","GCCCGCTA","TCCCGCTA",
+ "AGCCGCTA","CGCCGCTA","GGCCGCTA","TGCCGCTA","ATCCGCTA","CTCCGCTA","GTCCGCTA","TTCCGCTA",
+ "AAGCGCTA","CAGCGCTA","GAGCGCTA","TAGCGCTA","ACGCGCTA","CCGCGCTA","GCGCGCTA","TCGCGCTA",
+ "AGGCGCTA","CGGCGCTA","GGGCGCTA","TGGCGCTA","ATGCGCTA","CTGCGCTA","GTGCGCTA","TTGCGCTA",
+ "AATCGCTA","CATCGCTA","GATCGCTA","TATCGCTA","ACTCGCTA","CCTCGCTA","GCTCGCTA","TCTCGCTA",
+ "AGTCGCTA","CGTCGCTA","GGTCGCTA","TGTCGCTA","ATTCGCTA","CTTCGCTA","GTTCGCTA","TTTCGCTA",
+ "AAAGGCTA","CAAGGCTA","GAAGGCTA","TAAGGCTA","ACAGGCTA","CCAGGCTA","GCAGGCTA","TCAGGCTA",
+ "AGAGGCTA","CGAGGCTA","GGAGGCTA","TGAGGCTA","ATAGGCTA","CTAGGCTA","GTAGGCTA","TTAGGCTA",
+ "AACGGCTA","CACGGCTA","GACGGCTA","TACGGCTA","ACCGGCTA","CCCGGCTA","GCCGGCTA","TCCGGCTA",
+ "AGCGGCTA","CGCGGCTA","GGCGGCTA","TGCGGCTA","ATCGGCTA","CTCGGCTA","GTCGGCTA","TTCGGCTA",
+ "AAGGGCTA","CAGGGCTA","GAGGGCTA","TAGGGCTA","ACGGGCTA","CCGGGCTA","GCGGGCTA","TCGGGCTA",
+ "AGGGGCTA","CGGGGCTA","GGGGGCTA","TGGGGCTA","ATGGGCTA","CTGGGCTA","GTGGGCTA","TTGGGCTA",
+ "AATGGCTA","CATGGCTA","GATGGCTA","TATGGCTA","ACTGGCTA","CCTGGCTA","GCTGGCTA","TCTGGCTA",
+ "AGTGGCTA","CGTGGCTA","GGTGGCTA","TGTGGCTA","ATTGGCTA","CTTGGCTA","GTTGGCTA","TTTGGCTA",
+ "AAATGCTA","CAATGCTA","GAATGCTA","TAATGCTA","ACATGCTA","CCATGCTA","GCATGCTA","TCATGCTA",
+ "AGATGCTA","CGATGCTA","GGATGCTA","TGATGCTA","ATATGCTA","CTATGCTA","GTATGCTA","TTATGCTA",
+ "AACTGCTA","CACTGCTA","GACTGCTA","TACTGCTA","ACCTGCTA","CCCTGCTA","GCCTGCTA","TCCTGCTA",
+ "AGCTGCTA","CGCTGCTA","GGCTGCTA","TGCTGCTA","ATCTGCTA","CTCTGCTA","GTCTGCTA","TTCTGCTA",
+ "AAGTGCTA","CAGTGCTA","GAGTGCTA","TAGTGCTA","ACGTGCTA","CCGTGCTA","GCGTGCTA","TCGTGCTA",
+ "AGGTGCTA","CGGTGCTA","GGGTGCTA","TGGTGCTA","ATGTGCTA","CTGTGCTA","GTGTGCTA","TTGTGCTA",
+ "AATTGCTA","CATTGCTA","GATTGCTA","TATTGCTA","ACTTGCTA","CCTTGCTA","GCTTGCTA","TCTTGCTA",
+ "AGTTGCTA","CGTTGCTA","GGTTGCTA","TGTTGCTA","ATTTGCTA","CTTTGCTA","GTTTGCTA","TTTTGCTA",
+ "AAAATCTA","CAAATCTA","GAAATCTA","TAAATCTA","ACAATCTA","CCAATCTA","GCAATCTA","TCAATCTA",
+ "AGAATCTA","CGAATCTA","GGAATCTA","TGAATCTA","ATAATCTA","CTAATCTA","GTAATCTA","TTAATCTA",
+ "AACATCTA","CACATCTA","GACATCTA","TACATCTA","ACCATCTA","CCCATCTA","GCCATCTA","TCCATCTA",
+ "AGCATCTA","CGCATCTA","GGCATCTA","TGCATCTA","ATCATCTA","CTCATCTA","GTCATCTA","TTCATCTA",
+ "AAGATCTA","CAGATCTA","GAGATCTA","TAGATCTA","ACGATCTA","CCGATCTA","GCGATCTA","TCGATCTA",
+ "AGGATCTA","CGGATCTA","GGGATCTA","TGGATCTA","ATGATCTA","CTGATCTA","GTGATCTA","TTGATCTA",
+ "AATATCTA","CATATCTA","GATATCTA","TATATCTA","ACTATCTA","CCTATCTA","GCTATCTA","TCTATCTA",
+ "AGTATCTA","CGTATCTA","GGTATCTA","TGTATCTA","ATTATCTA","CTTATCTA","GTTATCTA","TTTATCTA",
+ "AAACTCTA","CAACTCTA","GAACTCTA","TAACTCTA","ACACTCTA","CCACTCTA","GCACTCTA","TCACTCTA",
+ "AGACTCTA","CGACTCTA","GGACTCTA","TGACTCTA","ATACTCTA","CTACTCTA","GTACTCTA","TTACTCTA",
+ "AACCTCTA","CACCTCTA","GACCTCTA","TACCTCTA","ACCCTCTA","CCCCTCTA","GCCCTCTA","TCCCTCTA",
+ "AGCCTCTA","CGCCTCTA","GGCCTCTA","TGCCTCTA","ATCCTCTA","CTCCTCTA","GTCCTCTA","TTCCTCTA",
+ "AAGCTCTA","CAGCTCTA","GAGCTCTA","TAGCTCTA","ACGCTCTA","CCGCTCTA","GCGCTCTA","TCGCTCTA",
+ "AGGCTCTA","CGGCTCTA","GGGCTCTA","TGGCTCTA","ATGCTCTA","CTGCTCTA","GTGCTCTA","TTGCTCTA",
+ "AATCTCTA","CATCTCTA","GATCTCTA","TATCTCTA","ACTCTCTA","CCTCTCTA","GCTCTCTA","TCTCTCTA",
+ "AGTCTCTA","CGTCTCTA","GGTCTCTA","TGTCTCTA","ATTCTCTA","CTTCTCTA","GTTCTCTA","TTTCTCTA",
+ "AAAGTCTA","CAAGTCTA","GAAGTCTA","TAAGTCTA","ACAGTCTA","CCAGTCTA","GCAGTCTA","TCAGTCTA",
+ "AGAGTCTA","CGAGTCTA","GGAGTCTA","TGAGTCTA","ATAGTCTA","CTAGTCTA","GTAGTCTA","TTAGTCTA",
+ "AACGTCTA","CACGTCTA","GACGTCTA","TACGTCTA","ACCGTCTA","CCCGTCTA","GCCGTCTA","TCCGTCTA",
+ "AGCGTCTA","CGCGTCTA","GGCGTCTA","TGCGTCTA","ATCGTCTA","CTCGTCTA","GTCGTCTA","TTCGTCTA",
+ "AAGGTCTA","CAGGTCTA","GAGGTCTA","TAGGTCTA","ACGGTCTA","CCGGTCTA","GCGGTCTA","TCGGTCTA",
+ "AGGGTCTA","CGGGTCTA","GGGGTCTA","TGGGTCTA","ATGGTCTA","CTGGTCTA","GTGGTCTA","TTGGTCTA",
+ "AATGTCTA","CATGTCTA","GATGTCTA","TATGTCTA","ACTGTCTA","CCTGTCTA","GCTGTCTA","TCTGTCTA",
+ "AGTGTCTA","CGTGTCTA","GGTGTCTA","TGTGTCTA","ATTGTCTA","CTTGTCTA","GTTGTCTA","TTTGTCTA",
+ "AAATTCTA","CAATTCTA","GAATTCTA","TAATTCTA","ACATTCTA","CCATTCTA","GCATTCTA","TCATTCTA",
+ "AGATTCTA","CGATTCTA","GGATTCTA","TGATTCTA","ATATTCTA","CTATTCTA","GTATTCTA","TTATTCTA",
+ "AACTTCTA","CACTTCTA","GACTTCTA","TACTTCTA","ACCTTCTA","CCCTTCTA","GCCTTCTA","TCCTTCTA",
+ "AGCTTCTA","CGCTTCTA","GGCTTCTA","TGCTTCTA","ATCTTCTA","CTCTTCTA","GTCTTCTA","TTCTTCTA",
+ "AAGTTCTA","CAGTTCTA","GAGTTCTA","TAGTTCTA","ACGTTCTA","CCGTTCTA","GCGTTCTA","TCGTTCTA",
+ "AGGTTCTA","CGGTTCTA","GGGTTCTA","TGGTTCTA","ATGTTCTA","CTGTTCTA","GTGTTCTA","TTGTTCTA",
+ "AATTTCTA","CATTTCTA","GATTTCTA","TATTTCTA","ACTTTCTA","CCTTTCTA","GCTTTCTA","TCTTTCTA",
+ "AGTTTCTA","CGTTTCTA","GGTTTCTA","TGTTTCTA","ATTTTCTA","CTTTTCTA","GTTTTCTA","TTTTTCTA",
+ "AAAAAGTA","CAAAAGTA","GAAAAGTA","TAAAAGTA","ACAAAGTA","CCAAAGTA","GCAAAGTA","TCAAAGTA",
+ "AGAAAGTA","CGAAAGTA","GGAAAGTA","TGAAAGTA","ATAAAGTA","CTAAAGTA","GTAAAGTA","TTAAAGTA",
+ "AACAAGTA","CACAAGTA","GACAAGTA","TACAAGTA","ACCAAGTA","CCCAAGTA","GCCAAGTA","TCCAAGTA",
+ "AGCAAGTA","CGCAAGTA","GGCAAGTA","TGCAAGTA","ATCAAGTA","CTCAAGTA","GTCAAGTA","TTCAAGTA",
+ "AAGAAGTA","CAGAAGTA","GAGAAGTA","TAGAAGTA","ACGAAGTA","CCGAAGTA","GCGAAGTA","TCGAAGTA",
+ "AGGAAGTA","CGGAAGTA","GGGAAGTA","TGGAAGTA","ATGAAGTA","CTGAAGTA","GTGAAGTA","TTGAAGTA",
+ "AATAAGTA","CATAAGTA","GATAAGTA","TATAAGTA","ACTAAGTA","CCTAAGTA","GCTAAGTA","TCTAAGTA",
+ "AGTAAGTA","CGTAAGTA","GGTAAGTA","TGTAAGTA","ATTAAGTA","CTTAAGTA","GTTAAGTA","TTTAAGTA",
+ "AAACAGTA","CAACAGTA","GAACAGTA","TAACAGTA","ACACAGTA","CCACAGTA","GCACAGTA","TCACAGTA",
+ "AGACAGTA","CGACAGTA","GGACAGTA","TGACAGTA","ATACAGTA","CTACAGTA","GTACAGTA","TTACAGTA",
+ "AACCAGTA","CACCAGTA","GACCAGTA","TACCAGTA","ACCCAGTA","CCCCAGTA","GCCCAGTA","TCCCAGTA",
+ "AGCCAGTA","CGCCAGTA","GGCCAGTA","TGCCAGTA","ATCCAGTA","CTCCAGTA","GTCCAGTA","TTCCAGTA",
+ "AAGCAGTA","CAGCAGTA","GAGCAGTA","TAGCAGTA","ACGCAGTA","CCGCAGTA","GCGCAGTA","TCGCAGTA",
+ "AGGCAGTA","CGGCAGTA","GGGCAGTA","TGGCAGTA","ATGCAGTA","CTGCAGTA","GTGCAGTA","TTGCAGTA",
+ "AATCAGTA","CATCAGTA","GATCAGTA","TATCAGTA","ACTCAGTA","CCTCAGTA","GCTCAGTA","TCTCAGTA",
+ "AGTCAGTA","CGTCAGTA","GGTCAGTA","TGTCAGTA","ATTCAGTA","CTTCAGTA","GTTCAGTA","TTTCAGTA",
+ "AAAGAGTA","CAAGAGTA","GAAGAGTA","TAAGAGTA","ACAGAGTA","CCAGAGTA","GCAGAGTA","TCAGAGTA",
+ "AGAGAGTA","CGAGAGTA","GGAGAGTA","TGAGAGTA","ATAGAGTA","CTAGAGTA","GTAGAGTA","TTAGAGTA",
+ "AACGAGTA","CACGAGTA","GACGAGTA","TACGAGTA","ACCGAGTA","CCCGAGTA","GCCGAGTA","TCCGAGTA",
+ "AGCGAGTA","CGCGAGTA","GGCGAGTA","TGCGAGTA","ATCGAGTA","CTCGAGTA","GTCGAGTA","TTCGAGTA",
+ "AAGGAGTA","CAGGAGTA","GAGGAGTA","TAGGAGTA","ACGGAGTA","CCGGAGTA","GCGGAGTA","TCGGAGTA",
+ "AGGGAGTA","CGGGAGTA","GGGGAGTA","TGGGAGTA","ATGGAGTA","CTGGAGTA","GTGGAGTA","TTGGAGTA",
+ "AATGAGTA","CATGAGTA","GATGAGTA","TATGAGTA","ACTGAGTA","CCTGAGTA","GCTGAGTA","TCTGAGTA",
+ "AGTGAGTA","CGTGAGTA","GGTGAGTA","TGTGAGTA","ATTGAGTA","CTTGAGTA","GTTGAGTA","TTTGAGTA",
+ "AAATAGTA","CAATAGTA","GAATAGTA","TAATAGTA","ACATAGTA","CCATAGTA","GCATAGTA","TCATAGTA",
+ "AGATAGTA","CGATAGTA","GGATAGTA","TGATAGTA","ATATAGTA","CTATAGTA","GTATAGTA","TTATAGTA",
+ "AACTAGTA","CACTAGTA","GACTAGTA","TACTAGTA","ACCTAGTA","CCCTAGTA","GCCTAGTA","TCCTAGTA",
+ "AGCTAGTA","CGCTAGTA","GGCTAGTA","TGCTAGTA","ATCTAGTA","CTCTAGTA","GTCTAGTA","TTCTAGTA",
+ "AAGTAGTA","CAGTAGTA","GAGTAGTA","TAGTAGTA","ACGTAGTA","CCGTAGTA","GCGTAGTA","TCGTAGTA",
+ "AGGTAGTA","CGGTAGTA","GGGTAGTA","TGGTAGTA","ATGTAGTA","CTGTAGTA","GTGTAGTA","TTGTAGTA",
+ "AATTAGTA","CATTAGTA","GATTAGTA","TATTAGTA","ACTTAGTA","CCTTAGTA","GCTTAGTA","TCTTAGTA",
+ "AGTTAGTA","CGTTAGTA","GGTTAGTA","TGTTAGTA","ATTTAGTA","CTTTAGTA","GTTTAGTA","TTTTAGTA",
+ "AAAACGTA","CAAACGTA","GAAACGTA","TAAACGTA","ACAACGTA","CCAACGTA","GCAACGTA","TCAACGTA",
+ "AGAACGTA","CGAACGTA","GGAACGTA","TGAACGTA","ATAACGTA","CTAACGTA","GTAACGTA","TTAACGTA",
+ "AACACGTA","CACACGTA","GACACGTA","TACACGTA","ACCACGTA","CCCACGTA","GCCACGTA","TCCACGTA",
+ "AGCACGTA","CGCACGTA","GGCACGTA","TGCACGTA","ATCACGTA","CTCACGTA","GTCACGTA","TTCACGTA",
+ "AAGACGTA","CAGACGTA","GAGACGTA","TAGACGTA","ACGACGTA","CCGACGTA","GCGACGTA","TCGACGTA",
+ "AGGACGTA","CGGACGTA","GGGACGTA","TGGACGTA","ATGACGTA","CTGACGTA","GTGACGTA","TTGACGTA",
+ "AATACGTA","CATACGTA","GATACGTA","TATACGTA","ACTACGTA","CCTACGTA","GCTACGTA","TCTACGTA",
+ "AGTACGTA","CGTACGTA","GGTACGTA","TGTACGTA","ATTACGTA","CTTACGTA","GTTACGTA","TTTACGTA",
+ "AAACCGTA","CAACCGTA","GAACCGTA","TAACCGTA","ACACCGTA","CCACCGTA","GCACCGTA","TCACCGTA",
+ "AGACCGTA","CGACCGTA","GGACCGTA","TGACCGTA","ATACCGTA","CTACCGTA","GTACCGTA","TTACCGTA",
+ "AACCCGTA","CACCCGTA","GACCCGTA","TACCCGTA","ACCCCGTA","CCCCCGTA","GCCCCGTA","TCCCCGTA",
+ "AGCCCGTA","CGCCCGTA","GGCCCGTA","TGCCCGTA","ATCCCGTA","CTCCCGTA","GTCCCGTA","TTCCCGTA",
+ "AAGCCGTA","CAGCCGTA","GAGCCGTA","TAGCCGTA","ACGCCGTA","CCGCCGTA","GCGCCGTA","TCGCCGTA",
+ "AGGCCGTA","CGGCCGTA","GGGCCGTA","TGGCCGTA","ATGCCGTA","CTGCCGTA","GTGCCGTA","TTGCCGTA",
+ "AATCCGTA","CATCCGTA","GATCCGTA","TATCCGTA","ACTCCGTA","CCTCCGTA","GCTCCGTA","TCTCCGTA",
+ "AGTCCGTA","CGTCCGTA","GGTCCGTA","TGTCCGTA","ATTCCGTA","CTTCCGTA","GTTCCGTA","TTTCCGTA",
+ "AAAGCGTA","CAAGCGTA","GAAGCGTA","TAAGCGTA","ACAGCGTA","CCAGCGTA","GCAGCGTA","TCAGCGTA",
+ "AGAGCGTA","CGAGCGTA","GGAGCGTA","TGAGCGTA","ATAGCGTA","CTAGCGTA","GTAGCGTA","TTAGCGTA",
+ "AACGCGTA","CACGCGTA","GACGCGTA","TACGCGTA","ACCGCGTA","CCCGCGTA","GCCGCGTA","TCCGCGTA",
+ "AGCGCGTA","CGCGCGTA","GGCGCGTA","TGCGCGTA","ATCGCGTA","CTCGCGTA","GTCGCGTA","TTCGCGTA",
+ "AAGGCGTA","CAGGCGTA","GAGGCGTA","TAGGCGTA","ACGGCGTA","CCGGCGTA","GCGGCGTA","TCGGCGTA",
+ "AGGGCGTA","CGGGCGTA","GGGGCGTA","TGGGCGTA","ATGGCGTA","CTGGCGTA","GTGGCGTA","TTGGCGTA",
+ "AATGCGTA","CATGCGTA","GATGCGTA","TATGCGTA","ACTGCGTA","CCTGCGTA","GCTGCGTA","TCTGCGTA",
+ "AGTGCGTA","CGTGCGTA","GGTGCGTA","TGTGCGTA","ATTGCGTA","CTTGCGTA","GTTGCGTA","TTTGCGTA",
+ "AAATCGTA","CAATCGTA","GAATCGTA","TAATCGTA","ACATCGTA","CCATCGTA","GCATCGTA","TCATCGTA",
+ "AGATCGTA","CGATCGTA","GGATCGTA","TGATCGTA","ATATCGTA","CTATCGTA","GTATCGTA","TTATCGTA",
+ "AACTCGTA","CACTCGTA","GACTCGTA","TACTCGTA","ACCTCGTA","CCCTCGTA","GCCTCGTA","TCCTCGTA",
+ "AGCTCGTA","CGCTCGTA","GGCTCGTA","TGCTCGTA","ATCTCGTA","CTCTCGTA","GTCTCGTA","TTCTCGTA",
+ "AAGTCGTA","CAGTCGTA","GAGTCGTA","TAGTCGTA","ACGTCGTA","CCGTCGTA","GCGTCGTA","TCGTCGTA",
+ "AGGTCGTA","CGGTCGTA","GGGTCGTA","TGGTCGTA","ATGTCGTA","CTGTCGTA","GTGTCGTA","TTGTCGTA",
+ "AATTCGTA","CATTCGTA","GATTCGTA","TATTCGTA","ACTTCGTA","CCTTCGTA","GCTTCGTA","TCTTCGTA",
+ "AGTTCGTA","CGTTCGTA","GGTTCGTA","TGTTCGTA","ATTTCGTA","CTTTCGTA","GTTTCGTA","TTTTCGTA",
+ "AAAAGGTA","CAAAGGTA","GAAAGGTA","TAAAGGTA","ACAAGGTA","CCAAGGTA","GCAAGGTA","TCAAGGTA",
+ "AGAAGGTA","CGAAGGTA","GGAAGGTA","TGAAGGTA","ATAAGGTA","CTAAGGTA","GTAAGGTA","TTAAGGTA",
+ "AACAGGTA","CACAGGTA","GACAGGTA","TACAGGTA","ACCAGGTA","CCCAGGTA","GCCAGGTA","TCCAGGTA",
+ "AGCAGGTA","CGCAGGTA","GGCAGGTA","TGCAGGTA","ATCAGGTA","CTCAGGTA","GTCAGGTA","TTCAGGTA",
+ "AAGAGGTA","CAGAGGTA","GAGAGGTA","TAGAGGTA","ACGAGGTA","CCGAGGTA","GCGAGGTA","TCGAGGTA",
+ "AGGAGGTA","CGGAGGTA","GGGAGGTA","TGGAGGTA","ATGAGGTA","CTGAGGTA","GTGAGGTA","TTGAGGTA",
+ "AATAGGTA","CATAGGTA","GATAGGTA","TATAGGTA","ACTAGGTA","CCTAGGTA","GCTAGGTA","TCTAGGTA",
+ "AGTAGGTA","CGTAGGTA","GGTAGGTA","TGTAGGTA","ATTAGGTA","CTTAGGTA","GTTAGGTA","TTTAGGTA",
+ "AAACGGTA","CAACGGTA","GAACGGTA","TAACGGTA","ACACGGTA","CCACGGTA","GCACGGTA","TCACGGTA",
+ "AGACGGTA","CGACGGTA","GGACGGTA","TGACGGTA","ATACGGTA","CTACGGTA","GTACGGTA","TTACGGTA",
+ "AACCGGTA","CACCGGTA","GACCGGTA","TACCGGTA","ACCCGGTA","CCCCGGTA","GCCCGGTA","TCCCGGTA",
+ "AGCCGGTA","CGCCGGTA","GGCCGGTA","TGCCGGTA","ATCCGGTA","CTCCGGTA","GTCCGGTA","TTCCGGTA",
+ "AAGCGGTA","CAGCGGTA","GAGCGGTA","TAGCGGTA","ACGCGGTA","CCGCGGTA","GCGCGGTA","TCGCGGTA",
+ "AGGCGGTA","CGGCGGTA","GGGCGGTA","TGGCGGTA","ATGCGGTA","CTGCGGTA","GTGCGGTA","TTGCGGTA",
+ "AATCGGTA","CATCGGTA","GATCGGTA","TATCGGTA","ACTCGGTA","CCTCGGTA","GCTCGGTA","TCTCGGTA",
+ "AGTCGGTA","CGTCGGTA","GGTCGGTA","TGTCGGTA","ATTCGGTA","CTTCGGTA","GTTCGGTA","TTTCGGTA",
+ "AAAGGGTA","CAAGGGTA","GAAGGGTA","TAAGGGTA","ACAGGGTA","CCAGGGTA","GCAGGGTA","TCAGGGTA",
+ "AGAGGGTA","CGAGGGTA","GGAGGGTA","TGAGGGTA","ATAGGGTA","CTAGGGTA","GTAGGGTA","TTAGGGTA",
+ "AACGGGTA","CACGGGTA","GACGGGTA","TACGGGTA","ACCGGGTA","CCCGGGTA","GCCGGGTA","TCCGGGTA",
+ "AGCGGGTA","CGCGGGTA","GGCGGGTA","TGCGGGTA","ATCGGGTA","CTCGGGTA","GTCGGGTA","TTCGGGTA",
+ "AAGGGGTA","CAGGGGTA","GAGGGGTA","TAGGGGTA","ACGGGGTA","CCGGGGTA","GCGGGGTA","TCGGGGTA",
+ "AGGGGGTA","CGGGGGTA","GGGGGGTA","TGGGGGTA","ATGGGGTA","CTGGGGTA","GTGGGGTA","TTGGGGTA",
+ "AATGGGTA","CATGGGTA","GATGGGTA","TATGGGTA","ACTGGGTA","CCTGGGTA","GCTGGGTA","TCTGGGTA",
+ "AGTGGGTA","CGTGGGTA","GGTGGGTA","TGTGGGTA","ATTGGGTA","CTTGGGTA","GTTGGGTA","TTTGGGTA",
+ "AAATGGTA","CAATGGTA","GAATGGTA","TAATGGTA","ACATGGTA","CCATGGTA","GCATGGTA","TCATGGTA",
+ "AGATGGTA","CGATGGTA","GGATGGTA","TGATGGTA","ATATGGTA","CTATGGTA","GTATGGTA","TTATGGTA",
+ "AACTGGTA","CACTGGTA","GACTGGTA","TACTGGTA","ACCTGGTA","CCCTGGTA","GCCTGGTA","TCCTGGTA",
+ "AGCTGGTA","CGCTGGTA","GGCTGGTA","TGCTGGTA","ATCTGGTA","CTCTGGTA","GTCTGGTA","TTCTGGTA",
+ "AAGTGGTA","CAGTGGTA","GAGTGGTA","TAGTGGTA","ACGTGGTA","CCGTGGTA","GCGTGGTA","TCGTGGTA",
+ "AGGTGGTA","CGGTGGTA","GGGTGGTA","TGGTGGTA","ATGTGGTA","CTGTGGTA","GTGTGGTA","TTGTGGTA",
+ "AATTGGTA","CATTGGTA","GATTGGTA","TATTGGTA","ACTTGGTA","CCTTGGTA","GCTTGGTA","TCTTGGTA",
+ "AGTTGGTA","CGTTGGTA","GGTTGGTA","TGTTGGTA","ATTTGGTA","CTTTGGTA","GTTTGGTA","TTTTGGTA",
+ "AAAATGTA","CAAATGTA","GAAATGTA","TAAATGTA","ACAATGTA","CCAATGTA","GCAATGTA","TCAATGTA",
+ "AGAATGTA","CGAATGTA","GGAATGTA","TGAATGTA","ATAATGTA","CTAATGTA","GTAATGTA","TTAATGTA",
+ "AACATGTA","CACATGTA","GACATGTA","TACATGTA","ACCATGTA","CCCATGTA","GCCATGTA","TCCATGTA",
+ "AGCATGTA","CGCATGTA","GGCATGTA","TGCATGTA","ATCATGTA","CTCATGTA","GTCATGTA","TTCATGTA",
+ "AAGATGTA","CAGATGTA","GAGATGTA","TAGATGTA","ACGATGTA","CCGATGTA","GCGATGTA","TCGATGTA",
+ "AGGATGTA","CGGATGTA","GGGATGTA","TGGATGTA","ATGATGTA","CTGATGTA","GTGATGTA","TTGATGTA",
+ "AATATGTA","CATATGTA","GATATGTA","TATATGTA","ACTATGTA","CCTATGTA","GCTATGTA","TCTATGTA",
+ "AGTATGTA","CGTATGTA","GGTATGTA","TGTATGTA","ATTATGTA","CTTATGTA","GTTATGTA","TTTATGTA",
+ "AAACTGTA","CAACTGTA","GAACTGTA","TAACTGTA","ACACTGTA","CCACTGTA","GCACTGTA","TCACTGTA",
+ "AGACTGTA","CGACTGTA","GGACTGTA","TGACTGTA","ATACTGTA","CTACTGTA","GTACTGTA","TTACTGTA",
+ "AACCTGTA","CACCTGTA","GACCTGTA","TACCTGTA","ACCCTGTA","CCCCTGTA","GCCCTGTA","TCCCTGTA",
+ "AGCCTGTA","CGCCTGTA","GGCCTGTA","TGCCTGTA","ATCCTGTA","CTCCTGTA","GTCCTGTA","TTCCTGTA",
+ "AAGCTGTA","CAGCTGTA","GAGCTGTA","TAGCTGTA","ACGCTGTA","CCGCTGTA","GCGCTGTA","TCGCTGTA",
+ "AGGCTGTA","CGGCTGTA","GGGCTGTA","TGGCTGTA","ATGCTGTA","CTGCTGTA","GTGCTGTA","TTGCTGTA",
+ "AATCTGTA","CATCTGTA","GATCTGTA","TATCTGTA","ACTCTGTA","CCTCTGTA","GCTCTGTA","TCTCTGTA",
+ "AGTCTGTA","CGTCTGTA","GGTCTGTA","TGTCTGTA","ATTCTGTA","CTTCTGTA","GTTCTGTA","TTTCTGTA",
+ "AAAGTGTA","CAAGTGTA","GAAGTGTA","TAAGTGTA","ACAGTGTA","CCAGTGTA","GCAGTGTA","TCAGTGTA",
+ "AGAGTGTA","CGAGTGTA","GGAGTGTA","TGAGTGTA","ATAGTGTA","CTAGTGTA","GTAGTGTA","TTAGTGTA",
+ "AACGTGTA","CACGTGTA","GACGTGTA","TACGTGTA","ACCGTGTA","CCCGTGTA","GCCGTGTA","TCCGTGTA",
+ "AGCGTGTA","CGCGTGTA","GGCGTGTA","TGCGTGTA","ATCGTGTA","CTCGTGTA","GTCGTGTA","TTCGTGTA",
+ "AAGGTGTA","CAGGTGTA","GAGGTGTA","TAGGTGTA","ACGGTGTA","CCGGTGTA","GCGGTGTA","TCGGTGTA",
+ "AGGGTGTA","CGGGTGTA","GGGGTGTA","TGGGTGTA","ATGGTGTA","CTGGTGTA","GTGGTGTA","TTGGTGTA",
+ "AATGTGTA","CATGTGTA","GATGTGTA","TATGTGTA","ACTGTGTA","CCTGTGTA","GCTGTGTA","TCTGTGTA",
+ "AGTGTGTA","CGTGTGTA","GGTGTGTA","TGTGTGTA","ATTGTGTA","CTTGTGTA","GTTGTGTA","TTTGTGTA",
+ "AAATTGTA","CAATTGTA","GAATTGTA","TAATTGTA","ACATTGTA","CCATTGTA","GCATTGTA","TCATTGTA",
+ "AGATTGTA","CGATTGTA","GGATTGTA","TGATTGTA","ATATTGTA","CTATTGTA","GTATTGTA","TTATTGTA",
+ "AACTTGTA","CACTTGTA","GACTTGTA","TACTTGTA","ACCTTGTA","CCCTTGTA","GCCTTGTA","TCCTTGTA",
+ "AGCTTGTA","CGCTTGTA","GGCTTGTA","TGCTTGTA","ATCTTGTA","CTCTTGTA","GTCTTGTA","TTCTTGTA",
+ "AAGTTGTA","CAGTTGTA","GAGTTGTA","TAGTTGTA","ACGTTGTA","CCGTTGTA","GCGTTGTA","TCGTTGTA",
+ "AGGTTGTA","CGGTTGTA","GGGTTGTA","TGGTTGTA","ATGTTGTA","CTGTTGTA","GTGTTGTA","TTGTTGTA",
+ "AATTTGTA","CATTTGTA","GATTTGTA","TATTTGTA","ACTTTGTA","CCTTTGTA","GCTTTGTA","TCTTTGTA",
+ "AGTTTGTA","CGTTTGTA","GGTTTGTA","TGTTTGTA","ATTTTGTA","CTTTTGTA","GTTTTGTA","TTTTTGTA",
+ "AAAAATTA","CAAAATTA","GAAAATTA","TAAAATTA","ACAAATTA","CCAAATTA","GCAAATTA","TCAAATTA",
+ "AGAAATTA","CGAAATTA","GGAAATTA","TGAAATTA","ATAAATTA","CTAAATTA","GTAAATTA","TTAAATTA",
+ "AACAATTA","CACAATTA","GACAATTA","TACAATTA","ACCAATTA","CCCAATTA","GCCAATTA","TCCAATTA",
+ "AGCAATTA","CGCAATTA","GGCAATTA","TGCAATTA","ATCAATTA","CTCAATTA","GTCAATTA","TTCAATTA",
+ "AAGAATTA","CAGAATTA","GAGAATTA","TAGAATTA","ACGAATTA","CCGAATTA","GCGAATTA","TCGAATTA",
+ "AGGAATTA","CGGAATTA","GGGAATTA","TGGAATTA","ATGAATTA","CTGAATTA","GTGAATTA","TTGAATTA",
+ "AATAATTA","CATAATTA","GATAATTA","TATAATTA","ACTAATTA","CCTAATTA","GCTAATTA","TCTAATTA",
+ "AGTAATTA","CGTAATTA","GGTAATTA","TGTAATTA","ATTAATTA","CTTAATTA","GTTAATTA","TTTAATTA",
+ "AAACATTA","CAACATTA","GAACATTA","TAACATTA","ACACATTA","CCACATTA","GCACATTA","TCACATTA",
+ "AGACATTA","CGACATTA","GGACATTA","TGACATTA","ATACATTA","CTACATTA","GTACATTA","TTACATTA",
+ "AACCATTA","CACCATTA","GACCATTA","TACCATTA","ACCCATTA","CCCCATTA","GCCCATTA","TCCCATTA",
+ "AGCCATTA","CGCCATTA","GGCCATTA","TGCCATTA","ATCCATTA","CTCCATTA","GTCCATTA","TTCCATTA",
+ "AAGCATTA","CAGCATTA","GAGCATTA","TAGCATTA","ACGCATTA","CCGCATTA","GCGCATTA","TCGCATTA",
+ "AGGCATTA","CGGCATTA","GGGCATTA","TGGCATTA","ATGCATTA","CTGCATTA","GTGCATTA","TTGCATTA",
+ "AATCATTA","CATCATTA","GATCATTA","TATCATTA","ACTCATTA","CCTCATTA","GCTCATTA","TCTCATTA",
+ "AGTCATTA","CGTCATTA","GGTCATTA","TGTCATTA","ATTCATTA","CTTCATTA","GTTCATTA","TTTCATTA",
+ "AAAGATTA","CAAGATTA","GAAGATTA","TAAGATTA","ACAGATTA","CCAGATTA","GCAGATTA","TCAGATTA",
+ "AGAGATTA","CGAGATTA","GGAGATTA","TGAGATTA","ATAGATTA","CTAGATTA","GTAGATTA","TTAGATTA",
+ "AACGATTA","CACGATTA","GACGATTA","TACGATTA","ACCGATTA","CCCGATTA","GCCGATTA","TCCGATTA",
+ "AGCGATTA","CGCGATTA","GGCGATTA","TGCGATTA","ATCGATTA","CTCGATTA","GTCGATTA","TTCGATTA",
+ "AAGGATTA","CAGGATTA","GAGGATTA","TAGGATTA","ACGGATTA","CCGGATTA","GCGGATTA","TCGGATTA",
+ "AGGGATTA","CGGGATTA","GGGGATTA","TGGGATTA","ATGGATTA","CTGGATTA","GTGGATTA","TTGGATTA",
+ "AATGATTA","CATGATTA","GATGATTA","TATGATTA","ACTGATTA","CCTGATTA","GCTGATTA","TCTGATTA",
+ "AGTGATTA","CGTGATTA","GGTGATTA","TGTGATTA","ATTGATTA","CTTGATTA","GTTGATTA","TTTGATTA",
+ "AAATATTA","CAATATTA","GAATATTA","TAATATTA","ACATATTA","CCATATTA","GCATATTA","TCATATTA",
+ "AGATATTA","CGATATTA","GGATATTA","TGATATTA","ATATATTA","CTATATTA","GTATATTA","TTATATTA",
+ "AACTATTA","CACTATTA","GACTATTA","TACTATTA","ACCTATTA","CCCTATTA","GCCTATTA","TCCTATTA",
+ "AGCTATTA","CGCTATTA","GGCTATTA","TGCTATTA","ATCTATTA","CTCTATTA","GTCTATTA","TTCTATTA",
+ "AAGTATTA","CAGTATTA","GAGTATTA","TAGTATTA","ACGTATTA","CCGTATTA","GCGTATTA","TCGTATTA",
+ "AGGTATTA","CGGTATTA","GGGTATTA","TGGTATTA","ATGTATTA","CTGTATTA","GTGTATTA","TTGTATTA",
+ "AATTATTA","CATTATTA","GATTATTA","TATTATTA","ACTTATTA","CCTTATTA","GCTTATTA","TCTTATTA",
+ "AGTTATTA","CGTTATTA","GGTTATTA","TGTTATTA","ATTTATTA","CTTTATTA","GTTTATTA","TTTTATTA",
+ "AAAACTTA","CAAACTTA","GAAACTTA","TAAACTTA","ACAACTTA","CCAACTTA","GCAACTTA","TCAACTTA",
+ "AGAACTTA","CGAACTTA","GGAACTTA","TGAACTTA","ATAACTTA","CTAACTTA","GTAACTTA","TTAACTTA",
+ "AACACTTA","CACACTTA","GACACTTA","TACACTTA","ACCACTTA","CCCACTTA","GCCACTTA","TCCACTTA",
+ "AGCACTTA","CGCACTTA","GGCACTTA","TGCACTTA","ATCACTTA","CTCACTTA","GTCACTTA","TTCACTTA",
+ "AAGACTTA","CAGACTTA","GAGACTTA","TAGACTTA","ACGACTTA","CCGACTTA","GCGACTTA","TCGACTTA",
+ "AGGACTTA","CGGACTTA","GGGACTTA","TGGACTTA","ATGACTTA","CTGACTTA","GTGACTTA","TTGACTTA",
+ "AATACTTA","CATACTTA","GATACTTA","TATACTTA","ACTACTTA","CCTACTTA","GCTACTTA","TCTACTTA",
+ "AGTACTTA","CGTACTTA","GGTACTTA","TGTACTTA","ATTACTTA","CTTACTTA","GTTACTTA","TTTACTTA",
+ "AAACCTTA","CAACCTTA","GAACCTTA","TAACCTTA","ACACCTTA","CCACCTTA","GCACCTTA","TCACCTTA",
+ "AGACCTTA","CGACCTTA","GGACCTTA","TGACCTTA","ATACCTTA","CTACCTTA","GTACCTTA","TTACCTTA",
+ "AACCCTTA","CACCCTTA","GACCCTTA","TACCCTTA","ACCCCTTA","CCCCCTTA","GCCCCTTA","TCCCCTTA",
+ "AGCCCTTA","CGCCCTTA","GGCCCTTA","TGCCCTTA","ATCCCTTA","CTCCCTTA","GTCCCTTA","TTCCCTTA",
+ "AAGCCTTA","CAGCCTTA","GAGCCTTA","TAGCCTTA","ACGCCTTA","CCGCCTTA","GCGCCTTA","TCGCCTTA",
+ "AGGCCTTA","CGGCCTTA","GGGCCTTA","TGGCCTTA","ATGCCTTA","CTGCCTTA","GTGCCTTA","TTGCCTTA",
+ "AATCCTTA","CATCCTTA","GATCCTTA","TATCCTTA","ACTCCTTA","CCTCCTTA","GCTCCTTA","TCTCCTTA",
+ "AGTCCTTA","CGTCCTTA","GGTCCTTA","TGTCCTTA","ATTCCTTA","CTTCCTTA","GTTCCTTA","TTTCCTTA",
+ "AAAGCTTA","CAAGCTTA","GAAGCTTA","TAAGCTTA","ACAGCTTA","CCAGCTTA","GCAGCTTA","TCAGCTTA",
+ "AGAGCTTA","CGAGCTTA","GGAGCTTA","TGAGCTTA","ATAGCTTA","CTAGCTTA","GTAGCTTA","TTAGCTTA",
+ "AACGCTTA","CACGCTTA","GACGCTTA","TACGCTTA","ACCGCTTA","CCCGCTTA","GCCGCTTA","TCCGCTTA",
+ "AGCGCTTA","CGCGCTTA","GGCGCTTA","TGCGCTTA","ATCGCTTA","CTCGCTTA","GTCGCTTA","TTCGCTTA",
+ "AAGGCTTA","CAGGCTTA","GAGGCTTA","TAGGCTTA","ACGGCTTA","CCGGCTTA","GCGGCTTA","TCGGCTTA",
+ "AGGGCTTA","CGGGCTTA","GGGGCTTA","TGGGCTTA","ATGGCTTA","CTGGCTTA","GTGGCTTA","TTGGCTTA",
+ "AATGCTTA","CATGCTTA","GATGCTTA","TATGCTTA","ACTGCTTA","CCTGCTTA","GCTGCTTA","TCTGCTTA",
+ "AGTGCTTA","CGTGCTTA","GGTGCTTA","TGTGCTTA","ATTGCTTA","CTTGCTTA","GTTGCTTA","TTTGCTTA",
+ "AAATCTTA","CAATCTTA","GAATCTTA","TAATCTTA","ACATCTTA","CCATCTTA","GCATCTTA","TCATCTTA",
+ "AGATCTTA","CGATCTTA","GGATCTTA","TGATCTTA","ATATCTTA","CTATCTTA","GTATCTTA","TTATCTTA",
+ "AACTCTTA","CACTCTTA","GACTCTTA","TACTCTTA","ACCTCTTA","CCCTCTTA","GCCTCTTA","TCCTCTTA",
+ "AGCTCTTA","CGCTCTTA","GGCTCTTA","TGCTCTTA","ATCTCTTA","CTCTCTTA","GTCTCTTA","TTCTCTTA",
+ "AAGTCTTA","CAGTCTTA","GAGTCTTA","TAGTCTTA","ACGTCTTA","CCGTCTTA","GCGTCTTA","TCGTCTTA",
+ "AGGTCTTA","CGGTCTTA","GGGTCTTA","TGGTCTTA","ATGTCTTA","CTGTCTTA","GTGTCTTA","TTGTCTTA",
+ "AATTCTTA","CATTCTTA","GATTCTTA","TATTCTTA","ACTTCTTA","CCTTCTTA","GCTTCTTA","TCTTCTTA",
+ "AGTTCTTA","CGTTCTTA","GGTTCTTA","TGTTCTTA","ATTTCTTA","CTTTCTTA","GTTTCTTA","TTTTCTTA",
+ "AAAAGTTA","CAAAGTTA","GAAAGTTA","TAAAGTTA","ACAAGTTA","CCAAGTTA","GCAAGTTA","TCAAGTTA",
+ "AGAAGTTA","CGAAGTTA","GGAAGTTA","TGAAGTTA","ATAAGTTA","CTAAGTTA","GTAAGTTA","TTAAGTTA",
+ "AACAGTTA","CACAGTTA","GACAGTTA","TACAGTTA","ACCAGTTA","CCCAGTTA","GCCAGTTA","TCCAGTTA",
+ "AGCAGTTA","CGCAGTTA","GGCAGTTA","TGCAGTTA","ATCAGTTA","CTCAGTTA","GTCAGTTA","TTCAGTTA",
+ "AAGAGTTA","CAGAGTTA","GAGAGTTA","TAGAGTTA","ACGAGTTA","CCGAGTTA","GCGAGTTA","TCGAGTTA",
+ "AGGAGTTA","CGGAGTTA","GGGAGTTA","TGGAGTTA","ATGAGTTA","CTGAGTTA","GTGAGTTA","TTGAGTTA",
+ "AATAGTTA","CATAGTTA","GATAGTTA","TATAGTTA","ACTAGTTA","CCTAGTTA","GCTAGTTA","TCTAGTTA",
+ "AGTAGTTA","CGTAGTTA","GGTAGTTA","TGTAGTTA","ATTAGTTA","CTTAGTTA","GTTAGTTA","TTTAGTTA",
+ "AAACGTTA","CAACGTTA","GAACGTTA","TAACGTTA","ACACGTTA","CCACGTTA","GCACGTTA","TCACGTTA",
+ "AGACGTTA","CGACGTTA","GGACGTTA","TGACGTTA","ATACGTTA","CTACGTTA","GTACGTTA","TTACGTTA",
+ "AACCGTTA","CACCGTTA","GACCGTTA","TACCGTTA","ACCCGTTA","CCCCGTTA","GCCCGTTA","TCCCGTTA",
+ "AGCCGTTA","CGCCGTTA","GGCCGTTA","TGCCGTTA","ATCCGTTA","CTCCGTTA","GTCCGTTA","TTCCGTTA",
+ "AAGCGTTA","CAGCGTTA","GAGCGTTA","TAGCGTTA","ACGCGTTA","CCGCGTTA","GCGCGTTA","TCGCGTTA",
+ "AGGCGTTA","CGGCGTTA","GGGCGTTA","TGGCGTTA","ATGCGTTA","CTGCGTTA","GTGCGTTA","TTGCGTTA",
+ "AATCGTTA","CATCGTTA","GATCGTTA","TATCGTTA","ACTCGTTA","CCTCGTTA","GCTCGTTA","TCTCGTTA",
+ "AGTCGTTA","CGTCGTTA","GGTCGTTA","TGTCGTTA","ATTCGTTA","CTTCGTTA","GTTCGTTA","TTTCGTTA",
+ "AAAGGTTA","CAAGGTTA","GAAGGTTA","TAAGGTTA","ACAGGTTA","CCAGGTTA","GCAGGTTA","TCAGGTTA",
+ "AGAGGTTA","CGAGGTTA","GGAGGTTA","TGAGGTTA","ATAGGTTA","CTAGGTTA","GTAGGTTA","TTAGGTTA",
+ "AACGGTTA","CACGGTTA","GACGGTTA","TACGGTTA","ACCGGTTA","CCCGGTTA","GCCGGTTA","TCCGGTTA",
+ "AGCGGTTA","CGCGGTTA","GGCGGTTA","TGCGGTTA","ATCGGTTA","CTCGGTTA","GTCGGTTA","TTCGGTTA",
+ "AAGGGTTA","CAGGGTTA","GAGGGTTA","TAGGGTTA","ACGGGTTA","CCGGGTTA","GCGGGTTA","TCGGGTTA",
+ "AGGGGTTA","CGGGGTTA","GGGGGTTA","TGGGGTTA","ATGGGTTA","CTGGGTTA","GTGGGTTA","TTGGGTTA",
+ "AATGGTTA","CATGGTTA","GATGGTTA","TATGGTTA","ACTGGTTA","CCTGGTTA","GCTGGTTA","TCTGGTTA",
+ "AGTGGTTA","CGTGGTTA","GGTGGTTA","TGTGGTTA","ATTGGTTA","CTTGGTTA","GTTGGTTA","TTTGGTTA",
+ "AAATGTTA","CAATGTTA","GAATGTTA","TAATGTTA","ACATGTTA","CCATGTTA","GCATGTTA","TCATGTTA",
+ "AGATGTTA","CGATGTTA","GGATGTTA","TGATGTTA","ATATGTTA","CTATGTTA","GTATGTTA","TTATGTTA",
+ "AACTGTTA","CACTGTTA","GACTGTTA","TACTGTTA","ACCTGTTA","CCCTGTTA","GCCTGTTA","TCCTGTTA",
+ "AGCTGTTA","CGCTGTTA","GGCTGTTA","TGCTGTTA","ATCTGTTA","CTCTGTTA","GTCTGTTA","TTCTGTTA",
+ "AAGTGTTA","CAGTGTTA","GAGTGTTA","TAGTGTTA","ACGTGTTA","CCGTGTTA","GCGTGTTA","TCGTGTTA",
+ "AGGTGTTA","CGGTGTTA","GGGTGTTA","TGGTGTTA","ATGTGTTA","CTGTGTTA","GTGTGTTA","TTGTGTTA",
+ "AATTGTTA","CATTGTTA","GATTGTTA","TATTGTTA","ACTTGTTA","CCTTGTTA","GCTTGTTA","TCTTGTTA",
+ "AGTTGTTA","CGTTGTTA","GGTTGTTA","TGTTGTTA","ATTTGTTA","CTTTGTTA","GTTTGTTA","TTTTGTTA",
+ "AAAATTTA","CAAATTTA","GAAATTTA","TAAATTTA","ACAATTTA","CCAATTTA","GCAATTTA","TCAATTTA",
+ "AGAATTTA","CGAATTTA","GGAATTTA","TGAATTTA","ATAATTTA","CTAATTTA","GTAATTTA","TTAATTTA",
+ "AACATTTA","CACATTTA","GACATTTA","TACATTTA","ACCATTTA","CCCATTTA","GCCATTTA","TCCATTTA",
+ "AGCATTTA","CGCATTTA","GGCATTTA","TGCATTTA","ATCATTTA","CTCATTTA","GTCATTTA","TTCATTTA",
+ "AAGATTTA","CAGATTTA","GAGATTTA","TAGATTTA","ACGATTTA","CCGATTTA","GCGATTTA","TCGATTTA",
+ "AGGATTTA","CGGATTTA","GGGATTTA","TGGATTTA","ATGATTTA","CTGATTTA","GTGATTTA","TTGATTTA",
+ "AATATTTA","CATATTTA","GATATTTA","TATATTTA","ACTATTTA","CCTATTTA","GCTATTTA","TCTATTTA",
+ "AGTATTTA","CGTATTTA","GGTATTTA","TGTATTTA","ATTATTTA","CTTATTTA","GTTATTTA","TTTATTTA",
+ "AAACTTTA","CAACTTTA","GAACTTTA","TAACTTTA","ACACTTTA","CCACTTTA","GCACTTTA","TCACTTTA",
+ "AGACTTTA","CGACTTTA","GGACTTTA","TGACTTTA","ATACTTTA","CTACTTTA","GTACTTTA","TTACTTTA",
+ "AACCTTTA","CACCTTTA","GACCTTTA","TACCTTTA","ACCCTTTA","CCCCTTTA","GCCCTTTA","TCCCTTTA",
+ "AGCCTTTA","CGCCTTTA","GGCCTTTA","TGCCTTTA","ATCCTTTA","CTCCTTTA","GTCCTTTA","TTCCTTTA",
+ "AAGCTTTA","CAGCTTTA","GAGCTTTA","TAGCTTTA","ACGCTTTA","CCGCTTTA","GCGCTTTA","TCGCTTTA",
+ "AGGCTTTA","CGGCTTTA","GGGCTTTA","TGGCTTTA","ATGCTTTA","CTGCTTTA","GTGCTTTA","TTGCTTTA",
+ "AATCTTTA","CATCTTTA","GATCTTTA","TATCTTTA","ACTCTTTA","CCTCTTTA","GCTCTTTA","TCTCTTTA",
+ "AGTCTTTA","CGTCTTTA","GGTCTTTA","TGTCTTTA","ATTCTTTA","CTTCTTTA","GTTCTTTA","TTTCTTTA",
+ "AAAGTTTA","CAAGTTTA","GAAGTTTA","TAAGTTTA","ACAGTTTA","CCAGTTTA","GCAGTTTA","TCAGTTTA",
+ "AGAGTTTA","CGAGTTTA","GGAGTTTA","TGAGTTTA","ATAGTTTA","CTAGTTTA","GTAGTTTA","TTAGTTTA",
+ "AACGTTTA","CACGTTTA","GACGTTTA","TACGTTTA","ACCGTTTA","CCCGTTTA","GCCGTTTA","TCCGTTTA",
+ "AGCGTTTA","CGCGTTTA","GGCGTTTA","TGCGTTTA","ATCGTTTA","CTCGTTTA","GTCGTTTA","TTCGTTTA",
+ "AAGGTTTA","CAGGTTTA","GAGGTTTA","TAGGTTTA","ACGGTTTA","CCGGTTTA","GCGGTTTA","TCGGTTTA",
+ "AGGGTTTA","CGGGTTTA","GGGGTTTA","TGGGTTTA","ATGGTTTA","CTGGTTTA","GTGGTTTA","TTGGTTTA",
+ "AATGTTTA","CATGTTTA","GATGTTTA","TATGTTTA","ACTGTTTA","CCTGTTTA","GCTGTTTA","TCTGTTTA",
+ "AGTGTTTA","CGTGTTTA","GGTGTTTA","TGTGTTTA","ATTGTTTA","CTTGTTTA","GTTGTTTA","TTTGTTTA",
+ "AAATTTTA","CAATTTTA","GAATTTTA","TAATTTTA","ACATTTTA","CCATTTTA","GCATTTTA","TCATTTTA",
+ "AGATTTTA","CGATTTTA","GGATTTTA","TGATTTTA","ATATTTTA","CTATTTTA","GTATTTTA","TTATTTTA",
+ "AACTTTTA","CACTTTTA","GACTTTTA","TACTTTTA","ACCTTTTA","CCCTTTTA","GCCTTTTA","TCCTTTTA",
+ "AGCTTTTA","CGCTTTTA","GGCTTTTA","TGCTTTTA","ATCTTTTA","CTCTTTTA","GTCTTTTA","TTCTTTTA",
+ "AAGTTTTA","CAGTTTTA","GAGTTTTA","TAGTTTTA","ACGTTTTA","CCGTTTTA","GCGTTTTA","TCGTTTTA",
+ "AGGTTTTA","CGGTTTTA","GGGTTTTA","TGGTTTTA","ATGTTTTA","CTGTTTTA","GTGTTTTA","TTGTTTTA",
+ "AATTTTTA","CATTTTTA","GATTTTTA","TATTTTTA","ACTTTTTA","CCTTTTTA","GCTTTTTA","TCTTTTTA",
+ "AGTTTTTA","CGTTTTTA","GGTTTTTA","TGTTTTTA","ATTTTTTA","CTTTTTTA","GTTTTTTA","TTTTTTTA",
+ "AAAAAAAC","CAAAAAAC","GAAAAAAC","TAAAAAAC","ACAAAAAC","CCAAAAAC","GCAAAAAC","TCAAAAAC",
+ "AGAAAAAC","CGAAAAAC","GGAAAAAC","TGAAAAAC","ATAAAAAC","CTAAAAAC","GTAAAAAC","TTAAAAAC",
+ "AACAAAAC","CACAAAAC","GACAAAAC","TACAAAAC","ACCAAAAC","CCCAAAAC","GCCAAAAC","TCCAAAAC",
+ "AGCAAAAC","CGCAAAAC","GGCAAAAC","TGCAAAAC","ATCAAAAC","CTCAAAAC","GTCAAAAC","TTCAAAAC",
+ "AAGAAAAC","CAGAAAAC","GAGAAAAC","TAGAAAAC","ACGAAAAC","CCGAAAAC","GCGAAAAC","TCGAAAAC",
+ "AGGAAAAC","CGGAAAAC","GGGAAAAC","TGGAAAAC","ATGAAAAC","CTGAAAAC","GTGAAAAC","TTGAAAAC",
+ "AATAAAAC","CATAAAAC","GATAAAAC","TATAAAAC","ACTAAAAC","CCTAAAAC","GCTAAAAC","TCTAAAAC",
+ "AGTAAAAC","CGTAAAAC","GGTAAAAC","TGTAAAAC","ATTAAAAC","CTTAAAAC","GTTAAAAC","TTTAAAAC",
+ "AAACAAAC","CAACAAAC","GAACAAAC","TAACAAAC","ACACAAAC","CCACAAAC","GCACAAAC","TCACAAAC",
+ "AGACAAAC","CGACAAAC","GGACAAAC","TGACAAAC","ATACAAAC","CTACAAAC","GTACAAAC","TTACAAAC",
+ "AACCAAAC","CACCAAAC","GACCAAAC","TACCAAAC","ACCCAAAC","CCCCAAAC","GCCCAAAC","TCCCAAAC",
+ "AGCCAAAC","CGCCAAAC","GGCCAAAC","TGCCAAAC","ATCCAAAC","CTCCAAAC","GTCCAAAC","TTCCAAAC",
+ "AAGCAAAC","CAGCAAAC","GAGCAAAC","TAGCAAAC","ACGCAAAC","CCGCAAAC","GCGCAAAC","TCGCAAAC",
+ "AGGCAAAC","CGGCAAAC","GGGCAAAC","TGGCAAAC","ATGCAAAC","CTGCAAAC","GTGCAAAC","TTGCAAAC",
+ "AATCAAAC","CATCAAAC","GATCAAAC","TATCAAAC","ACTCAAAC","CCTCAAAC","GCTCAAAC","TCTCAAAC",
+ "AGTCAAAC","CGTCAAAC","GGTCAAAC","TGTCAAAC","ATTCAAAC","CTTCAAAC","GTTCAAAC","TTTCAAAC",
+ "AAAGAAAC","CAAGAAAC","GAAGAAAC","TAAGAAAC","ACAGAAAC","CCAGAAAC","GCAGAAAC","TCAGAAAC",
+ "AGAGAAAC","CGAGAAAC","GGAGAAAC","TGAGAAAC","ATAGAAAC","CTAGAAAC","GTAGAAAC","TTAGAAAC",
+ "AACGAAAC","CACGAAAC","GACGAAAC","TACGAAAC","ACCGAAAC","CCCGAAAC","GCCGAAAC","TCCGAAAC",
+ "AGCGAAAC","CGCGAAAC","GGCGAAAC","TGCGAAAC","ATCGAAAC","CTCGAAAC","GTCGAAAC","TTCGAAAC",
+ "AAGGAAAC","CAGGAAAC","GAGGAAAC","TAGGAAAC","ACGGAAAC","CCGGAAAC","GCGGAAAC","TCGGAAAC",
+ "AGGGAAAC","CGGGAAAC","GGGGAAAC","TGGGAAAC","ATGGAAAC","CTGGAAAC","GTGGAAAC","TTGGAAAC",
+ "AATGAAAC","CATGAAAC","GATGAAAC","TATGAAAC","ACTGAAAC","CCTGAAAC","GCTGAAAC","TCTGAAAC",
+ "AGTGAAAC","CGTGAAAC","GGTGAAAC","TGTGAAAC","ATTGAAAC","CTTGAAAC","GTTGAAAC","TTTGAAAC",
+ "AAATAAAC","CAATAAAC","GAATAAAC","TAATAAAC","ACATAAAC","CCATAAAC","GCATAAAC","TCATAAAC",
+ "AGATAAAC","CGATAAAC","GGATAAAC","TGATAAAC","ATATAAAC","CTATAAAC","GTATAAAC","TTATAAAC",
+ "AACTAAAC","CACTAAAC","GACTAAAC","TACTAAAC","ACCTAAAC","CCCTAAAC","GCCTAAAC","TCCTAAAC",
+ "AGCTAAAC","CGCTAAAC","GGCTAAAC","TGCTAAAC","ATCTAAAC","CTCTAAAC","GTCTAAAC","TTCTAAAC",
+ "AAGTAAAC","CAGTAAAC","GAGTAAAC","TAGTAAAC","ACGTAAAC","CCGTAAAC","GCGTAAAC","TCGTAAAC",
+ "AGGTAAAC","CGGTAAAC","GGGTAAAC","TGGTAAAC","ATGTAAAC","CTGTAAAC","GTGTAAAC","TTGTAAAC",
+ "AATTAAAC","CATTAAAC","GATTAAAC","TATTAAAC","ACTTAAAC","CCTTAAAC","GCTTAAAC","TCTTAAAC",
+ "AGTTAAAC","CGTTAAAC","GGTTAAAC","TGTTAAAC","ATTTAAAC","CTTTAAAC","GTTTAAAC","TTTTAAAC",
+ "AAAACAAC","CAAACAAC","GAAACAAC","TAAACAAC","ACAACAAC","CCAACAAC","GCAACAAC","TCAACAAC",
+ "AGAACAAC","CGAACAAC","GGAACAAC","TGAACAAC","ATAACAAC","CTAACAAC","GTAACAAC","TTAACAAC",
+ "AACACAAC","CACACAAC","GACACAAC","TACACAAC","ACCACAAC","CCCACAAC","GCCACAAC","TCCACAAC",
+ "AGCACAAC","CGCACAAC","GGCACAAC","TGCACAAC","ATCACAAC","CTCACAAC","GTCACAAC","TTCACAAC",
+ "AAGACAAC","CAGACAAC","GAGACAAC","TAGACAAC","ACGACAAC","CCGACAAC","GCGACAAC","TCGACAAC",
+ "AGGACAAC","CGGACAAC","GGGACAAC","TGGACAAC","ATGACAAC","CTGACAAC","GTGACAAC","TTGACAAC",
+ "AATACAAC","CATACAAC","GATACAAC","TATACAAC","ACTACAAC","CCTACAAC","GCTACAAC","TCTACAAC",
+ "AGTACAAC","CGTACAAC","GGTACAAC","TGTACAAC","ATTACAAC","CTTACAAC","GTTACAAC","TTTACAAC",
+ "AAACCAAC","CAACCAAC","GAACCAAC","TAACCAAC","ACACCAAC","CCACCAAC","GCACCAAC","TCACCAAC",
+ "AGACCAAC","CGACCAAC","GGACCAAC","TGACCAAC","ATACCAAC","CTACCAAC","GTACCAAC","TTACCAAC",
+ "AACCCAAC","CACCCAAC","GACCCAAC","TACCCAAC","ACCCCAAC","CCCCCAAC","GCCCCAAC","TCCCCAAC",
+ "AGCCCAAC","CGCCCAAC","GGCCCAAC","TGCCCAAC","ATCCCAAC","CTCCCAAC","GTCCCAAC","TTCCCAAC",
+ "AAGCCAAC","CAGCCAAC","GAGCCAAC","TAGCCAAC","ACGCCAAC","CCGCCAAC","GCGCCAAC","TCGCCAAC",
+ "AGGCCAAC","CGGCCAAC","GGGCCAAC","TGGCCAAC","ATGCCAAC","CTGCCAAC","GTGCCAAC","TTGCCAAC",
+ "AATCCAAC","CATCCAAC","GATCCAAC","TATCCAAC","ACTCCAAC","CCTCCAAC","GCTCCAAC","TCTCCAAC",
+ "AGTCCAAC","CGTCCAAC","GGTCCAAC","TGTCCAAC","ATTCCAAC","CTTCCAAC","GTTCCAAC","TTTCCAAC",
+ "AAAGCAAC","CAAGCAAC","GAAGCAAC","TAAGCAAC","ACAGCAAC","CCAGCAAC","GCAGCAAC","TCAGCAAC",
+ "AGAGCAAC","CGAGCAAC","GGAGCAAC","TGAGCAAC","ATAGCAAC","CTAGCAAC","GTAGCAAC","TTAGCAAC",
+ "AACGCAAC","CACGCAAC","GACGCAAC","TACGCAAC","ACCGCAAC","CCCGCAAC","GCCGCAAC","TCCGCAAC",
+ "AGCGCAAC","CGCGCAAC","GGCGCAAC","TGCGCAAC","ATCGCAAC","CTCGCAAC","GTCGCAAC","TTCGCAAC",
+ "AAGGCAAC","CAGGCAAC","GAGGCAAC","TAGGCAAC","ACGGCAAC","CCGGCAAC","GCGGCAAC","TCGGCAAC",
+ "AGGGCAAC","CGGGCAAC","GGGGCAAC","TGGGCAAC","ATGGCAAC","CTGGCAAC","GTGGCAAC","TTGGCAAC",
+ "AATGCAAC","CATGCAAC","GATGCAAC","TATGCAAC","ACTGCAAC","CCTGCAAC","GCTGCAAC","TCTGCAAC",
+ "AGTGCAAC","CGTGCAAC","GGTGCAAC","TGTGCAAC","ATTGCAAC","CTTGCAAC","GTTGCAAC","TTTGCAAC",
+ "AAATCAAC","CAATCAAC","GAATCAAC","TAATCAAC","ACATCAAC","CCATCAAC","GCATCAAC","TCATCAAC",
+ "AGATCAAC","CGATCAAC","GGATCAAC","TGATCAAC","ATATCAAC","CTATCAAC","GTATCAAC","TTATCAAC",
+ "AACTCAAC","CACTCAAC","GACTCAAC","TACTCAAC","ACCTCAAC","CCCTCAAC","GCCTCAAC","TCCTCAAC",
+ "AGCTCAAC","CGCTCAAC","GGCTCAAC","TGCTCAAC","ATCTCAAC","CTCTCAAC","GTCTCAAC","TTCTCAAC",
+ "AAGTCAAC","CAGTCAAC","GAGTCAAC","TAGTCAAC","ACGTCAAC","CCGTCAAC","GCGTCAAC","TCGTCAAC",
+ "AGGTCAAC","CGGTCAAC","GGGTCAAC","TGGTCAAC","ATGTCAAC","CTGTCAAC","GTGTCAAC","TTGTCAAC",
+ "AATTCAAC","CATTCAAC","GATTCAAC","TATTCAAC","ACTTCAAC","CCTTCAAC","GCTTCAAC","TCTTCAAC",
+ "AGTTCAAC","CGTTCAAC","GGTTCAAC","TGTTCAAC","ATTTCAAC","CTTTCAAC","GTTTCAAC","TTTTCAAC",
+ "AAAAGAAC","CAAAGAAC","GAAAGAAC","TAAAGAAC","ACAAGAAC","CCAAGAAC","GCAAGAAC","TCAAGAAC",
+ "AGAAGAAC","CGAAGAAC","GGAAGAAC","TGAAGAAC","ATAAGAAC","CTAAGAAC","GTAAGAAC","TTAAGAAC",
+ "AACAGAAC","CACAGAAC","GACAGAAC","TACAGAAC","ACCAGAAC","CCCAGAAC","GCCAGAAC","TCCAGAAC",
+ "AGCAGAAC","CGCAGAAC","GGCAGAAC","TGCAGAAC","ATCAGAAC","CTCAGAAC","GTCAGAAC","TTCAGAAC",
+ "AAGAGAAC","CAGAGAAC","GAGAGAAC","TAGAGAAC","ACGAGAAC","CCGAGAAC","GCGAGAAC","TCGAGAAC",
+ "AGGAGAAC","CGGAGAAC","GGGAGAAC","TGGAGAAC","ATGAGAAC","CTGAGAAC","GTGAGAAC","TTGAGAAC",
+ "AATAGAAC","CATAGAAC","GATAGAAC","TATAGAAC","ACTAGAAC","CCTAGAAC","GCTAGAAC","TCTAGAAC",
+ "AGTAGAAC","CGTAGAAC","GGTAGAAC","TGTAGAAC","ATTAGAAC","CTTAGAAC","GTTAGAAC","TTTAGAAC",
+ "AAACGAAC","CAACGAAC","GAACGAAC","TAACGAAC","ACACGAAC","CCACGAAC","GCACGAAC","TCACGAAC",
+ "AGACGAAC","CGACGAAC","GGACGAAC","TGACGAAC","ATACGAAC","CTACGAAC","GTACGAAC","TTACGAAC",
+ "AACCGAAC","CACCGAAC","GACCGAAC","TACCGAAC","ACCCGAAC","CCCCGAAC","GCCCGAAC","TCCCGAAC",
+ "AGCCGAAC","CGCCGAAC","GGCCGAAC","TGCCGAAC","ATCCGAAC","CTCCGAAC","GTCCGAAC","TTCCGAAC",
+ "AAGCGAAC","CAGCGAAC","GAGCGAAC","TAGCGAAC","ACGCGAAC","CCGCGAAC","GCGCGAAC","TCGCGAAC",
+ "AGGCGAAC","CGGCGAAC","GGGCGAAC","TGGCGAAC","ATGCGAAC","CTGCGAAC","GTGCGAAC","TTGCGAAC",
+ "AATCGAAC","CATCGAAC","GATCGAAC","TATCGAAC","ACTCGAAC","CCTCGAAC","GCTCGAAC","TCTCGAAC",
+ "AGTCGAAC","CGTCGAAC","GGTCGAAC","TGTCGAAC","ATTCGAAC","CTTCGAAC","GTTCGAAC","TTTCGAAC",
+ "AAAGGAAC","CAAGGAAC","GAAGGAAC","TAAGGAAC","ACAGGAAC","CCAGGAAC","GCAGGAAC","TCAGGAAC",
+ "AGAGGAAC","CGAGGAAC","GGAGGAAC","TGAGGAAC","ATAGGAAC","CTAGGAAC","GTAGGAAC","TTAGGAAC",
+ "AACGGAAC","CACGGAAC","GACGGAAC","TACGGAAC","ACCGGAAC","CCCGGAAC","GCCGGAAC","TCCGGAAC",
+ "AGCGGAAC","CGCGGAAC","GGCGGAAC","TGCGGAAC","ATCGGAAC","CTCGGAAC","GTCGGAAC","TTCGGAAC",
+ "AAGGGAAC","CAGGGAAC","GAGGGAAC","TAGGGAAC","ACGGGAAC","CCGGGAAC","GCGGGAAC","TCGGGAAC",
+ "AGGGGAAC","CGGGGAAC","GGGGGAAC","TGGGGAAC","ATGGGAAC","CTGGGAAC","GTGGGAAC","TTGGGAAC",
+ "AATGGAAC","CATGGAAC","GATGGAAC","TATGGAAC","ACTGGAAC","CCTGGAAC","GCTGGAAC","TCTGGAAC",
+ "AGTGGAAC","CGTGGAAC","GGTGGAAC","TGTGGAAC","ATTGGAAC","CTTGGAAC","GTTGGAAC","TTTGGAAC",
+ "AAATGAAC","CAATGAAC","GAATGAAC","TAATGAAC","ACATGAAC","CCATGAAC","GCATGAAC","TCATGAAC",
+ "AGATGAAC","CGATGAAC","GGATGAAC","TGATGAAC","ATATGAAC","CTATGAAC","GTATGAAC","TTATGAAC",
+ "AACTGAAC","CACTGAAC","GACTGAAC","TACTGAAC","ACCTGAAC","CCCTGAAC","GCCTGAAC","TCCTGAAC",
+ "AGCTGAAC","CGCTGAAC","GGCTGAAC","TGCTGAAC","ATCTGAAC","CTCTGAAC","GTCTGAAC","TTCTGAAC",
+ "AAGTGAAC","CAGTGAAC","GAGTGAAC","TAGTGAAC","ACGTGAAC","CCGTGAAC","GCGTGAAC","TCGTGAAC",
+ "AGGTGAAC","CGGTGAAC","GGGTGAAC","TGGTGAAC","ATGTGAAC","CTGTGAAC","GTGTGAAC","TTGTGAAC",
+ "AATTGAAC","CATTGAAC","GATTGAAC","TATTGAAC","ACTTGAAC","CCTTGAAC","GCTTGAAC","TCTTGAAC",
+ "AGTTGAAC","CGTTGAAC","GGTTGAAC","TGTTGAAC","ATTTGAAC","CTTTGAAC","GTTTGAAC","TTTTGAAC",
+ "AAAATAAC","CAAATAAC","GAAATAAC","TAAATAAC","ACAATAAC","CCAATAAC","GCAATAAC","TCAATAAC",
+ "AGAATAAC","CGAATAAC","GGAATAAC","TGAATAAC","ATAATAAC","CTAATAAC","GTAATAAC","TTAATAAC",
+ "AACATAAC","CACATAAC","GACATAAC","TACATAAC","ACCATAAC","CCCATAAC","GCCATAAC","TCCATAAC",
+ "AGCATAAC","CGCATAAC","GGCATAAC","TGCATAAC","ATCATAAC","CTCATAAC","GTCATAAC","TTCATAAC",
+ "AAGATAAC","CAGATAAC","GAGATAAC","TAGATAAC","ACGATAAC","CCGATAAC","GCGATAAC","TCGATAAC",
+ "AGGATAAC","CGGATAAC","GGGATAAC","TGGATAAC","ATGATAAC","CTGATAAC","GTGATAAC","TTGATAAC",
+ "AATATAAC","CATATAAC","GATATAAC","TATATAAC","ACTATAAC","CCTATAAC","GCTATAAC","TCTATAAC",
+ "AGTATAAC","CGTATAAC","GGTATAAC","TGTATAAC","ATTATAAC","CTTATAAC","GTTATAAC","TTTATAAC",
+ "AAACTAAC","CAACTAAC","GAACTAAC","TAACTAAC","ACACTAAC","CCACTAAC","GCACTAAC","TCACTAAC",
+ "AGACTAAC","CGACTAAC","GGACTAAC","TGACTAAC","ATACTAAC","CTACTAAC","GTACTAAC","TTACTAAC",
+ "AACCTAAC","CACCTAAC","GACCTAAC","TACCTAAC","ACCCTAAC","CCCCTAAC","GCCCTAAC","TCCCTAAC",
+ "AGCCTAAC","CGCCTAAC","GGCCTAAC","TGCCTAAC","ATCCTAAC","CTCCTAAC","GTCCTAAC","TTCCTAAC",
+ "AAGCTAAC","CAGCTAAC","GAGCTAAC","TAGCTAAC","ACGCTAAC","CCGCTAAC","GCGCTAAC","TCGCTAAC",
+ "AGGCTAAC","CGGCTAAC","GGGCTAAC","TGGCTAAC","ATGCTAAC","CTGCTAAC","GTGCTAAC","TTGCTAAC",
+ "AATCTAAC","CATCTAAC","GATCTAAC","TATCTAAC","ACTCTAAC","CCTCTAAC","GCTCTAAC","TCTCTAAC",
+ "AGTCTAAC","CGTCTAAC","GGTCTAAC","TGTCTAAC","ATTCTAAC","CTTCTAAC","GTTCTAAC","TTTCTAAC",
+ "AAAGTAAC","CAAGTAAC","GAAGTAAC","TAAGTAAC","ACAGTAAC","CCAGTAAC","GCAGTAAC","TCAGTAAC",
+ "AGAGTAAC","CGAGTAAC","GGAGTAAC","TGAGTAAC","ATAGTAAC","CTAGTAAC","GTAGTAAC","TTAGTAAC",
+ "AACGTAAC","CACGTAAC","GACGTAAC","TACGTAAC","ACCGTAAC","CCCGTAAC","GCCGTAAC","TCCGTAAC",
+ "AGCGTAAC","CGCGTAAC","GGCGTAAC","TGCGTAAC","ATCGTAAC","CTCGTAAC","GTCGTAAC","TTCGTAAC",
+ "AAGGTAAC","CAGGTAAC","GAGGTAAC","TAGGTAAC","ACGGTAAC","CCGGTAAC","GCGGTAAC","TCGGTAAC",
+ "AGGGTAAC","CGGGTAAC","GGGGTAAC","TGGGTAAC","ATGGTAAC","CTGGTAAC","GTGGTAAC","TTGGTAAC",
+ "AATGTAAC","CATGTAAC","GATGTAAC","TATGTAAC","ACTGTAAC","CCTGTAAC","GCTGTAAC","TCTGTAAC",
+ "AGTGTAAC","CGTGTAAC","GGTGTAAC","TGTGTAAC","ATTGTAAC","CTTGTAAC","GTTGTAAC","TTTGTAAC",
+ "AAATTAAC","CAATTAAC","GAATTAAC","TAATTAAC","ACATTAAC","CCATTAAC","GCATTAAC","TCATTAAC",
+ "AGATTAAC","CGATTAAC","GGATTAAC","TGATTAAC","ATATTAAC","CTATTAAC","GTATTAAC","TTATTAAC",
+ "AACTTAAC","CACTTAAC","GACTTAAC","TACTTAAC","ACCTTAAC","CCCTTAAC","GCCTTAAC","TCCTTAAC",
+ "AGCTTAAC","CGCTTAAC","GGCTTAAC","TGCTTAAC","ATCTTAAC","CTCTTAAC","GTCTTAAC","TTCTTAAC",
+ "AAGTTAAC","CAGTTAAC","GAGTTAAC","TAGTTAAC","ACGTTAAC","CCGTTAAC","GCGTTAAC","TCGTTAAC",
+ "AGGTTAAC","CGGTTAAC","GGGTTAAC","TGGTTAAC","ATGTTAAC","CTGTTAAC","GTGTTAAC","TTGTTAAC",
+ "AATTTAAC","CATTTAAC","GATTTAAC","TATTTAAC","ACTTTAAC","CCTTTAAC","GCTTTAAC","TCTTTAAC",
+ "AGTTTAAC","CGTTTAAC","GGTTTAAC","TGTTTAAC","ATTTTAAC","CTTTTAAC","GTTTTAAC","TTTTTAAC",
+ "AAAAACAC","CAAAACAC","GAAAACAC","TAAAACAC","ACAAACAC","CCAAACAC","GCAAACAC","TCAAACAC",
+ "AGAAACAC","CGAAACAC","GGAAACAC","TGAAACAC","ATAAACAC","CTAAACAC","GTAAACAC","TTAAACAC",
+ "AACAACAC","CACAACAC","GACAACAC","TACAACAC","ACCAACAC","CCCAACAC","GCCAACAC","TCCAACAC",
+ "AGCAACAC","CGCAACAC","GGCAACAC","TGCAACAC","ATCAACAC","CTCAACAC","GTCAACAC","TTCAACAC",
+ "AAGAACAC","CAGAACAC","GAGAACAC","TAGAACAC","ACGAACAC","CCGAACAC","GCGAACAC","TCGAACAC",
+ "AGGAACAC","CGGAACAC","GGGAACAC","TGGAACAC","ATGAACAC","CTGAACAC","GTGAACAC","TTGAACAC",
+ "AATAACAC","CATAACAC","GATAACAC","TATAACAC","ACTAACAC","CCTAACAC","GCTAACAC","TCTAACAC",
+ "AGTAACAC","CGTAACAC","GGTAACAC","TGTAACAC","ATTAACAC","CTTAACAC","GTTAACAC","TTTAACAC",
+ "AAACACAC","CAACACAC","GAACACAC","TAACACAC","ACACACAC","CCACACAC","GCACACAC","TCACACAC",
+ "AGACACAC","CGACACAC","GGACACAC","TGACACAC","ATACACAC","CTACACAC","GTACACAC","TTACACAC",
+ "AACCACAC","CACCACAC","GACCACAC","TACCACAC","ACCCACAC","CCCCACAC","GCCCACAC","TCCCACAC",
+ "AGCCACAC","CGCCACAC","GGCCACAC","TGCCACAC","ATCCACAC","CTCCACAC","GTCCACAC","TTCCACAC",
+ "AAGCACAC","CAGCACAC","GAGCACAC","TAGCACAC","ACGCACAC","CCGCACAC","GCGCACAC","TCGCACAC",
+ "AGGCACAC","CGGCACAC","GGGCACAC","TGGCACAC","ATGCACAC","CTGCACAC","GTGCACAC","TTGCACAC",
+ "AATCACAC","CATCACAC","GATCACAC","TATCACAC","ACTCACAC","CCTCACAC","GCTCACAC","TCTCACAC",
+ "AGTCACAC","CGTCACAC","GGTCACAC","TGTCACAC","ATTCACAC","CTTCACAC","GTTCACAC","TTTCACAC",
+ "AAAGACAC","CAAGACAC","GAAGACAC","TAAGACAC","ACAGACAC","CCAGACAC","GCAGACAC","TCAGACAC",
+ "AGAGACAC","CGAGACAC","GGAGACAC","TGAGACAC","ATAGACAC","CTAGACAC","GTAGACAC","TTAGACAC",
+ "AACGACAC","CACGACAC","GACGACAC","TACGACAC","ACCGACAC","CCCGACAC","GCCGACAC","TCCGACAC",
+ "AGCGACAC","CGCGACAC","GGCGACAC","TGCGACAC","ATCGACAC","CTCGACAC","GTCGACAC","TTCGACAC",
+ "AAGGACAC","CAGGACAC","GAGGACAC","TAGGACAC","ACGGACAC","CCGGACAC","GCGGACAC","TCGGACAC",
+ "AGGGACAC","CGGGACAC","GGGGACAC","TGGGACAC","ATGGACAC","CTGGACAC","GTGGACAC","TTGGACAC",
+ "AATGACAC","CATGACAC","GATGACAC","TATGACAC","ACTGACAC","CCTGACAC","GCTGACAC","TCTGACAC",
+ "AGTGACAC","CGTGACAC","GGTGACAC","TGTGACAC","ATTGACAC","CTTGACAC","GTTGACAC","TTTGACAC",
+ "AAATACAC","CAATACAC","GAATACAC","TAATACAC","ACATACAC","CCATACAC","GCATACAC","TCATACAC",
+ "AGATACAC","CGATACAC","GGATACAC","TGATACAC","ATATACAC","CTATACAC","GTATACAC","TTATACAC",
+ "AACTACAC","CACTACAC","GACTACAC","TACTACAC","ACCTACAC","CCCTACAC","GCCTACAC","TCCTACAC",
+ "AGCTACAC","CGCTACAC","GGCTACAC","TGCTACAC","ATCTACAC","CTCTACAC","GTCTACAC","TTCTACAC",
+ "AAGTACAC","CAGTACAC","GAGTACAC","TAGTACAC","ACGTACAC","CCGTACAC","GCGTACAC","TCGTACAC",
+ "AGGTACAC","CGGTACAC","GGGTACAC","TGGTACAC","ATGTACAC","CTGTACAC","GTGTACAC","TTGTACAC",
+ "AATTACAC","CATTACAC","GATTACAC","TATTACAC","ACTTACAC","CCTTACAC","GCTTACAC","TCTTACAC",
+ "AGTTACAC","CGTTACAC","GGTTACAC","TGTTACAC","ATTTACAC","CTTTACAC","GTTTACAC","TTTTACAC",
+ "AAAACCAC","CAAACCAC","GAAACCAC","TAAACCAC","ACAACCAC","CCAACCAC","GCAACCAC","TCAACCAC",
+ "AGAACCAC","CGAACCAC","GGAACCAC","TGAACCAC","ATAACCAC","CTAACCAC","GTAACCAC","TTAACCAC",
+ "AACACCAC","CACACCAC","GACACCAC","TACACCAC","ACCACCAC","CCCACCAC","GCCACCAC","TCCACCAC",
+ "AGCACCAC","CGCACCAC","GGCACCAC","TGCACCAC","ATCACCAC","CTCACCAC","GTCACCAC","TTCACCAC",
+ "AAGACCAC","CAGACCAC","GAGACCAC","TAGACCAC","ACGACCAC","CCGACCAC","GCGACCAC","TCGACCAC",
+ "AGGACCAC","CGGACCAC","GGGACCAC","TGGACCAC","ATGACCAC","CTGACCAC","GTGACCAC","TTGACCAC",
+ "AATACCAC","CATACCAC","GATACCAC","TATACCAC","ACTACCAC","CCTACCAC","GCTACCAC","TCTACCAC",
+ "AGTACCAC","CGTACCAC","GGTACCAC","TGTACCAC","ATTACCAC","CTTACCAC","GTTACCAC","TTTACCAC",
+ "AAACCCAC","CAACCCAC","GAACCCAC","TAACCCAC","ACACCCAC","CCACCCAC","GCACCCAC","TCACCCAC",
+ "AGACCCAC","CGACCCAC","GGACCCAC","TGACCCAC","ATACCCAC","CTACCCAC","GTACCCAC","TTACCCAC",
+ "AACCCCAC","CACCCCAC","GACCCCAC","TACCCCAC","ACCCCCAC","CCCCCCAC","GCCCCCAC","TCCCCCAC",
+ "AGCCCCAC","CGCCCCAC","GGCCCCAC","TGCCCCAC","ATCCCCAC","CTCCCCAC","GTCCCCAC","TTCCCCAC",
+ "AAGCCCAC","CAGCCCAC","GAGCCCAC","TAGCCCAC","ACGCCCAC","CCGCCCAC","GCGCCCAC","TCGCCCAC",
+ "AGGCCCAC","CGGCCCAC","GGGCCCAC","TGGCCCAC","ATGCCCAC","CTGCCCAC","GTGCCCAC","TTGCCCAC",
+ "AATCCCAC","CATCCCAC","GATCCCAC","TATCCCAC","ACTCCCAC","CCTCCCAC","GCTCCCAC","TCTCCCAC",
+ "AGTCCCAC","CGTCCCAC","GGTCCCAC","TGTCCCAC","ATTCCCAC","CTTCCCAC","GTTCCCAC","TTTCCCAC",
+ "AAAGCCAC","CAAGCCAC","GAAGCCAC","TAAGCCAC","ACAGCCAC","CCAGCCAC","GCAGCCAC","TCAGCCAC",
+ "AGAGCCAC","CGAGCCAC","GGAGCCAC","TGAGCCAC","ATAGCCAC","CTAGCCAC","GTAGCCAC","TTAGCCAC",
+ "AACGCCAC","CACGCCAC","GACGCCAC","TACGCCAC","ACCGCCAC","CCCGCCAC","GCCGCCAC","TCCGCCAC",
+ "AGCGCCAC","CGCGCCAC","GGCGCCAC","TGCGCCAC","ATCGCCAC","CTCGCCAC","GTCGCCAC","TTCGCCAC",
+ "AAGGCCAC","CAGGCCAC","GAGGCCAC","TAGGCCAC","ACGGCCAC","CCGGCCAC","GCGGCCAC","TCGGCCAC",
+ "AGGGCCAC","CGGGCCAC","GGGGCCAC","TGGGCCAC","ATGGCCAC","CTGGCCAC","GTGGCCAC","TTGGCCAC",
+ "AATGCCAC","CATGCCAC","GATGCCAC","TATGCCAC","ACTGCCAC","CCTGCCAC","GCTGCCAC","TCTGCCAC",
+ "AGTGCCAC","CGTGCCAC","GGTGCCAC","TGTGCCAC","ATTGCCAC","CTTGCCAC","GTTGCCAC","TTTGCCAC",
+ "AAATCCAC","CAATCCAC","GAATCCAC","TAATCCAC","ACATCCAC","CCATCCAC","GCATCCAC","TCATCCAC",
+ "AGATCCAC","CGATCCAC","GGATCCAC","TGATCCAC","ATATCCAC","CTATCCAC","GTATCCAC","TTATCCAC",
+ "AACTCCAC","CACTCCAC","GACTCCAC","TACTCCAC","ACCTCCAC","CCCTCCAC","GCCTCCAC","TCCTCCAC",
+ "AGCTCCAC","CGCTCCAC","GGCTCCAC","TGCTCCAC","ATCTCCAC","CTCTCCAC","GTCTCCAC","TTCTCCAC",
+ "AAGTCCAC","CAGTCCAC","GAGTCCAC","TAGTCCAC","ACGTCCAC","CCGTCCAC","GCGTCCAC","TCGTCCAC",
+ "AGGTCCAC","CGGTCCAC","GGGTCCAC","TGGTCCAC","ATGTCCAC","CTGTCCAC","GTGTCCAC","TTGTCCAC",
+ "AATTCCAC","CATTCCAC","GATTCCAC","TATTCCAC","ACTTCCAC","CCTTCCAC","GCTTCCAC","TCTTCCAC",
+ "AGTTCCAC","CGTTCCAC","GGTTCCAC","TGTTCCAC","ATTTCCAC","CTTTCCAC","GTTTCCAC","TTTTCCAC",
+ "AAAAGCAC","CAAAGCAC","GAAAGCAC","TAAAGCAC","ACAAGCAC","CCAAGCAC","GCAAGCAC","TCAAGCAC",
+ "AGAAGCAC","CGAAGCAC","GGAAGCAC","TGAAGCAC","ATAAGCAC","CTAAGCAC","GTAAGCAC","TTAAGCAC",
+ "AACAGCAC","CACAGCAC","GACAGCAC","TACAGCAC","ACCAGCAC","CCCAGCAC","GCCAGCAC","TCCAGCAC",
+ "AGCAGCAC","CGCAGCAC","GGCAGCAC","TGCAGCAC","ATCAGCAC","CTCAGCAC","GTCAGCAC","TTCAGCAC",
+ "AAGAGCAC","CAGAGCAC","GAGAGCAC","TAGAGCAC","ACGAGCAC","CCGAGCAC","GCGAGCAC","TCGAGCAC",
+ "AGGAGCAC","CGGAGCAC","GGGAGCAC","TGGAGCAC","ATGAGCAC","CTGAGCAC","GTGAGCAC","TTGAGCAC",
+ "AATAGCAC","CATAGCAC","GATAGCAC","TATAGCAC","ACTAGCAC","CCTAGCAC","GCTAGCAC","TCTAGCAC",
+ "AGTAGCAC","CGTAGCAC","GGTAGCAC","TGTAGCAC","ATTAGCAC","CTTAGCAC","GTTAGCAC","TTTAGCAC",
+ "AAACGCAC","CAACGCAC","GAACGCAC","TAACGCAC","ACACGCAC","CCACGCAC","GCACGCAC","TCACGCAC",
+ "AGACGCAC","CGACGCAC","GGACGCAC","TGACGCAC","ATACGCAC","CTACGCAC","GTACGCAC","TTACGCAC",
+ "AACCGCAC","CACCGCAC","GACCGCAC","TACCGCAC","ACCCGCAC","CCCCGCAC","GCCCGCAC","TCCCGCAC",
+ "AGCCGCAC","CGCCGCAC","GGCCGCAC","TGCCGCAC","ATCCGCAC","CTCCGCAC","GTCCGCAC","TTCCGCAC",
+ "AAGCGCAC","CAGCGCAC","GAGCGCAC","TAGCGCAC","ACGCGCAC","CCGCGCAC","GCGCGCAC","TCGCGCAC",
+ "AGGCGCAC","CGGCGCAC","GGGCGCAC","TGGCGCAC","ATGCGCAC","CTGCGCAC","GTGCGCAC","TTGCGCAC",
+ "AATCGCAC","CATCGCAC","GATCGCAC","TATCGCAC","ACTCGCAC","CCTCGCAC","GCTCGCAC","TCTCGCAC",
+ "AGTCGCAC","CGTCGCAC","GGTCGCAC","TGTCGCAC","ATTCGCAC","CTTCGCAC","GTTCGCAC","TTTCGCAC",
+ "AAAGGCAC","CAAGGCAC","GAAGGCAC","TAAGGCAC","ACAGGCAC","CCAGGCAC","GCAGGCAC","TCAGGCAC",
+ "AGAGGCAC","CGAGGCAC","GGAGGCAC","TGAGGCAC","ATAGGCAC","CTAGGCAC","GTAGGCAC","TTAGGCAC",
+ "AACGGCAC","CACGGCAC","GACGGCAC","TACGGCAC","ACCGGCAC","CCCGGCAC","GCCGGCAC","TCCGGCAC",
+ "AGCGGCAC","CGCGGCAC","GGCGGCAC","TGCGGCAC","ATCGGCAC","CTCGGCAC","GTCGGCAC","TTCGGCAC",
+ "AAGGGCAC","CAGGGCAC","GAGGGCAC","TAGGGCAC","ACGGGCAC","CCGGGCAC","GCGGGCAC","TCGGGCAC",
+ "AGGGGCAC","CGGGGCAC","GGGGGCAC","TGGGGCAC","ATGGGCAC","CTGGGCAC","GTGGGCAC","TTGGGCAC",
+ "AATGGCAC","CATGGCAC","GATGGCAC","TATGGCAC","ACTGGCAC","CCTGGCAC","GCTGGCAC","TCTGGCAC",
+ "AGTGGCAC","CGTGGCAC","GGTGGCAC","TGTGGCAC","ATTGGCAC","CTTGGCAC","GTTGGCAC","TTTGGCAC",
+ "AAATGCAC","CAATGCAC","GAATGCAC","TAATGCAC","ACATGCAC","CCATGCAC","GCATGCAC","TCATGCAC",
+ "AGATGCAC","CGATGCAC","GGATGCAC","TGATGCAC","ATATGCAC","CTATGCAC","GTATGCAC","TTATGCAC",
+ "AACTGCAC","CACTGCAC","GACTGCAC","TACTGCAC","ACCTGCAC","CCCTGCAC","GCCTGCAC","TCCTGCAC",
+ "AGCTGCAC","CGCTGCAC","GGCTGCAC","TGCTGCAC","ATCTGCAC","CTCTGCAC","GTCTGCAC","TTCTGCAC",
+ "AAGTGCAC","CAGTGCAC","GAGTGCAC","TAGTGCAC","ACGTGCAC","CCGTGCAC","GCGTGCAC","TCGTGCAC",
+ "AGGTGCAC","CGGTGCAC","GGGTGCAC","TGGTGCAC","ATGTGCAC","CTGTGCAC","GTGTGCAC","TTGTGCAC",
+ "AATTGCAC","CATTGCAC","GATTGCAC","TATTGCAC","ACTTGCAC","CCTTGCAC","GCTTGCAC","TCTTGCAC",
+ "AGTTGCAC","CGTTGCAC","GGTTGCAC","TGTTGCAC","ATTTGCAC","CTTTGCAC","GTTTGCAC","TTTTGCAC",
+ "AAAATCAC","CAAATCAC","GAAATCAC","TAAATCAC","ACAATCAC","CCAATCAC","GCAATCAC","TCAATCAC",
+ "AGAATCAC","CGAATCAC","GGAATCAC","TGAATCAC","ATAATCAC","CTAATCAC","GTAATCAC","TTAATCAC",
+ "AACATCAC","CACATCAC","GACATCAC","TACATCAC","ACCATCAC","CCCATCAC","GCCATCAC","TCCATCAC",
+ "AGCATCAC","CGCATCAC","GGCATCAC","TGCATCAC","ATCATCAC","CTCATCAC","GTCATCAC","TTCATCAC",
+ "AAGATCAC","CAGATCAC","GAGATCAC","TAGATCAC","ACGATCAC","CCGATCAC","GCGATCAC","TCGATCAC",
+ "AGGATCAC","CGGATCAC","GGGATCAC","TGGATCAC","ATGATCAC","CTGATCAC","GTGATCAC","TTGATCAC",
+ "AATATCAC","CATATCAC","GATATCAC","TATATCAC","ACTATCAC","CCTATCAC","GCTATCAC","TCTATCAC",
+ "AGTATCAC","CGTATCAC","GGTATCAC","TGTATCAC","ATTATCAC","CTTATCAC","GTTATCAC","TTTATCAC",
+ "AAACTCAC","CAACTCAC","GAACTCAC","TAACTCAC","ACACTCAC","CCACTCAC","GCACTCAC","TCACTCAC",
+ "AGACTCAC","CGACTCAC","GGACTCAC","TGACTCAC","ATACTCAC","CTACTCAC","GTACTCAC","TTACTCAC",
+ "AACCTCAC","CACCTCAC","GACCTCAC","TACCTCAC","ACCCTCAC","CCCCTCAC","GCCCTCAC","TCCCTCAC",
+ "AGCCTCAC","CGCCTCAC","GGCCTCAC","TGCCTCAC","ATCCTCAC","CTCCTCAC","GTCCTCAC","TTCCTCAC",
+ "AAGCTCAC","CAGCTCAC","GAGCTCAC","TAGCTCAC","ACGCTCAC","CCGCTCAC","GCGCTCAC","TCGCTCAC",
+ "AGGCTCAC","CGGCTCAC","GGGCTCAC","TGGCTCAC","ATGCTCAC","CTGCTCAC","GTGCTCAC","TTGCTCAC",
+ "AATCTCAC","CATCTCAC","GATCTCAC","TATCTCAC","ACTCTCAC","CCTCTCAC","GCTCTCAC","TCTCTCAC",
+ "AGTCTCAC","CGTCTCAC","GGTCTCAC","TGTCTCAC","ATTCTCAC","CTTCTCAC","GTTCTCAC","TTTCTCAC",
+ "AAAGTCAC","CAAGTCAC","GAAGTCAC","TAAGTCAC","ACAGTCAC","CCAGTCAC","GCAGTCAC","TCAGTCAC",
+ "AGAGTCAC","CGAGTCAC","GGAGTCAC","TGAGTCAC","ATAGTCAC","CTAGTCAC","GTAGTCAC","TTAGTCAC",
+ "AACGTCAC","CACGTCAC","GACGTCAC","TACGTCAC","ACCGTCAC","CCCGTCAC","GCCGTCAC","TCCGTCAC",
+ "AGCGTCAC","CGCGTCAC","GGCGTCAC","TGCGTCAC","ATCGTCAC","CTCGTCAC","GTCGTCAC","TTCGTCAC",
+ "AAGGTCAC","CAGGTCAC","GAGGTCAC","TAGGTCAC","ACGGTCAC","CCGGTCAC","GCGGTCAC","TCGGTCAC",
+ "AGGGTCAC","CGGGTCAC","GGGGTCAC","TGGGTCAC","ATGGTCAC","CTGGTCAC","GTGGTCAC","TTGGTCAC",
+ "AATGTCAC","CATGTCAC","GATGTCAC","TATGTCAC","ACTGTCAC","CCTGTCAC","GCTGTCAC","TCTGTCAC",
+ "AGTGTCAC","CGTGTCAC","GGTGTCAC","TGTGTCAC","ATTGTCAC","CTTGTCAC","GTTGTCAC","TTTGTCAC",
+ "AAATTCAC","CAATTCAC","GAATTCAC","TAATTCAC","ACATTCAC","CCATTCAC","GCATTCAC","TCATTCAC",
+ "AGATTCAC","CGATTCAC","GGATTCAC","TGATTCAC","ATATTCAC","CTATTCAC","GTATTCAC","TTATTCAC",
+ "AACTTCAC","CACTTCAC","GACTTCAC","TACTTCAC","ACCTTCAC","CCCTTCAC","GCCTTCAC","TCCTTCAC",
+ "AGCTTCAC","CGCTTCAC","GGCTTCAC","TGCTTCAC","ATCTTCAC","CTCTTCAC","GTCTTCAC","TTCTTCAC",
+ "AAGTTCAC","CAGTTCAC","GAGTTCAC","TAGTTCAC","ACGTTCAC","CCGTTCAC","GCGTTCAC","TCGTTCAC",
+ "AGGTTCAC","CGGTTCAC","GGGTTCAC","TGGTTCAC","ATGTTCAC","CTGTTCAC","GTGTTCAC","TTGTTCAC",
+ "AATTTCAC","CATTTCAC","GATTTCAC","TATTTCAC","ACTTTCAC","CCTTTCAC","GCTTTCAC","TCTTTCAC",
+ "AGTTTCAC","CGTTTCAC","GGTTTCAC","TGTTTCAC","ATTTTCAC","CTTTTCAC","GTTTTCAC","TTTTTCAC",
+ "AAAAAGAC","CAAAAGAC","GAAAAGAC","TAAAAGAC","ACAAAGAC","CCAAAGAC","GCAAAGAC","TCAAAGAC",
+ "AGAAAGAC","CGAAAGAC","GGAAAGAC","TGAAAGAC","ATAAAGAC","CTAAAGAC","GTAAAGAC","TTAAAGAC",
+ "AACAAGAC","CACAAGAC","GACAAGAC","TACAAGAC","ACCAAGAC","CCCAAGAC","GCCAAGAC","TCCAAGAC",
+ "AGCAAGAC","CGCAAGAC","GGCAAGAC","TGCAAGAC","ATCAAGAC","CTCAAGAC","GTCAAGAC","TTCAAGAC",
+ "AAGAAGAC","CAGAAGAC","GAGAAGAC","TAGAAGAC","ACGAAGAC","CCGAAGAC","GCGAAGAC","TCGAAGAC",
+ "AGGAAGAC","CGGAAGAC","GGGAAGAC","TGGAAGAC","ATGAAGAC","CTGAAGAC","GTGAAGAC","TTGAAGAC",
+ "AATAAGAC","CATAAGAC","GATAAGAC","TATAAGAC","ACTAAGAC","CCTAAGAC","GCTAAGAC","TCTAAGAC",
+ "AGTAAGAC","CGTAAGAC","GGTAAGAC","TGTAAGAC","ATTAAGAC","CTTAAGAC","GTTAAGAC","TTTAAGAC",
+ "AAACAGAC","CAACAGAC","GAACAGAC","TAACAGAC","ACACAGAC","CCACAGAC","GCACAGAC","TCACAGAC",
+ "AGACAGAC","CGACAGAC","GGACAGAC","TGACAGAC","ATACAGAC","CTACAGAC","GTACAGAC","TTACAGAC",
+ "AACCAGAC","CACCAGAC","GACCAGAC","TACCAGAC","ACCCAGAC","CCCCAGAC","GCCCAGAC","TCCCAGAC",
+ "AGCCAGAC","CGCCAGAC","GGCCAGAC","TGCCAGAC","ATCCAGAC","CTCCAGAC","GTCCAGAC","TTCCAGAC",
+ "AAGCAGAC","CAGCAGAC","GAGCAGAC","TAGCAGAC","ACGCAGAC","CCGCAGAC","GCGCAGAC","TCGCAGAC",
+ "AGGCAGAC","CGGCAGAC","GGGCAGAC","TGGCAGAC","ATGCAGAC","CTGCAGAC","GTGCAGAC","TTGCAGAC",
+ "AATCAGAC","CATCAGAC","GATCAGAC","TATCAGAC","ACTCAGAC","CCTCAGAC","GCTCAGAC","TCTCAGAC",
+ "AGTCAGAC","CGTCAGAC","GGTCAGAC","TGTCAGAC","ATTCAGAC","CTTCAGAC","GTTCAGAC","TTTCAGAC",
+ "AAAGAGAC","CAAGAGAC","GAAGAGAC","TAAGAGAC","ACAGAGAC","CCAGAGAC","GCAGAGAC","TCAGAGAC",
+ "AGAGAGAC","CGAGAGAC","GGAGAGAC","TGAGAGAC","ATAGAGAC","CTAGAGAC","GTAGAGAC","TTAGAGAC",
+ "AACGAGAC","CACGAGAC","GACGAGAC","TACGAGAC","ACCGAGAC","CCCGAGAC","GCCGAGAC","TCCGAGAC",
+ "AGCGAGAC","CGCGAGAC","GGCGAGAC","TGCGAGAC","ATCGAGAC","CTCGAGAC","GTCGAGAC","TTCGAGAC",
+ "AAGGAGAC","CAGGAGAC","GAGGAGAC","TAGGAGAC","ACGGAGAC","CCGGAGAC","GCGGAGAC","TCGGAGAC",
+ "AGGGAGAC","CGGGAGAC","GGGGAGAC","TGGGAGAC","ATGGAGAC","CTGGAGAC","GTGGAGAC","TTGGAGAC",
+ "AATGAGAC","CATGAGAC","GATGAGAC","TATGAGAC","ACTGAGAC","CCTGAGAC","GCTGAGAC","TCTGAGAC",
+ "AGTGAGAC","CGTGAGAC","GGTGAGAC","TGTGAGAC","ATTGAGAC","CTTGAGAC","GTTGAGAC","TTTGAGAC",
+ "AAATAGAC","CAATAGAC","GAATAGAC","TAATAGAC","ACATAGAC","CCATAGAC","GCATAGAC","TCATAGAC",
+ "AGATAGAC","CGATAGAC","GGATAGAC","TGATAGAC","ATATAGAC","CTATAGAC","GTATAGAC","TTATAGAC",
+ "AACTAGAC","CACTAGAC","GACTAGAC","TACTAGAC","ACCTAGAC","CCCTAGAC","GCCTAGAC","TCCTAGAC",
+ "AGCTAGAC","CGCTAGAC","GGCTAGAC","TGCTAGAC","ATCTAGAC","CTCTAGAC","GTCTAGAC","TTCTAGAC",
+ "AAGTAGAC","CAGTAGAC","GAGTAGAC","TAGTAGAC","ACGTAGAC","CCGTAGAC","GCGTAGAC","TCGTAGAC",
+ "AGGTAGAC","CGGTAGAC","GGGTAGAC","TGGTAGAC","ATGTAGAC","CTGTAGAC","GTGTAGAC","TTGTAGAC",
+ "AATTAGAC","CATTAGAC","GATTAGAC","TATTAGAC","ACTTAGAC","CCTTAGAC","GCTTAGAC","TCTTAGAC",
+ "AGTTAGAC","CGTTAGAC","GGTTAGAC","TGTTAGAC","ATTTAGAC","CTTTAGAC","GTTTAGAC","TTTTAGAC",
+ "AAAACGAC","CAAACGAC","GAAACGAC","TAAACGAC","ACAACGAC","CCAACGAC","GCAACGAC","TCAACGAC",
+ "AGAACGAC","CGAACGAC","GGAACGAC","TGAACGAC","ATAACGAC","CTAACGAC","GTAACGAC","TTAACGAC",
+ "AACACGAC","CACACGAC","GACACGAC","TACACGAC","ACCACGAC","CCCACGAC","GCCACGAC","TCCACGAC",
+ "AGCACGAC","CGCACGAC","GGCACGAC","TGCACGAC","ATCACGAC","CTCACGAC","GTCACGAC","TTCACGAC",
+ "AAGACGAC","CAGACGAC","GAGACGAC","TAGACGAC","ACGACGAC","CCGACGAC","GCGACGAC","TCGACGAC",
+ "AGGACGAC","CGGACGAC","GGGACGAC","TGGACGAC","ATGACGAC","CTGACGAC","GTGACGAC","TTGACGAC",
+ "AATACGAC","CATACGAC","GATACGAC","TATACGAC","ACTACGAC","CCTACGAC","GCTACGAC","TCTACGAC",
+ "AGTACGAC","CGTACGAC","GGTACGAC","TGTACGAC","ATTACGAC","CTTACGAC","GTTACGAC","TTTACGAC",
+ "AAACCGAC","CAACCGAC","GAACCGAC","TAACCGAC","ACACCGAC","CCACCGAC","GCACCGAC","TCACCGAC",
+ "AGACCGAC","CGACCGAC","GGACCGAC","TGACCGAC","ATACCGAC","CTACCGAC","GTACCGAC","TTACCGAC",
+ "AACCCGAC","CACCCGAC","GACCCGAC","TACCCGAC","ACCCCGAC","CCCCCGAC","GCCCCGAC","TCCCCGAC",
+ "AGCCCGAC","CGCCCGAC","GGCCCGAC","TGCCCGAC","ATCCCGAC","CTCCCGAC","GTCCCGAC","TTCCCGAC",
+ "AAGCCGAC","CAGCCGAC","GAGCCGAC","TAGCCGAC","ACGCCGAC","CCGCCGAC","GCGCCGAC","TCGCCGAC",
+ "AGGCCGAC","CGGCCGAC","GGGCCGAC","TGGCCGAC","ATGCCGAC","CTGCCGAC","GTGCCGAC","TTGCCGAC",
+ "AATCCGAC","CATCCGAC","GATCCGAC","TATCCGAC","ACTCCGAC","CCTCCGAC","GCTCCGAC","TCTCCGAC",
+ "AGTCCGAC","CGTCCGAC","GGTCCGAC","TGTCCGAC","ATTCCGAC","CTTCCGAC","GTTCCGAC","TTTCCGAC",
+ "AAAGCGAC","CAAGCGAC","GAAGCGAC","TAAGCGAC","ACAGCGAC","CCAGCGAC","GCAGCGAC","TCAGCGAC",
+ "AGAGCGAC","CGAGCGAC","GGAGCGAC","TGAGCGAC","ATAGCGAC","CTAGCGAC","GTAGCGAC","TTAGCGAC",
+ "AACGCGAC","CACGCGAC","GACGCGAC","TACGCGAC","ACCGCGAC","CCCGCGAC","GCCGCGAC","TCCGCGAC",
+ "AGCGCGAC","CGCGCGAC","GGCGCGAC","TGCGCGAC","ATCGCGAC","CTCGCGAC","GTCGCGAC","TTCGCGAC",
+ "AAGGCGAC","CAGGCGAC","GAGGCGAC","TAGGCGAC","ACGGCGAC","CCGGCGAC","GCGGCGAC","TCGGCGAC",
+ "AGGGCGAC","CGGGCGAC","GGGGCGAC","TGGGCGAC","ATGGCGAC","CTGGCGAC","GTGGCGAC","TTGGCGAC",
+ "AATGCGAC","CATGCGAC","GATGCGAC","TATGCGAC","ACTGCGAC","CCTGCGAC","GCTGCGAC","TCTGCGAC",
+ "AGTGCGAC","CGTGCGAC","GGTGCGAC","TGTGCGAC","ATTGCGAC","CTTGCGAC","GTTGCGAC","TTTGCGAC",
+ "AAATCGAC","CAATCGAC","GAATCGAC","TAATCGAC","ACATCGAC","CCATCGAC","GCATCGAC","TCATCGAC",
+ "AGATCGAC","CGATCGAC","GGATCGAC","TGATCGAC","ATATCGAC","CTATCGAC","GTATCGAC","TTATCGAC",
+ "AACTCGAC","CACTCGAC","GACTCGAC","TACTCGAC","ACCTCGAC","CCCTCGAC","GCCTCGAC","TCCTCGAC",
+ "AGCTCGAC","CGCTCGAC","GGCTCGAC","TGCTCGAC","ATCTCGAC","CTCTCGAC","GTCTCGAC","TTCTCGAC",
+ "AAGTCGAC","CAGTCGAC","GAGTCGAC","TAGTCGAC","ACGTCGAC","CCGTCGAC","GCGTCGAC","TCGTCGAC",
+ "AGGTCGAC","CGGTCGAC","GGGTCGAC","TGGTCGAC","ATGTCGAC","CTGTCGAC","GTGTCGAC","TTGTCGAC",
+ "AATTCGAC","CATTCGAC","GATTCGAC","TATTCGAC","ACTTCGAC","CCTTCGAC","GCTTCGAC","TCTTCGAC",
+ "AGTTCGAC","CGTTCGAC","GGTTCGAC","TGTTCGAC","ATTTCGAC","CTTTCGAC","GTTTCGAC","TTTTCGAC",
+ "AAAAGGAC","CAAAGGAC","GAAAGGAC","TAAAGGAC","ACAAGGAC","CCAAGGAC","GCAAGGAC","TCAAGGAC",
+ "AGAAGGAC","CGAAGGAC","GGAAGGAC","TGAAGGAC","ATAAGGAC","CTAAGGAC","GTAAGGAC","TTAAGGAC",
+ "AACAGGAC","CACAGGAC","GACAGGAC","TACAGGAC","ACCAGGAC","CCCAGGAC","GCCAGGAC","TCCAGGAC",
+ "AGCAGGAC","CGCAGGAC","GGCAGGAC","TGCAGGAC","ATCAGGAC","CTCAGGAC","GTCAGGAC","TTCAGGAC",
+ "AAGAGGAC","CAGAGGAC","GAGAGGAC","TAGAGGAC","ACGAGGAC","CCGAGGAC","GCGAGGAC","TCGAGGAC",
+ "AGGAGGAC","CGGAGGAC","GGGAGGAC","TGGAGGAC","ATGAGGAC","CTGAGGAC","GTGAGGAC","TTGAGGAC",
+ "AATAGGAC","CATAGGAC","GATAGGAC","TATAGGAC","ACTAGGAC","CCTAGGAC","GCTAGGAC","TCTAGGAC",
+ "AGTAGGAC","CGTAGGAC","GGTAGGAC","TGTAGGAC","ATTAGGAC","CTTAGGAC","GTTAGGAC","TTTAGGAC",
+ "AAACGGAC","CAACGGAC","GAACGGAC","TAACGGAC","ACACGGAC","CCACGGAC","GCACGGAC","TCACGGAC",
+ "AGACGGAC","CGACGGAC","GGACGGAC","TGACGGAC","ATACGGAC","CTACGGAC","GTACGGAC","TTACGGAC",
+ "AACCGGAC","CACCGGAC","GACCGGAC","TACCGGAC","ACCCGGAC","CCCCGGAC","GCCCGGAC","TCCCGGAC",
+ "AGCCGGAC","CGCCGGAC","GGCCGGAC","TGCCGGAC","ATCCGGAC","CTCCGGAC","GTCCGGAC","TTCCGGAC",
+ "AAGCGGAC","CAGCGGAC","GAGCGGAC","TAGCGGAC","ACGCGGAC","CCGCGGAC","GCGCGGAC","TCGCGGAC",
+ "AGGCGGAC","CGGCGGAC","GGGCGGAC","TGGCGGAC","ATGCGGAC","CTGCGGAC","GTGCGGAC","TTGCGGAC",
+ "AATCGGAC","CATCGGAC","GATCGGAC","TATCGGAC","ACTCGGAC","CCTCGGAC","GCTCGGAC","TCTCGGAC",
+ "AGTCGGAC","CGTCGGAC","GGTCGGAC","TGTCGGAC","ATTCGGAC","CTTCGGAC","GTTCGGAC","TTTCGGAC",
+ "AAAGGGAC","CAAGGGAC","GAAGGGAC","TAAGGGAC","ACAGGGAC","CCAGGGAC","GCAGGGAC","TCAGGGAC",
+ "AGAGGGAC","CGAGGGAC","GGAGGGAC","TGAGGGAC","ATAGGGAC","CTAGGGAC","GTAGGGAC","TTAGGGAC",
+ "AACGGGAC","CACGGGAC","GACGGGAC","TACGGGAC","ACCGGGAC","CCCGGGAC","GCCGGGAC","TCCGGGAC",
+ "AGCGGGAC","CGCGGGAC","GGCGGGAC","TGCGGGAC","ATCGGGAC","CTCGGGAC","GTCGGGAC","TTCGGGAC",
+ "AAGGGGAC","CAGGGGAC","GAGGGGAC","TAGGGGAC","ACGGGGAC","CCGGGGAC","GCGGGGAC","TCGGGGAC",
+ "AGGGGGAC","CGGGGGAC","GGGGGGAC","TGGGGGAC","ATGGGGAC","CTGGGGAC","GTGGGGAC","TTGGGGAC",
+ "AATGGGAC","CATGGGAC","GATGGGAC","TATGGGAC","ACTGGGAC","CCTGGGAC","GCTGGGAC","TCTGGGAC",
+ "AGTGGGAC","CGTGGGAC","GGTGGGAC","TGTGGGAC","ATTGGGAC","CTTGGGAC","GTTGGGAC","TTTGGGAC",
+ "AAATGGAC","CAATGGAC","GAATGGAC","TAATGGAC","ACATGGAC","CCATGGAC","GCATGGAC","TCATGGAC",
+ "AGATGGAC","CGATGGAC","GGATGGAC","TGATGGAC","ATATGGAC","CTATGGAC","GTATGGAC","TTATGGAC",
+ "AACTGGAC","CACTGGAC","GACTGGAC","TACTGGAC","ACCTGGAC","CCCTGGAC","GCCTGGAC","TCCTGGAC",
+ "AGCTGGAC","CGCTGGAC","GGCTGGAC","TGCTGGAC","ATCTGGAC","CTCTGGAC","GTCTGGAC","TTCTGGAC",
+ "AAGTGGAC","CAGTGGAC","GAGTGGAC","TAGTGGAC","ACGTGGAC","CCGTGGAC","GCGTGGAC","TCGTGGAC",
+ "AGGTGGAC","CGGTGGAC","GGGTGGAC","TGGTGGAC","ATGTGGAC","CTGTGGAC","GTGTGGAC","TTGTGGAC",
+ "AATTGGAC","CATTGGAC","GATTGGAC","TATTGGAC","ACTTGGAC","CCTTGGAC","GCTTGGAC","TCTTGGAC",
+ "AGTTGGAC","CGTTGGAC","GGTTGGAC","TGTTGGAC","ATTTGGAC","CTTTGGAC","GTTTGGAC","TTTTGGAC",
+ "AAAATGAC","CAAATGAC","GAAATGAC","TAAATGAC","ACAATGAC","CCAATGAC","GCAATGAC","TCAATGAC",
+ "AGAATGAC","CGAATGAC","GGAATGAC","TGAATGAC","ATAATGAC","CTAATGAC","GTAATGAC","TTAATGAC",
+ "AACATGAC","CACATGAC","GACATGAC","TACATGAC","ACCATGAC","CCCATGAC","GCCATGAC","TCCATGAC",
+ "AGCATGAC","CGCATGAC","GGCATGAC","TGCATGAC","ATCATGAC","CTCATGAC","GTCATGAC","TTCATGAC",
+ "AAGATGAC","CAGATGAC","GAGATGAC","TAGATGAC","ACGATGAC","CCGATGAC","GCGATGAC","TCGATGAC",
+ "AGGATGAC","CGGATGAC","GGGATGAC","TGGATGAC","ATGATGAC","CTGATGAC","GTGATGAC","TTGATGAC",
+ "AATATGAC","CATATGAC","GATATGAC","TATATGAC","ACTATGAC","CCTATGAC","GCTATGAC","TCTATGAC",
+ "AGTATGAC","CGTATGAC","GGTATGAC","TGTATGAC","ATTATGAC","CTTATGAC","GTTATGAC","TTTATGAC",
+ "AAACTGAC","CAACTGAC","GAACTGAC","TAACTGAC","ACACTGAC","CCACTGAC","GCACTGAC","TCACTGAC",
+ "AGACTGAC","CGACTGAC","GGACTGAC","TGACTGAC","ATACTGAC","CTACTGAC","GTACTGAC","TTACTGAC",
+ "AACCTGAC","CACCTGAC","GACCTGAC","TACCTGAC","ACCCTGAC","CCCCTGAC","GCCCTGAC","TCCCTGAC",
+ "AGCCTGAC","CGCCTGAC","GGCCTGAC","TGCCTGAC","ATCCTGAC","CTCCTGAC","GTCCTGAC","TTCCTGAC",
+ "AAGCTGAC","CAGCTGAC","GAGCTGAC","TAGCTGAC","ACGCTGAC","CCGCTGAC","GCGCTGAC","TCGCTGAC",
+ "AGGCTGAC","CGGCTGAC","GGGCTGAC","TGGCTGAC","ATGCTGAC","CTGCTGAC","GTGCTGAC","TTGCTGAC",
+ "AATCTGAC","CATCTGAC","GATCTGAC","TATCTGAC","ACTCTGAC","CCTCTGAC","GCTCTGAC","TCTCTGAC",
+ "AGTCTGAC","CGTCTGAC","GGTCTGAC","TGTCTGAC","ATTCTGAC","CTTCTGAC","GTTCTGAC","TTTCTGAC",
+ "AAAGTGAC","CAAGTGAC","GAAGTGAC","TAAGTGAC","ACAGTGAC","CCAGTGAC","GCAGTGAC","TCAGTGAC",
+ "AGAGTGAC","CGAGTGAC","GGAGTGAC","TGAGTGAC","ATAGTGAC","CTAGTGAC","GTAGTGAC","TTAGTGAC",
+ "AACGTGAC","CACGTGAC","GACGTGAC","TACGTGAC","ACCGTGAC","CCCGTGAC","GCCGTGAC","TCCGTGAC",
+ "AGCGTGAC","CGCGTGAC","GGCGTGAC","TGCGTGAC","ATCGTGAC","CTCGTGAC","GTCGTGAC","TTCGTGAC",
+ "AAGGTGAC","CAGGTGAC","GAGGTGAC","TAGGTGAC","ACGGTGAC","CCGGTGAC","GCGGTGAC","TCGGTGAC",
+ "AGGGTGAC","CGGGTGAC","GGGGTGAC","TGGGTGAC","ATGGTGAC","CTGGTGAC","GTGGTGAC","TTGGTGAC",
+ "AATGTGAC","CATGTGAC","GATGTGAC","TATGTGAC","ACTGTGAC","CCTGTGAC","GCTGTGAC","TCTGTGAC",
+ "AGTGTGAC","CGTGTGAC","GGTGTGAC","TGTGTGAC","ATTGTGAC","CTTGTGAC","GTTGTGAC","TTTGTGAC",
+ "AAATTGAC","CAATTGAC","GAATTGAC","TAATTGAC","ACATTGAC","CCATTGAC","GCATTGAC","TCATTGAC",
+ "AGATTGAC","CGATTGAC","GGATTGAC","TGATTGAC","ATATTGAC","CTATTGAC","GTATTGAC","TTATTGAC",
+ "AACTTGAC","CACTTGAC","GACTTGAC","TACTTGAC","ACCTTGAC","CCCTTGAC","GCCTTGAC","TCCTTGAC",
+ "AGCTTGAC","CGCTTGAC","GGCTTGAC","TGCTTGAC","ATCTTGAC","CTCTTGAC","GTCTTGAC","TTCTTGAC",
+ "AAGTTGAC","CAGTTGAC","GAGTTGAC","TAGTTGAC","ACGTTGAC","CCGTTGAC","GCGTTGAC","TCGTTGAC",
+ "AGGTTGAC","CGGTTGAC","GGGTTGAC","TGGTTGAC","ATGTTGAC","CTGTTGAC","GTGTTGAC","TTGTTGAC",
+ "AATTTGAC","CATTTGAC","GATTTGAC","TATTTGAC","ACTTTGAC","CCTTTGAC","GCTTTGAC","TCTTTGAC",
+ "AGTTTGAC","CGTTTGAC","GGTTTGAC","TGTTTGAC","ATTTTGAC","CTTTTGAC","GTTTTGAC","TTTTTGAC",
+ "AAAAATAC","CAAAATAC","GAAAATAC","TAAAATAC","ACAAATAC","CCAAATAC","GCAAATAC","TCAAATAC",
+ "AGAAATAC","CGAAATAC","GGAAATAC","TGAAATAC","ATAAATAC","CTAAATAC","GTAAATAC","TTAAATAC",
+ "AACAATAC","CACAATAC","GACAATAC","TACAATAC","ACCAATAC","CCCAATAC","GCCAATAC","TCCAATAC",
+ "AGCAATAC","CGCAATAC","GGCAATAC","TGCAATAC","ATCAATAC","CTCAATAC","GTCAATAC","TTCAATAC",
+ "AAGAATAC","CAGAATAC","GAGAATAC","TAGAATAC","ACGAATAC","CCGAATAC","GCGAATAC","TCGAATAC",
+ "AGGAATAC","CGGAATAC","GGGAATAC","TGGAATAC","ATGAATAC","CTGAATAC","GTGAATAC","TTGAATAC",
+ "AATAATAC","CATAATAC","GATAATAC","TATAATAC","ACTAATAC","CCTAATAC","GCTAATAC","TCTAATAC",
+ "AGTAATAC","CGTAATAC","GGTAATAC","TGTAATAC","ATTAATAC","CTTAATAC","GTTAATAC","TTTAATAC",
+ "AAACATAC","CAACATAC","GAACATAC","TAACATAC","ACACATAC","CCACATAC","GCACATAC","TCACATAC",
+ "AGACATAC","CGACATAC","GGACATAC","TGACATAC","ATACATAC","CTACATAC","GTACATAC","TTACATAC",
+ "AACCATAC","CACCATAC","GACCATAC","TACCATAC","ACCCATAC","CCCCATAC","GCCCATAC","TCCCATAC",
+ "AGCCATAC","CGCCATAC","GGCCATAC","TGCCATAC","ATCCATAC","CTCCATAC","GTCCATAC","TTCCATAC",
+ "AAGCATAC","CAGCATAC","GAGCATAC","TAGCATAC","ACGCATAC","CCGCATAC","GCGCATAC","TCGCATAC",
+ "AGGCATAC","CGGCATAC","GGGCATAC","TGGCATAC","ATGCATAC","CTGCATAC","GTGCATAC","TTGCATAC",
+ "AATCATAC","CATCATAC","GATCATAC","TATCATAC","ACTCATAC","CCTCATAC","GCTCATAC","TCTCATAC",
+ "AGTCATAC","CGTCATAC","GGTCATAC","TGTCATAC","ATTCATAC","CTTCATAC","GTTCATAC","TTTCATAC",
+ "AAAGATAC","CAAGATAC","GAAGATAC","TAAGATAC","ACAGATAC","CCAGATAC","GCAGATAC","TCAGATAC",
+ "AGAGATAC","CGAGATAC","GGAGATAC","TGAGATAC","ATAGATAC","CTAGATAC","GTAGATAC","TTAGATAC",
+ "AACGATAC","CACGATAC","GACGATAC","TACGATAC","ACCGATAC","CCCGATAC","GCCGATAC","TCCGATAC",
+ "AGCGATAC","CGCGATAC","GGCGATAC","TGCGATAC","ATCGATAC","CTCGATAC","GTCGATAC","TTCGATAC",
+ "AAGGATAC","CAGGATAC","GAGGATAC","TAGGATAC","ACGGATAC","CCGGATAC","GCGGATAC","TCGGATAC",
+ "AGGGATAC","CGGGATAC","GGGGATAC","TGGGATAC","ATGGATAC","CTGGATAC","GTGGATAC","TTGGATAC",
+ "AATGATAC","CATGATAC","GATGATAC","TATGATAC","ACTGATAC","CCTGATAC","GCTGATAC","TCTGATAC",
+ "AGTGATAC","CGTGATAC","GGTGATAC","TGTGATAC","ATTGATAC","CTTGATAC","GTTGATAC","TTTGATAC",
+ "AAATATAC","CAATATAC","GAATATAC","TAATATAC","ACATATAC","CCATATAC","GCATATAC","TCATATAC",
+ "AGATATAC","CGATATAC","GGATATAC","TGATATAC","ATATATAC","CTATATAC","GTATATAC","TTATATAC",
+ "AACTATAC","CACTATAC","GACTATAC","TACTATAC","ACCTATAC","CCCTATAC","GCCTATAC","TCCTATAC",
+ "AGCTATAC","CGCTATAC","GGCTATAC","TGCTATAC","ATCTATAC","CTCTATAC","GTCTATAC","TTCTATAC",
+ "AAGTATAC","CAGTATAC","GAGTATAC","TAGTATAC","ACGTATAC","CCGTATAC","GCGTATAC","TCGTATAC",
+ "AGGTATAC","CGGTATAC","GGGTATAC","TGGTATAC","ATGTATAC","CTGTATAC","GTGTATAC","TTGTATAC",
+ "AATTATAC","CATTATAC","GATTATAC","TATTATAC","ACTTATAC","CCTTATAC","GCTTATAC","TCTTATAC",
+ "AGTTATAC","CGTTATAC","GGTTATAC","TGTTATAC","ATTTATAC","CTTTATAC","GTTTATAC","TTTTATAC",
+ "AAAACTAC","CAAACTAC","GAAACTAC","TAAACTAC","ACAACTAC","CCAACTAC","GCAACTAC","TCAACTAC",
+ "AGAACTAC","CGAACTAC","GGAACTAC","TGAACTAC","ATAACTAC","CTAACTAC","GTAACTAC","TTAACTAC",
+ "AACACTAC","CACACTAC","GACACTAC","TACACTAC","ACCACTAC","CCCACTAC","GCCACTAC","TCCACTAC",
+ "AGCACTAC","CGCACTAC","GGCACTAC","TGCACTAC","ATCACTAC","CTCACTAC","GTCACTAC","TTCACTAC",
+ "AAGACTAC","CAGACTAC","GAGACTAC","TAGACTAC","ACGACTAC","CCGACTAC","GCGACTAC","TCGACTAC",
+ "AGGACTAC","CGGACTAC","GGGACTAC","TGGACTAC","ATGACTAC","CTGACTAC","GTGACTAC","TTGACTAC",
+ "AATACTAC","CATACTAC","GATACTAC","TATACTAC","ACTACTAC","CCTACTAC","GCTACTAC","TCTACTAC",
+ "AGTACTAC","CGTACTAC","GGTACTAC","TGTACTAC","ATTACTAC","CTTACTAC","GTTACTAC","TTTACTAC",
+ "AAACCTAC","CAACCTAC","GAACCTAC","TAACCTAC","ACACCTAC","CCACCTAC","GCACCTAC","TCACCTAC",
+ "AGACCTAC","CGACCTAC","GGACCTAC","TGACCTAC","ATACCTAC","CTACCTAC","GTACCTAC","TTACCTAC",
+ "AACCCTAC","CACCCTAC","GACCCTAC","TACCCTAC","ACCCCTAC","CCCCCTAC","GCCCCTAC","TCCCCTAC",
+ "AGCCCTAC","CGCCCTAC","GGCCCTAC","TGCCCTAC","ATCCCTAC","CTCCCTAC","GTCCCTAC","TTCCCTAC",
+ "AAGCCTAC","CAGCCTAC","GAGCCTAC","TAGCCTAC","ACGCCTAC","CCGCCTAC","GCGCCTAC","TCGCCTAC",
+ "AGGCCTAC","CGGCCTAC","GGGCCTAC","TGGCCTAC","ATGCCTAC","CTGCCTAC","GTGCCTAC","TTGCCTAC",
+ "AATCCTAC","CATCCTAC","GATCCTAC","TATCCTAC","ACTCCTAC","CCTCCTAC","GCTCCTAC","TCTCCTAC",
+ "AGTCCTAC","CGTCCTAC","GGTCCTAC","TGTCCTAC","ATTCCTAC","CTTCCTAC","GTTCCTAC","TTTCCTAC",
+ "AAAGCTAC","CAAGCTAC","GAAGCTAC","TAAGCTAC","ACAGCTAC","CCAGCTAC","GCAGCTAC","TCAGCTAC",
+ "AGAGCTAC","CGAGCTAC","GGAGCTAC","TGAGCTAC","ATAGCTAC","CTAGCTAC","GTAGCTAC","TTAGCTAC",
+ "AACGCTAC","CACGCTAC","GACGCTAC","TACGCTAC","ACCGCTAC","CCCGCTAC","GCCGCTAC","TCCGCTAC",
+ "AGCGCTAC","CGCGCTAC","GGCGCTAC","TGCGCTAC","ATCGCTAC","CTCGCTAC","GTCGCTAC","TTCGCTAC",
+ "AAGGCTAC","CAGGCTAC","GAGGCTAC","TAGGCTAC","ACGGCTAC","CCGGCTAC","GCGGCTAC","TCGGCTAC",
+ "AGGGCTAC","CGGGCTAC","GGGGCTAC","TGGGCTAC","ATGGCTAC","CTGGCTAC","GTGGCTAC","TTGGCTAC",
+ "AATGCTAC","CATGCTAC","GATGCTAC","TATGCTAC","ACTGCTAC","CCTGCTAC","GCTGCTAC","TCTGCTAC",
+ "AGTGCTAC","CGTGCTAC","GGTGCTAC","TGTGCTAC","ATTGCTAC","CTTGCTAC","GTTGCTAC","TTTGCTAC",
+ "AAATCTAC","CAATCTAC","GAATCTAC","TAATCTAC","ACATCTAC","CCATCTAC","GCATCTAC","TCATCTAC",
+ "AGATCTAC","CGATCTAC","GGATCTAC","TGATCTAC","ATATCTAC","CTATCTAC","GTATCTAC","TTATCTAC",
+ "AACTCTAC","CACTCTAC","GACTCTAC","TACTCTAC","ACCTCTAC","CCCTCTAC","GCCTCTAC","TCCTCTAC",
+ "AGCTCTAC","CGCTCTAC","GGCTCTAC","TGCTCTAC","ATCTCTAC","CTCTCTAC","GTCTCTAC","TTCTCTAC",
+ "AAGTCTAC","CAGTCTAC","GAGTCTAC","TAGTCTAC","ACGTCTAC","CCGTCTAC","GCGTCTAC","TCGTCTAC",
+ "AGGTCTAC","CGGTCTAC","GGGTCTAC","TGGTCTAC","ATGTCTAC","CTGTCTAC","GTGTCTAC","TTGTCTAC",
+ "AATTCTAC","CATTCTAC","GATTCTAC","TATTCTAC","ACTTCTAC","CCTTCTAC","GCTTCTAC","TCTTCTAC",
+ "AGTTCTAC","CGTTCTAC","GGTTCTAC","TGTTCTAC","ATTTCTAC","CTTTCTAC","GTTTCTAC","TTTTCTAC",
+ "AAAAGTAC","CAAAGTAC","GAAAGTAC","TAAAGTAC","ACAAGTAC","CCAAGTAC","GCAAGTAC","TCAAGTAC",
+ "AGAAGTAC","CGAAGTAC","GGAAGTAC","TGAAGTAC","ATAAGTAC","CTAAGTAC","GTAAGTAC","TTAAGTAC",
+ "AACAGTAC","CACAGTAC","GACAGTAC","TACAGTAC","ACCAGTAC","CCCAGTAC","GCCAGTAC","TCCAGTAC",
+ "AGCAGTAC","CGCAGTAC","GGCAGTAC","TGCAGTAC","ATCAGTAC","CTCAGTAC","GTCAGTAC","TTCAGTAC",
+ "AAGAGTAC","CAGAGTAC","GAGAGTAC","TAGAGTAC","ACGAGTAC","CCGAGTAC","GCGAGTAC","TCGAGTAC",
+ "AGGAGTAC","CGGAGTAC","GGGAGTAC","TGGAGTAC","ATGAGTAC","CTGAGTAC","GTGAGTAC","TTGAGTAC",
+ "AATAGTAC","CATAGTAC","GATAGTAC","TATAGTAC","ACTAGTAC","CCTAGTAC","GCTAGTAC","TCTAGTAC",
+ "AGTAGTAC","CGTAGTAC","GGTAGTAC","TGTAGTAC","ATTAGTAC","CTTAGTAC","GTTAGTAC","TTTAGTAC",
+ "AAACGTAC","CAACGTAC","GAACGTAC","TAACGTAC","ACACGTAC","CCACGTAC","GCACGTAC","TCACGTAC",
+ "AGACGTAC","CGACGTAC","GGACGTAC","TGACGTAC","ATACGTAC","CTACGTAC","GTACGTAC","TTACGTAC",
+ "AACCGTAC","CACCGTAC","GACCGTAC","TACCGTAC","ACCCGTAC","CCCCGTAC","GCCCGTAC","TCCCGTAC",
+ "AGCCGTAC","CGCCGTAC","GGCCGTAC","TGCCGTAC","ATCCGTAC","CTCCGTAC","GTCCGTAC","TTCCGTAC",
+ "AAGCGTAC","CAGCGTAC","GAGCGTAC","TAGCGTAC","ACGCGTAC","CCGCGTAC","GCGCGTAC","TCGCGTAC",
+ "AGGCGTAC","CGGCGTAC","GGGCGTAC","TGGCGTAC","ATGCGTAC","CTGCGTAC","GTGCGTAC","TTGCGTAC",
+ "AATCGTAC","CATCGTAC","GATCGTAC","TATCGTAC","ACTCGTAC","CCTCGTAC","GCTCGTAC","TCTCGTAC",
+ "AGTCGTAC","CGTCGTAC","GGTCGTAC","TGTCGTAC","ATTCGTAC","CTTCGTAC","GTTCGTAC","TTTCGTAC",
+ "AAAGGTAC","CAAGGTAC","GAAGGTAC","TAAGGTAC","ACAGGTAC","CCAGGTAC","GCAGGTAC","TCAGGTAC",
+ "AGAGGTAC","CGAGGTAC","GGAGGTAC","TGAGGTAC","ATAGGTAC","CTAGGTAC","GTAGGTAC","TTAGGTAC",
+ "AACGGTAC","CACGGTAC","GACGGTAC","TACGGTAC","ACCGGTAC","CCCGGTAC","GCCGGTAC","TCCGGTAC",
+ "AGCGGTAC","CGCGGTAC","GGCGGTAC","TGCGGTAC","ATCGGTAC","CTCGGTAC","GTCGGTAC","TTCGGTAC",
+ "AAGGGTAC","CAGGGTAC","GAGGGTAC","TAGGGTAC","ACGGGTAC","CCGGGTAC","GCGGGTAC","TCGGGTAC",
+ "AGGGGTAC","CGGGGTAC","GGGGGTAC","TGGGGTAC","ATGGGTAC","CTGGGTAC","GTGGGTAC","TTGGGTAC",
+ "AATGGTAC","CATGGTAC","GATGGTAC","TATGGTAC","ACTGGTAC","CCTGGTAC","GCTGGTAC","TCTGGTAC",
+ "AGTGGTAC","CGTGGTAC","GGTGGTAC","TGTGGTAC","ATTGGTAC","CTTGGTAC","GTTGGTAC","TTTGGTAC",
+ "AAATGTAC","CAATGTAC","GAATGTAC","TAATGTAC","ACATGTAC","CCATGTAC","GCATGTAC","TCATGTAC",
+ "AGATGTAC","CGATGTAC","GGATGTAC","TGATGTAC","ATATGTAC","CTATGTAC","GTATGTAC","TTATGTAC",
+ "AACTGTAC","CACTGTAC","GACTGTAC","TACTGTAC","ACCTGTAC","CCCTGTAC","GCCTGTAC","TCCTGTAC",
+ "AGCTGTAC","CGCTGTAC","GGCTGTAC","TGCTGTAC","ATCTGTAC","CTCTGTAC","GTCTGTAC","TTCTGTAC",
+ "AAGTGTAC","CAGTGTAC","GAGTGTAC","TAGTGTAC","ACGTGTAC","CCGTGTAC","GCGTGTAC","TCGTGTAC",
+ "AGGTGTAC","CGGTGTAC","GGGTGTAC","TGGTGTAC","ATGTGTAC","CTGTGTAC","GTGTGTAC","TTGTGTAC",
+ "AATTGTAC","CATTGTAC","GATTGTAC","TATTGTAC","ACTTGTAC","CCTTGTAC","GCTTGTAC","TCTTGTAC",
+ "AGTTGTAC","CGTTGTAC","GGTTGTAC","TGTTGTAC","ATTTGTAC","CTTTGTAC","GTTTGTAC","TTTTGTAC",
+ "AAAATTAC","CAAATTAC","GAAATTAC","TAAATTAC","ACAATTAC","CCAATTAC","GCAATTAC","TCAATTAC",
+ "AGAATTAC","CGAATTAC","GGAATTAC","TGAATTAC","ATAATTAC","CTAATTAC","GTAATTAC","TTAATTAC",
+ "AACATTAC","CACATTAC","GACATTAC","TACATTAC","ACCATTAC","CCCATTAC","GCCATTAC","TCCATTAC",
+ "AGCATTAC","CGCATTAC","GGCATTAC","TGCATTAC","ATCATTAC","CTCATTAC","GTCATTAC","TTCATTAC",
+ "AAGATTAC","CAGATTAC","GAGATTAC","TAGATTAC","ACGATTAC","CCGATTAC","GCGATTAC","TCGATTAC",
+ "AGGATTAC","CGGATTAC","GGGATTAC","TGGATTAC","ATGATTAC","CTGATTAC","GTGATTAC","TTGATTAC",
+ "AATATTAC","CATATTAC","GATATTAC","TATATTAC","ACTATTAC","CCTATTAC","GCTATTAC","TCTATTAC",
+ "AGTATTAC","CGTATTAC","GGTATTAC","TGTATTAC","ATTATTAC","CTTATTAC","GTTATTAC","TTTATTAC",
+ "AAACTTAC","CAACTTAC","GAACTTAC","TAACTTAC","ACACTTAC","CCACTTAC","GCACTTAC","TCACTTAC",
+ "AGACTTAC","CGACTTAC","GGACTTAC","TGACTTAC","ATACTTAC","CTACTTAC","GTACTTAC","TTACTTAC",
+ "AACCTTAC","CACCTTAC","GACCTTAC","TACCTTAC","ACCCTTAC","CCCCTTAC","GCCCTTAC","TCCCTTAC",
+ "AGCCTTAC","CGCCTTAC","GGCCTTAC","TGCCTTAC","ATCCTTAC","CTCCTTAC","GTCCTTAC","TTCCTTAC",
+ "AAGCTTAC","CAGCTTAC","GAGCTTAC","TAGCTTAC","ACGCTTAC","CCGCTTAC","GCGCTTAC","TCGCTTAC",
+ "AGGCTTAC","CGGCTTAC","GGGCTTAC","TGGCTTAC","ATGCTTAC","CTGCTTAC","GTGCTTAC","TTGCTTAC",
+ "AATCTTAC","CATCTTAC","GATCTTAC","TATCTTAC","ACTCTTAC","CCTCTTAC","GCTCTTAC","TCTCTTAC",
+ "AGTCTTAC","CGTCTTAC","GGTCTTAC","TGTCTTAC","ATTCTTAC","CTTCTTAC","GTTCTTAC","TTTCTTAC",
+ "AAAGTTAC","CAAGTTAC","GAAGTTAC","TAAGTTAC","ACAGTTAC","CCAGTTAC","GCAGTTAC","TCAGTTAC",
+ "AGAGTTAC","CGAGTTAC","GGAGTTAC","TGAGTTAC","ATAGTTAC","CTAGTTAC","GTAGTTAC","TTAGTTAC",
+ "AACGTTAC","CACGTTAC","GACGTTAC","TACGTTAC","ACCGTTAC","CCCGTTAC","GCCGTTAC","TCCGTTAC",
+ "AGCGTTAC","CGCGTTAC","GGCGTTAC","TGCGTTAC","ATCGTTAC","CTCGTTAC","GTCGTTAC","TTCGTTAC",
+ "AAGGTTAC","CAGGTTAC","GAGGTTAC","TAGGTTAC","ACGGTTAC","CCGGTTAC","GCGGTTAC","TCGGTTAC",
+ "AGGGTTAC","CGGGTTAC","GGGGTTAC","TGGGTTAC","ATGGTTAC","CTGGTTAC","GTGGTTAC","TTGGTTAC",
+ "AATGTTAC","CATGTTAC","GATGTTAC","TATGTTAC","ACTGTTAC","CCTGTTAC","GCTGTTAC","TCTGTTAC",
+ "AGTGTTAC","CGTGTTAC","GGTGTTAC","TGTGTTAC","ATTGTTAC","CTTGTTAC","GTTGTTAC","TTTGTTAC",
+ "AAATTTAC","CAATTTAC","GAATTTAC","TAATTTAC","ACATTTAC","CCATTTAC","GCATTTAC","TCATTTAC",
+ "AGATTTAC","CGATTTAC","GGATTTAC","TGATTTAC","ATATTTAC","CTATTTAC","GTATTTAC","TTATTTAC",
+ "AACTTTAC","CACTTTAC","GACTTTAC","TACTTTAC","ACCTTTAC","CCCTTTAC","GCCTTTAC","TCCTTTAC",
+ "AGCTTTAC","CGCTTTAC","GGCTTTAC","TGCTTTAC","ATCTTTAC","CTCTTTAC","GTCTTTAC","TTCTTTAC",
+ "AAGTTTAC","CAGTTTAC","GAGTTTAC","TAGTTTAC","ACGTTTAC","CCGTTTAC","GCGTTTAC","TCGTTTAC",
+ "AGGTTTAC","CGGTTTAC","GGGTTTAC","TGGTTTAC","ATGTTTAC","CTGTTTAC","GTGTTTAC","TTGTTTAC",
+ "AATTTTAC","CATTTTAC","GATTTTAC","TATTTTAC","ACTTTTAC","CCTTTTAC","GCTTTTAC","TCTTTTAC",
+ "AGTTTTAC","CGTTTTAC","GGTTTTAC","TGTTTTAC","ATTTTTAC","CTTTTTAC","GTTTTTAC","TTTTTTAC",
+ "AAAAAACC","CAAAAACC","GAAAAACC","TAAAAACC","ACAAAACC","CCAAAACC","GCAAAACC","TCAAAACC",
+ "AGAAAACC","CGAAAACC","GGAAAACC","TGAAAACC","ATAAAACC","CTAAAACC","GTAAAACC","TTAAAACC",
+ "AACAAACC","CACAAACC","GACAAACC","TACAAACC","ACCAAACC","CCCAAACC","GCCAAACC","TCCAAACC",
+ "AGCAAACC","CGCAAACC","GGCAAACC","TGCAAACC","ATCAAACC","CTCAAACC","GTCAAACC","TTCAAACC",
+ "AAGAAACC","CAGAAACC","GAGAAACC","TAGAAACC","ACGAAACC","CCGAAACC","GCGAAACC","TCGAAACC",
+ "AGGAAACC","CGGAAACC","GGGAAACC","TGGAAACC","ATGAAACC","CTGAAACC","GTGAAACC","TTGAAACC",
+ "AATAAACC","CATAAACC","GATAAACC","TATAAACC","ACTAAACC","CCTAAACC","GCTAAACC","TCTAAACC",
+ "AGTAAACC","CGTAAACC","GGTAAACC","TGTAAACC","ATTAAACC","CTTAAACC","GTTAAACC","TTTAAACC",
+ "AAACAACC","CAACAACC","GAACAACC","TAACAACC","ACACAACC","CCACAACC","GCACAACC","TCACAACC",
+ "AGACAACC","CGACAACC","GGACAACC","TGACAACC","ATACAACC","CTACAACC","GTACAACC","TTACAACC",
+ "AACCAACC","CACCAACC","GACCAACC","TACCAACC","ACCCAACC","CCCCAACC","GCCCAACC","TCCCAACC",
+ "AGCCAACC","CGCCAACC","GGCCAACC","TGCCAACC","ATCCAACC","CTCCAACC","GTCCAACC","TTCCAACC",
+ "AAGCAACC","CAGCAACC","GAGCAACC","TAGCAACC","ACGCAACC","CCGCAACC","GCGCAACC","TCGCAACC",
+ "AGGCAACC","CGGCAACC","GGGCAACC","TGGCAACC","ATGCAACC","CTGCAACC","GTGCAACC","TTGCAACC",
+ "AATCAACC","CATCAACC","GATCAACC","TATCAACC","ACTCAACC","CCTCAACC","GCTCAACC","TCTCAACC",
+ "AGTCAACC","CGTCAACC","GGTCAACC","TGTCAACC","ATTCAACC","CTTCAACC","GTTCAACC","TTTCAACC",
+ "AAAGAACC","CAAGAACC","GAAGAACC","TAAGAACC","ACAGAACC","CCAGAACC","GCAGAACC","TCAGAACC",
+ "AGAGAACC","CGAGAACC","GGAGAACC","TGAGAACC","ATAGAACC","CTAGAACC","GTAGAACC","TTAGAACC",
+ "AACGAACC","CACGAACC","GACGAACC","TACGAACC","ACCGAACC","CCCGAACC","GCCGAACC","TCCGAACC",
+ "AGCGAACC","CGCGAACC","GGCGAACC","TGCGAACC","ATCGAACC","CTCGAACC","GTCGAACC","TTCGAACC",
+ "AAGGAACC","CAGGAACC","GAGGAACC","TAGGAACC","ACGGAACC","CCGGAACC","GCGGAACC","TCGGAACC",
+ "AGGGAACC","CGGGAACC","GGGGAACC","TGGGAACC","ATGGAACC","CTGGAACC","GTGGAACC","TTGGAACC",
+ "AATGAACC","CATGAACC","GATGAACC","TATGAACC","ACTGAACC","CCTGAACC","GCTGAACC","TCTGAACC",
+ "AGTGAACC","CGTGAACC","GGTGAACC","TGTGAACC","ATTGAACC","CTTGAACC","GTTGAACC","TTTGAACC",
+ "AAATAACC","CAATAACC","GAATAACC","TAATAACC","ACATAACC","CCATAACC","GCATAACC","TCATAACC",
+ "AGATAACC","CGATAACC","GGATAACC","TGATAACC","ATATAACC","CTATAACC","GTATAACC","TTATAACC",
+ "AACTAACC","CACTAACC","GACTAACC","TACTAACC","ACCTAACC","CCCTAACC","GCCTAACC","TCCTAACC",
+ "AGCTAACC","CGCTAACC","GGCTAACC","TGCTAACC","ATCTAACC","CTCTAACC","GTCTAACC","TTCTAACC",
+ "AAGTAACC","CAGTAACC","GAGTAACC","TAGTAACC","ACGTAACC","CCGTAACC","GCGTAACC","TCGTAACC",
+ "AGGTAACC","CGGTAACC","GGGTAACC","TGGTAACC","ATGTAACC","CTGTAACC","GTGTAACC","TTGTAACC",
+ "AATTAACC","CATTAACC","GATTAACC","TATTAACC","ACTTAACC","CCTTAACC","GCTTAACC","TCTTAACC",
+ "AGTTAACC","CGTTAACC","GGTTAACC","TGTTAACC","ATTTAACC","CTTTAACC","GTTTAACC","TTTTAACC",
+ "AAAACACC","CAAACACC","GAAACACC","TAAACACC","ACAACACC","CCAACACC","GCAACACC","TCAACACC",
+ "AGAACACC","CGAACACC","GGAACACC","TGAACACC","ATAACACC","CTAACACC","GTAACACC","TTAACACC",
+ "AACACACC","CACACACC","GACACACC","TACACACC","ACCACACC","CCCACACC","GCCACACC","TCCACACC",
+ "AGCACACC","CGCACACC","GGCACACC","TGCACACC","ATCACACC","CTCACACC","GTCACACC","TTCACACC",
+ "AAGACACC","CAGACACC","GAGACACC","TAGACACC","ACGACACC","CCGACACC","GCGACACC","TCGACACC",
+ "AGGACACC","CGGACACC","GGGACACC","TGGACACC","ATGACACC","CTGACACC","GTGACACC","TTGACACC",
+ "AATACACC","CATACACC","GATACACC","TATACACC","ACTACACC","CCTACACC","GCTACACC","TCTACACC",
+ "AGTACACC","CGTACACC","GGTACACC","TGTACACC","ATTACACC","CTTACACC","GTTACACC","TTTACACC",
+ "AAACCACC","CAACCACC","GAACCACC","TAACCACC","ACACCACC","CCACCACC","GCACCACC","TCACCACC",
+ "AGACCACC","CGACCACC","GGACCACC","TGACCACC","ATACCACC","CTACCACC","GTACCACC","TTACCACC",
+ "AACCCACC","CACCCACC","GACCCACC","TACCCACC","ACCCCACC","CCCCCACC","GCCCCACC","TCCCCACC",
+ "AGCCCACC","CGCCCACC","GGCCCACC","TGCCCACC","ATCCCACC","CTCCCACC","GTCCCACC","TTCCCACC",
+ "AAGCCACC","CAGCCACC","GAGCCACC","TAGCCACC","ACGCCACC","CCGCCACC","GCGCCACC","TCGCCACC",
+ "AGGCCACC","CGGCCACC","GGGCCACC","TGGCCACC","ATGCCACC","CTGCCACC","GTGCCACC","TTGCCACC",
+ "AATCCACC","CATCCACC","GATCCACC","TATCCACC","ACTCCACC","CCTCCACC","GCTCCACC","TCTCCACC",
+ "AGTCCACC","CGTCCACC","GGTCCACC","TGTCCACC","ATTCCACC","CTTCCACC","GTTCCACC","TTTCCACC",
+ "AAAGCACC","CAAGCACC","GAAGCACC","TAAGCACC","ACAGCACC","CCAGCACC","GCAGCACC","TCAGCACC",
+ "AGAGCACC","CGAGCACC","GGAGCACC","TGAGCACC","ATAGCACC","CTAGCACC","GTAGCACC","TTAGCACC",
+ "AACGCACC","CACGCACC","GACGCACC","TACGCACC","ACCGCACC","CCCGCACC","GCCGCACC","TCCGCACC",
+ "AGCGCACC","CGCGCACC","GGCGCACC","TGCGCACC","ATCGCACC","CTCGCACC","GTCGCACC","TTCGCACC",
+ "AAGGCACC","CAGGCACC","GAGGCACC","TAGGCACC","ACGGCACC","CCGGCACC","GCGGCACC","TCGGCACC",
+ "AGGGCACC","CGGGCACC","GGGGCACC","TGGGCACC","ATGGCACC","CTGGCACC","GTGGCACC","TTGGCACC",
+ "AATGCACC","CATGCACC","GATGCACC","TATGCACC","ACTGCACC","CCTGCACC","GCTGCACC","TCTGCACC",
+ "AGTGCACC","CGTGCACC","GGTGCACC","TGTGCACC","ATTGCACC","CTTGCACC","GTTGCACC","TTTGCACC",
+ "AAATCACC","CAATCACC","GAATCACC","TAATCACC","ACATCACC","CCATCACC","GCATCACC","TCATCACC",
+ "AGATCACC","CGATCACC","GGATCACC","TGATCACC","ATATCACC","CTATCACC","GTATCACC","TTATCACC",
+ "AACTCACC","CACTCACC","GACTCACC","TACTCACC","ACCTCACC","CCCTCACC","GCCTCACC","TCCTCACC",
+ "AGCTCACC","CGCTCACC","GGCTCACC","TGCTCACC","ATCTCACC","CTCTCACC","GTCTCACC","TTCTCACC",
+ "AAGTCACC","CAGTCACC","GAGTCACC","TAGTCACC","ACGTCACC","CCGTCACC","GCGTCACC","TCGTCACC",
+ "AGGTCACC","CGGTCACC","GGGTCACC","TGGTCACC","ATGTCACC","CTGTCACC","GTGTCACC","TTGTCACC",
+ "AATTCACC","CATTCACC","GATTCACC","TATTCACC","ACTTCACC","CCTTCACC","GCTTCACC","TCTTCACC",
+ "AGTTCACC","CGTTCACC","GGTTCACC","TGTTCACC","ATTTCACC","CTTTCACC","GTTTCACC","TTTTCACC",
+ "AAAAGACC","CAAAGACC","GAAAGACC","TAAAGACC","ACAAGACC","CCAAGACC","GCAAGACC","TCAAGACC",
+ "AGAAGACC","CGAAGACC","GGAAGACC","TGAAGACC","ATAAGACC","CTAAGACC","GTAAGACC","TTAAGACC",
+ "AACAGACC","CACAGACC","GACAGACC","TACAGACC","ACCAGACC","CCCAGACC","GCCAGACC","TCCAGACC",
+ "AGCAGACC","CGCAGACC","GGCAGACC","TGCAGACC","ATCAGACC","CTCAGACC","GTCAGACC","TTCAGACC",
+ "AAGAGACC","CAGAGACC","GAGAGACC","TAGAGACC","ACGAGACC","CCGAGACC","GCGAGACC","TCGAGACC",
+ "AGGAGACC","CGGAGACC","GGGAGACC","TGGAGACC","ATGAGACC","CTGAGACC","GTGAGACC","TTGAGACC",
+ "AATAGACC","CATAGACC","GATAGACC","TATAGACC","ACTAGACC","CCTAGACC","GCTAGACC","TCTAGACC",
+ "AGTAGACC","CGTAGACC","GGTAGACC","TGTAGACC","ATTAGACC","CTTAGACC","GTTAGACC","TTTAGACC",
+ "AAACGACC","CAACGACC","GAACGACC","TAACGACC","ACACGACC","CCACGACC","GCACGACC","TCACGACC",
+ "AGACGACC","CGACGACC","GGACGACC","TGACGACC","ATACGACC","CTACGACC","GTACGACC","TTACGACC",
+ "AACCGACC","CACCGACC","GACCGACC","TACCGACC","ACCCGACC","CCCCGACC","GCCCGACC","TCCCGACC",
+ "AGCCGACC","CGCCGACC","GGCCGACC","TGCCGACC","ATCCGACC","CTCCGACC","GTCCGACC","TTCCGACC",
+ "AAGCGACC","CAGCGACC","GAGCGACC","TAGCGACC","ACGCGACC","CCGCGACC","GCGCGACC","TCGCGACC",
+ "AGGCGACC","CGGCGACC","GGGCGACC","TGGCGACC","ATGCGACC","CTGCGACC","GTGCGACC","TTGCGACC",
+ "AATCGACC","CATCGACC","GATCGACC","TATCGACC","ACTCGACC","CCTCGACC","GCTCGACC","TCTCGACC",
+ "AGTCGACC","CGTCGACC","GGTCGACC","TGTCGACC","ATTCGACC","CTTCGACC","GTTCGACC","TTTCGACC",
+ "AAAGGACC","CAAGGACC","GAAGGACC","TAAGGACC","ACAGGACC","CCAGGACC","GCAGGACC","TCAGGACC",
+ "AGAGGACC","CGAGGACC","GGAGGACC","TGAGGACC","ATAGGACC","CTAGGACC","GTAGGACC","TTAGGACC",
+ "AACGGACC","CACGGACC","GACGGACC","TACGGACC","ACCGGACC","CCCGGACC","GCCGGACC","TCCGGACC",
+ "AGCGGACC","CGCGGACC","GGCGGACC","TGCGGACC","ATCGGACC","CTCGGACC","GTCGGACC","TTCGGACC",
+ "AAGGGACC","CAGGGACC","GAGGGACC","TAGGGACC","ACGGGACC","CCGGGACC","GCGGGACC","TCGGGACC",
+ "AGGGGACC","CGGGGACC","GGGGGACC","TGGGGACC","ATGGGACC","CTGGGACC","GTGGGACC","TTGGGACC",
+ "AATGGACC","CATGGACC","GATGGACC","TATGGACC","ACTGGACC","CCTGGACC","GCTGGACC","TCTGGACC",
+ "AGTGGACC","CGTGGACC","GGTGGACC","TGTGGACC","ATTGGACC","CTTGGACC","GTTGGACC","TTTGGACC",
+ "AAATGACC","CAATGACC","GAATGACC","TAATGACC","ACATGACC","CCATGACC","GCATGACC","TCATGACC",
+ "AGATGACC","CGATGACC","GGATGACC","TGATGACC","ATATGACC","CTATGACC","GTATGACC","TTATGACC",
+ "AACTGACC","CACTGACC","GACTGACC","TACTGACC","ACCTGACC","CCCTGACC","GCCTGACC","TCCTGACC",
+ "AGCTGACC","CGCTGACC","GGCTGACC","TGCTGACC","ATCTGACC","CTCTGACC","GTCTGACC","TTCTGACC",
+ "AAGTGACC","CAGTGACC","GAGTGACC","TAGTGACC","ACGTGACC","CCGTGACC","GCGTGACC","TCGTGACC",
+ "AGGTGACC","CGGTGACC","GGGTGACC","TGGTGACC","ATGTGACC","CTGTGACC","GTGTGACC","TTGTGACC",
+ "AATTGACC","CATTGACC","GATTGACC","TATTGACC","ACTTGACC","CCTTGACC","GCTTGACC","TCTTGACC",
+ "AGTTGACC","CGTTGACC","GGTTGACC","TGTTGACC","ATTTGACC","CTTTGACC","GTTTGACC","TTTTGACC",
+ "AAAATACC","CAAATACC","GAAATACC","TAAATACC","ACAATACC","CCAATACC","GCAATACC","TCAATACC",
+ "AGAATACC","CGAATACC","GGAATACC","TGAATACC","ATAATACC","CTAATACC","GTAATACC","TTAATACC",
+ "AACATACC","CACATACC","GACATACC","TACATACC","ACCATACC","CCCATACC","GCCATACC","TCCATACC",
+ "AGCATACC","CGCATACC","GGCATACC","TGCATACC","ATCATACC","CTCATACC","GTCATACC","TTCATACC",
+ "AAGATACC","CAGATACC","GAGATACC","TAGATACC","ACGATACC","CCGATACC","GCGATACC","TCGATACC",
+ "AGGATACC","CGGATACC","GGGATACC","TGGATACC","ATGATACC","CTGATACC","GTGATACC","TTGATACC",
+ "AATATACC","CATATACC","GATATACC","TATATACC","ACTATACC","CCTATACC","GCTATACC","TCTATACC",
+ "AGTATACC","CGTATACC","GGTATACC","TGTATACC","ATTATACC","CTTATACC","GTTATACC","TTTATACC",
+ "AAACTACC","CAACTACC","GAACTACC","TAACTACC","ACACTACC","CCACTACC","GCACTACC","TCACTACC",
+ "AGACTACC","CGACTACC","GGACTACC","TGACTACC","ATACTACC","CTACTACC","GTACTACC","TTACTACC",
+ "AACCTACC","CACCTACC","GACCTACC","TACCTACC","ACCCTACC","CCCCTACC","GCCCTACC","TCCCTACC",
+ "AGCCTACC","CGCCTACC","GGCCTACC","TGCCTACC","ATCCTACC","CTCCTACC","GTCCTACC","TTCCTACC",
+ "AAGCTACC","CAGCTACC","GAGCTACC","TAGCTACC","ACGCTACC","CCGCTACC","GCGCTACC","TCGCTACC",
+ "AGGCTACC","CGGCTACC","GGGCTACC","TGGCTACC","ATGCTACC","CTGCTACC","GTGCTACC","TTGCTACC",
+ "AATCTACC","CATCTACC","GATCTACC","TATCTACC","ACTCTACC","CCTCTACC","GCTCTACC","TCTCTACC",
+ "AGTCTACC","CGTCTACC","GGTCTACC","TGTCTACC","ATTCTACC","CTTCTACC","GTTCTACC","TTTCTACC",
+ "AAAGTACC","CAAGTACC","GAAGTACC","TAAGTACC","ACAGTACC","CCAGTACC","GCAGTACC","TCAGTACC",
+ "AGAGTACC","CGAGTACC","GGAGTACC","TGAGTACC","ATAGTACC","CTAGTACC","GTAGTACC","TTAGTACC",
+ "AACGTACC","CACGTACC","GACGTACC","TACGTACC","ACCGTACC","CCCGTACC","GCCGTACC","TCCGTACC",
+ "AGCGTACC","CGCGTACC","GGCGTACC","TGCGTACC","ATCGTACC","CTCGTACC","GTCGTACC","TTCGTACC",
+ "AAGGTACC","CAGGTACC","GAGGTACC","TAGGTACC","ACGGTACC","CCGGTACC","GCGGTACC","TCGGTACC",
+ "AGGGTACC","CGGGTACC","GGGGTACC","TGGGTACC","ATGGTACC","CTGGTACC","GTGGTACC","TTGGTACC",
+ "AATGTACC","CATGTACC","GATGTACC","TATGTACC","ACTGTACC","CCTGTACC","GCTGTACC","TCTGTACC",
+ "AGTGTACC","CGTGTACC","GGTGTACC","TGTGTACC","ATTGTACC","CTTGTACC","GTTGTACC","TTTGTACC",
+ "AAATTACC","CAATTACC","GAATTACC","TAATTACC","ACATTACC","CCATTACC","GCATTACC","TCATTACC",
+ "AGATTACC","CGATTACC","GGATTACC","TGATTACC","ATATTACC","CTATTACC","GTATTACC","TTATTACC",
+ "AACTTACC","CACTTACC","GACTTACC","TACTTACC","ACCTTACC","CCCTTACC","GCCTTACC","TCCTTACC",
+ "AGCTTACC","CGCTTACC","GGCTTACC","TGCTTACC","ATCTTACC","CTCTTACC","GTCTTACC","TTCTTACC",
+ "AAGTTACC","CAGTTACC","GAGTTACC","TAGTTACC","ACGTTACC","CCGTTACC","GCGTTACC","TCGTTACC",
+ "AGGTTACC","CGGTTACC","GGGTTACC","TGGTTACC","ATGTTACC","CTGTTACC","GTGTTACC","TTGTTACC",
+ "AATTTACC","CATTTACC","GATTTACC","TATTTACC","ACTTTACC","CCTTTACC","GCTTTACC","TCTTTACC",
+ "AGTTTACC","CGTTTACC","GGTTTACC","TGTTTACC","ATTTTACC","CTTTTACC","GTTTTACC","TTTTTACC",
+ "AAAAACCC","CAAAACCC","GAAAACCC","TAAAACCC","ACAAACCC","CCAAACCC","GCAAACCC","TCAAACCC",
+ "AGAAACCC","CGAAACCC","GGAAACCC","TGAAACCC","ATAAACCC","CTAAACCC","GTAAACCC","TTAAACCC",
+ "AACAACCC","CACAACCC","GACAACCC","TACAACCC","ACCAACCC","CCCAACCC","GCCAACCC","TCCAACCC",
+ "AGCAACCC","CGCAACCC","GGCAACCC","TGCAACCC","ATCAACCC","CTCAACCC","GTCAACCC","TTCAACCC",
+ "AAGAACCC","CAGAACCC","GAGAACCC","TAGAACCC","ACGAACCC","CCGAACCC","GCGAACCC","TCGAACCC",
+ "AGGAACCC","CGGAACCC","GGGAACCC","TGGAACCC","ATGAACCC","CTGAACCC","GTGAACCC","TTGAACCC",
+ "AATAACCC","CATAACCC","GATAACCC","TATAACCC","ACTAACCC","CCTAACCC","GCTAACCC","TCTAACCC",
+ "AGTAACCC","CGTAACCC","GGTAACCC","TGTAACCC","ATTAACCC","CTTAACCC","GTTAACCC","TTTAACCC",
+ "AAACACCC","CAACACCC","GAACACCC","TAACACCC","ACACACCC","CCACACCC","GCACACCC","TCACACCC",
+ "AGACACCC","CGACACCC","GGACACCC","TGACACCC","ATACACCC","CTACACCC","GTACACCC","TTACACCC",
+ "AACCACCC","CACCACCC","GACCACCC","TACCACCC","ACCCACCC","CCCCACCC","GCCCACCC","TCCCACCC",
+ "AGCCACCC","CGCCACCC","GGCCACCC","TGCCACCC","ATCCACCC","CTCCACCC","GTCCACCC","TTCCACCC",
+ "AAGCACCC","CAGCACCC","GAGCACCC","TAGCACCC","ACGCACCC","CCGCACCC","GCGCACCC","TCGCACCC",
+ "AGGCACCC","CGGCACCC","GGGCACCC","TGGCACCC","ATGCACCC","CTGCACCC","GTGCACCC","TTGCACCC",
+ "AATCACCC","CATCACCC","GATCACCC","TATCACCC","ACTCACCC","CCTCACCC","GCTCACCC","TCTCACCC",
+ "AGTCACCC","CGTCACCC","GGTCACCC","TGTCACCC","ATTCACCC","CTTCACCC","GTTCACCC","TTTCACCC",
+ "AAAGACCC","CAAGACCC","GAAGACCC","TAAGACCC","ACAGACCC","CCAGACCC","GCAGACCC","TCAGACCC",
+ "AGAGACCC","CGAGACCC","GGAGACCC","TGAGACCC","ATAGACCC","CTAGACCC","GTAGACCC","TTAGACCC",
+ "AACGACCC","CACGACCC","GACGACCC","TACGACCC","ACCGACCC","CCCGACCC","GCCGACCC","TCCGACCC",
+ "AGCGACCC","CGCGACCC","GGCGACCC","TGCGACCC","ATCGACCC","CTCGACCC","GTCGACCC","TTCGACCC",
+ "AAGGACCC","CAGGACCC","GAGGACCC","TAGGACCC","ACGGACCC","CCGGACCC","GCGGACCC","TCGGACCC",
+ "AGGGACCC","CGGGACCC","GGGGACCC","TGGGACCC","ATGGACCC","CTGGACCC","GTGGACCC","TTGGACCC",
+ "AATGACCC","CATGACCC","GATGACCC","TATGACCC","ACTGACCC","CCTGACCC","GCTGACCC","TCTGACCC",
+ "AGTGACCC","CGTGACCC","GGTGACCC","TGTGACCC","ATTGACCC","CTTGACCC","GTTGACCC","TTTGACCC",
+ "AAATACCC","CAATACCC","GAATACCC","TAATACCC","ACATACCC","CCATACCC","GCATACCC","TCATACCC",
+ "AGATACCC","CGATACCC","GGATACCC","TGATACCC","ATATACCC","CTATACCC","GTATACCC","TTATACCC",
+ "AACTACCC","CACTACCC","GACTACCC","TACTACCC","ACCTACCC","CCCTACCC","GCCTACCC","TCCTACCC",
+ "AGCTACCC","CGCTACCC","GGCTACCC","TGCTACCC","ATCTACCC","CTCTACCC","GTCTACCC","TTCTACCC",
+ "AAGTACCC","CAGTACCC","GAGTACCC","TAGTACCC","ACGTACCC","CCGTACCC","GCGTACCC","TCGTACCC",
+ "AGGTACCC","CGGTACCC","GGGTACCC","TGGTACCC","ATGTACCC","CTGTACCC","GTGTACCC","TTGTACCC",
+ "AATTACCC","CATTACCC","GATTACCC","TATTACCC","ACTTACCC","CCTTACCC","GCTTACCC","TCTTACCC",
+ "AGTTACCC","CGTTACCC","GGTTACCC","TGTTACCC","ATTTACCC","CTTTACCC","GTTTACCC","TTTTACCC",
+ "AAAACCCC","CAAACCCC","GAAACCCC","TAAACCCC","ACAACCCC","CCAACCCC","GCAACCCC","TCAACCCC",
+ "AGAACCCC","CGAACCCC","GGAACCCC","TGAACCCC","ATAACCCC","CTAACCCC","GTAACCCC","TTAACCCC",
+ "AACACCCC","CACACCCC","GACACCCC","TACACCCC","ACCACCCC","CCCACCCC","GCCACCCC","TCCACCCC",
+ "AGCACCCC","CGCACCCC","GGCACCCC","TGCACCCC","ATCACCCC","CTCACCCC","GTCACCCC","TTCACCCC",
+ "AAGACCCC","CAGACCCC","GAGACCCC","TAGACCCC","ACGACCCC","CCGACCCC","GCGACCCC","TCGACCCC",
+ "AGGACCCC","CGGACCCC","GGGACCCC","TGGACCCC","ATGACCCC","CTGACCCC","GTGACCCC","TTGACCCC",
+ "AATACCCC","CATACCCC","GATACCCC","TATACCCC","ACTACCCC","CCTACCCC","GCTACCCC","TCTACCCC",
+ "AGTACCCC","CGTACCCC","GGTACCCC","TGTACCCC","ATTACCCC","CTTACCCC","GTTACCCC","TTTACCCC",
+ "AAACCCCC","CAACCCCC","GAACCCCC","TAACCCCC","ACACCCCC","CCACCCCC","GCACCCCC","TCACCCCC",
+ "AGACCCCC","CGACCCCC","GGACCCCC","TGACCCCC","ATACCCCC","CTACCCCC","GTACCCCC","TTACCCCC",
+ "AACCCCCC","CACCCCCC","GACCCCCC","TACCCCCC","ACCCCCCC","CCCCCCCC","GCCCCCCC","TCCCCCCC",
+ "AGCCCCCC","CGCCCCCC","GGCCCCCC","TGCCCCCC","ATCCCCCC","CTCCCCCC","GTCCCCCC","TTCCCCCC",
+ "AAGCCCCC","CAGCCCCC","GAGCCCCC","TAGCCCCC","ACGCCCCC","CCGCCCCC","GCGCCCCC","TCGCCCCC",
+ "AGGCCCCC","CGGCCCCC","GGGCCCCC","TGGCCCCC","ATGCCCCC","CTGCCCCC","GTGCCCCC","TTGCCCCC",
+ "AATCCCCC","CATCCCCC","GATCCCCC","TATCCCCC","ACTCCCCC","CCTCCCCC","GCTCCCCC","TCTCCCCC",
+ "AGTCCCCC","CGTCCCCC","GGTCCCCC","TGTCCCCC","ATTCCCCC","CTTCCCCC","GTTCCCCC","TTTCCCCC",
+ "AAAGCCCC","CAAGCCCC","GAAGCCCC","TAAGCCCC","ACAGCCCC","CCAGCCCC","GCAGCCCC","TCAGCCCC",
+ "AGAGCCCC","CGAGCCCC","GGAGCCCC","TGAGCCCC","ATAGCCCC","CTAGCCCC","GTAGCCCC","TTAGCCCC",
+ "AACGCCCC","CACGCCCC","GACGCCCC","TACGCCCC","ACCGCCCC","CCCGCCCC","GCCGCCCC","TCCGCCCC",
+ "AGCGCCCC","CGCGCCCC","GGCGCCCC","TGCGCCCC","ATCGCCCC","CTCGCCCC","GTCGCCCC","TTCGCCCC",
+ "AAGGCCCC","CAGGCCCC","GAGGCCCC","TAGGCCCC","ACGGCCCC","CCGGCCCC","GCGGCCCC","TCGGCCCC",
+ "AGGGCCCC","CGGGCCCC","GGGGCCCC","TGGGCCCC","ATGGCCCC","CTGGCCCC","GTGGCCCC","TTGGCCCC",
+ "AATGCCCC","CATGCCCC","GATGCCCC","TATGCCCC","ACTGCCCC","CCTGCCCC","GCTGCCCC","TCTGCCCC",
+ "AGTGCCCC","CGTGCCCC","GGTGCCCC","TGTGCCCC","ATTGCCCC","CTTGCCCC","GTTGCCCC","TTTGCCCC",
+ "AAATCCCC","CAATCCCC","GAATCCCC","TAATCCCC","ACATCCCC","CCATCCCC","GCATCCCC","TCATCCCC",
+ "AGATCCCC","CGATCCCC","GGATCCCC","TGATCCCC","ATATCCCC","CTATCCCC","GTATCCCC","TTATCCCC",
+ "AACTCCCC","CACTCCCC","GACTCCCC","TACTCCCC","ACCTCCCC","CCCTCCCC","GCCTCCCC","TCCTCCCC",
+ "AGCTCCCC","CGCTCCCC","GGCTCCCC","TGCTCCCC","ATCTCCCC","CTCTCCCC","GTCTCCCC","TTCTCCCC",
+ "AAGTCCCC","CAGTCCCC","GAGTCCCC","TAGTCCCC","ACGTCCCC","CCGTCCCC","GCGTCCCC","TCGTCCCC",
+ "AGGTCCCC","CGGTCCCC","GGGTCCCC","TGGTCCCC","ATGTCCCC","CTGTCCCC","GTGTCCCC","TTGTCCCC",
+ "AATTCCCC","CATTCCCC","GATTCCCC","TATTCCCC","ACTTCCCC","CCTTCCCC","GCTTCCCC","TCTTCCCC",
+ "AGTTCCCC","CGTTCCCC","GGTTCCCC","TGTTCCCC","ATTTCCCC","CTTTCCCC","GTTTCCCC","TTTTCCCC",
+ "AAAAGCCC","CAAAGCCC","GAAAGCCC","TAAAGCCC","ACAAGCCC","CCAAGCCC","GCAAGCCC","TCAAGCCC",
+ "AGAAGCCC","CGAAGCCC","GGAAGCCC","TGAAGCCC","ATAAGCCC","CTAAGCCC","GTAAGCCC","TTAAGCCC",
+ "AACAGCCC","CACAGCCC","GACAGCCC","TACAGCCC","ACCAGCCC","CCCAGCCC","GCCAGCCC","TCCAGCCC",
+ "AGCAGCCC","CGCAGCCC","GGCAGCCC","TGCAGCCC","ATCAGCCC","CTCAGCCC","GTCAGCCC","TTCAGCCC",
+ "AAGAGCCC","CAGAGCCC","GAGAGCCC","TAGAGCCC","ACGAGCCC","CCGAGCCC","GCGAGCCC","TCGAGCCC",
+ "AGGAGCCC","CGGAGCCC","GGGAGCCC","TGGAGCCC","ATGAGCCC","CTGAGCCC","GTGAGCCC","TTGAGCCC",
+ "AATAGCCC","CATAGCCC","GATAGCCC","TATAGCCC","ACTAGCCC","CCTAGCCC","GCTAGCCC","TCTAGCCC",
+ "AGTAGCCC","CGTAGCCC","GGTAGCCC","TGTAGCCC","ATTAGCCC","CTTAGCCC","GTTAGCCC","TTTAGCCC",
+ "AAACGCCC","CAACGCCC","GAACGCCC","TAACGCCC","ACACGCCC","CCACGCCC","GCACGCCC","TCACGCCC",
+ "AGACGCCC","CGACGCCC","GGACGCCC","TGACGCCC","ATACGCCC","CTACGCCC","GTACGCCC","TTACGCCC",
+ "AACCGCCC","CACCGCCC","GACCGCCC","TACCGCCC","ACCCGCCC","CCCCGCCC","GCCCGCCC","TCCCGCCC",
+ "AGCCGCCC","CGCCGCCC","GGCCGCCC","TGCCGCCC","ATCCGCCC","CTCCGCCC","GTCCGCCC","TTCCGCCC",
+ "AAGCGCCC","CAGCGCCC","GAGCGCCC","TAGCGCCC","ACGCGCCC","CCGCGCCC","GCGCGCCC","TCGCGCCC",
+ "AGGCGCCC","CGGCGCCC","GGGCGCCC","TGGCGCCC","ATGCGCCC","CTGCGCCC","GTGCGCCC","TTGCGCCC",
+ "AATCGCCC","CATCGCCC","GATCGCCC","TATCGCCC","ACTCGCCC","CCTCGCCC","GCTCGCCC","TCTCGCCC",
+ "AGTCGCCC","CGTCGCCC","GGTCGCCC","TGTCGCCC","ATTCGCCC","CTTCGCCC","GTTCGCCC","TTTCGCCC",
+ "AAAGGCCC","CAAGGCCC","GAAGGCCC","TAAGGCCC","ACAGGCCC","CCAGGCCC","GCAGGCCC","TCAGGCCC",
+ "AGAGGCCC","CGAGGCCC","GGAGGCCC","TGAGGCCC","ATAGGCCC","CTAGGCCC","GTAGGCCC","TTAGGCCC",
+ "AACGGCCC","CACGGCCC","GACGGCCC","TACGGCCC","ACCGGCCC","CCCGGCCC","GCCGGCCC","TCCGGCCC",
+ "AGCGGCCC","CGCGGCCC","GGCGGCCC","TGCGGCCC","ATCGGCCC","CTCGGCCC","GTCGGCCC","TTCGGCCC",
+ "AAGGGCCC","CAGGGCCC","GAGGGCCC","TAGGGCCC","ACGGGCCC","CCGGGCCC","GCGGGCCC","TCGGGCCC",
+ "AGGGGCCC","CGGGGCCC","GGGGGCCC","TGGGGCCC","ATGGGCCC","CTGGGCCC","GTGGGCCC","TTGGGCCC",
+ "AATGGCCC","CATGGCCC","GATGGCCC","TATGGCCC","ACTGGCCC","CCTGGCCC","GCTGGCCC","TCTGGCCC",
+ "AGTGGCCC","CGTGGCCC","GGTGGCCC","TGTGGCCC","ATTGGCCC","CTTGGCCC","GTTGGCCC","TTTGGCCC",
+ "AAATGCCC","CAATGCCC","GAATGCCC","TAATGCCC","ACATGCCC","CCATGCCC","GCATGCCC","TCATGCCC",
+ "AGATGCCC","CGATGCCC","GGATGCCC","TGATGCCC","ATATGCCC","CTATGCCC","GTATGCCC","TTATGCCC",
+ "AACTGCCC","CACTGCCC","GACTGCCC","TACTGCCC","ACCTGCCC","CCCTGCCC","GCCTGCCC","TCCTGCCC",
+ "AGCTGCCC","CGCTGCCC","GGCTGCCC","TGCTGCCC","ATCTGCCC","CTCTGCCC","GTCTGCCC","TTCTGCCC",
+ "AAGTGCCC","CAGTGCCC","GAGTGCCC","TAGTGCCC","ACGTGCCC","CCGTGCCC","GCGTGCCC","TCGTGCCC",
+ "AGGTGCCC","CGGTGCCC","GGGTGCCC","TGGTGCCC","ATGTGCCC","CTGTGCCC","GTGTGCCC","TTGTGCCC",
+ "AATTGCCC","CATTGCCC","GATTGCCC","TATTGCCC","ACTTGCCC","CCTTGCCC","GCTTGCCC","TCTTGCCC",
+ "AGTTGCCC","CGTTGCCC","GGTTGCCC","TGTTGCCC","ATTTGCCC","CTTTGCCC","GTTTGCCC","TTTTGCCC",
+ "AAAATCCC","CAAATCCC","GAAATCCC","TAAATCCC","ACAATCCC","CCAATCCC","GCAATCCC","TCAATCCC",
+ "AGAATCCC","CGAATCCC","GGAATCCC","TGAATCCC","ATAATCCC","CTAATCCC","GTAATCCC","TTAATCCC",
+ "AACATCCC","CACATCCC","GACATCCC","TACATCCC","ACCATCCC","CCCATCCC","GCCATCCC","TCCATCCC",
+ "AGCATCCC","CGCATCCC","GGCATCCC","TGCATCCC","ATCATCCC","CTCATCCC","GTCATCCC","TTCATCCC",
+ "AAGATCCC","CAGATCCC","GAGATCCC","TAGATCCC","ACGATCCC","CCGATCCC","GCGATCCC","TCGATCCC",
+ "AGGATCCC","CGGATCCC","GGGATCCC","TGGATCCC","ATGATCCC","CTGATCCC","GTGATCCC","TTGATCCC",
+ "AATATCCC","CATATCCC","GATATCCC","TATATCCC","ACTATCCC","CCTATCCC","GCTATCCC","TCTATCCC",
+ "AGTATCCC","CGTATCCC","GGTATCCC","TGTATCCC","ATTATCCC","CTTATCCC","GTTATCCC","TTTATCCC",
+ "AAACTCCC","CAACTCCC","GAACTCCC","TAACTCCC","ACACTCCC","CCACTCCC","GCACTCCC","TCACTCCC",
+ "AGACTCCC","CGACTCCC","GGACTCCC","TGACTCCC","ATACTCCC","CTACTCCC","GTACTCCC","TTACTCCC",
+ "AACCTCCC","CACCTCCC","GACCTCCC","TACCTCCC","ACCCTCCC","CCCCTCCC","GCCCTCCC","TCCCTCCC",
+ "AGCCTCCC","CGCCTCCC","GGCCTCCC","TGCCTCCC","ATCCTCCC","CTCCTCCC","GTCCTCCC","TTCCTCCC",
+ "AAGCTCCC","CAGCTCCC","GAGCTCCC","TAGCTCCC","ACGCTCCC","CCGCTCCC","GCGCTCCC","TCGCTCCC",
+ "AGGCTCCC","CGGCTCCC","GGGCTCCC","TGGCTCCC","ATGCTCCC","CTGCTCCC","GTGCTCCC","TTGCTCCC",
+ "AATCTCCC","CATCTCCC","GATCTCCC","TATCTCCC","ACTCTCCC","CCTCTCCC","GCTCTCCC","TCTCTCCC",
+ "AGTCTCCC","CGTCTCCC","GGTCTCCC","TGTCTCCC","ATTCTCCC","CTTCTCCC","GTTCTCCC","TTTCTCCC",
+ "AAAGTCCC","CAAGTCCC","GAAGTCCC","TAAGTCCC","ACAGTCCC","CCAGTCCC","GCAGTCCC","TCAGTCCC",
+ "AGAGTCCC","CGAGTCCC","GGAGTCCC","TGAGTCCC","ATAGTCCC","CTAGTCCC","GTAGTCCC","TTAGTCCC",
+ "AACGTCCC","CACGTCCC","GACGTCCC","TACGTCCC","ACCGTCCC","CCCGTCCC","GCCGTCCC","TCCGTCCC",
+ "AGCGTCCC","CGCGTCCC","GGCGTCCC","TGCGTCCC","ATCGTCCC","CTCGTCCC","GTCGTCCC","TTCGTCCC",
+ "AAGGTCCC","CAGGTCCC","GAGGTCCC","TAGGTCCC","ACGGTCCC","CCGGTCCC","GCGGTCCC","TCGGTCCC",
+ "AGGGTCCC","CGGGTCCC","GGGGTCCC","TGGGTCCC","ATGGTCCC","CTGGTCCC","GTGGTCCC","TTGGTCCC",
+ "AATGTCCC","CATGTCCC","GATGTCCC","TATGTCCC","ACTGTCCC","CCTGTCCC","GCTGTCCC","TCTGTCCC",
+ "AGTGTCCC","CGTGTCCC","GGTGTCCC","TGTGTCCC","ATTGTCCC","CTTGTCCC","GTTGTCCC","TTTGTCCC",
+ "AAATTCCC","CAATTCCC","GAATTCCC","TAATTCCC","ACATTCCC","CCATTCCC","GCATTCCC","TCATTCCC",
+ "AGATTCCC","CGATTCCC","GGATTCCC","TGATTCCC","ATATTCCC","CTATTCCC","GTATTCCC","TTATTCCC",
+ "AACTTCCC","CACTTCCC","GACTTCCC","TACTTCCC","ACCTTCCC","CCCTTCCC","GCCTTCCC","TCCTTCCC",
+ "AGCTTCCC","CGCTTCCC","GGCTTCCC","TGCTTCCC","ATCTTCCC","CTCTTCCC","GTCTTCCC","TTCTTCCC",
+ "AAGTTCCC","CAGTTCCC","GAGTTCCC","TAGTTCCC","ACGTTCCC","CCGTTCCC","GCGTTCCC","TCGTTCCC",
+ "AGGTTCCC","CGGTTCCC","GGGTTCCC","TGGTTCCC","ATGTTCCC","CTGTTCCC","GTGTTCCC","TTGTTCCC",
+ "AATTTCCC","CATTTCCC","GATTTCCC","TATTTCCC","ACTTTCCC","CCTTTCCC","GCTTTCCC","TCTTTCCC",
+ "AGTTTCCC","CGTTTCCC","GGTTTCCC","TGTTTCCC","ATTTTCCC","CTTTTCCC","GTTTTCCC","TTTTTCCC",
+ "AAAAAGCC","CAAAAGCC","GAAAAGCC","TAAAAGCC","ACAAAGCC","CCAAAGCC","GCAAAGCC","TCAAAGCC",
+ "AGAAAGCC","CGAAAGCC","GGAAAGCC","TGAAAGCC","ATAAAGCC","CTAAAGCC","GTAAAGCC","TTAAAGCC",
+ "AACAAGCC","CACAAGCC","GACAAGCC","TACAAGCC","ACCAAGCC","CCCAAGCC","GCCAAGCC","TCCAAGCC",
+ "AGCAAGCC","CGCAAGCC","GGCAAGCC","TGCAAGCC","ATCAAGCC","CTCAAGCC","GTCAAGCC","TTCAAGCC",
+ "AAGAAGCC","CAGAAGCC","GAGAAGCC","TAGAAGCC","ACGAAGCC","CCGAAGCC","GCGAAGCC","TCGAAGCC",
+ "AGGAAGCC","CGGAAGCC","GGGAAGCC","TGGAAGCC","ATGAAGCC","CTGAAGCC","GTGAAGCC","TTGAAGCC",
+ "AATAAGCC","CATAAGCC","GATAAGCC","TATAAGCC","ACTAAGCC","CCTAAGCC","GCTAAGCC","TCTAAGCC",
+ "AGTAAGCC","CGTAAGCC","GGTAAGCC","TGTAAGCC","ATTAAGCC","CTTAAGCC","GTTAAGCC","TTTAAGCC",
+ "AAACAGCC","CAACAGCC","GAACAGCC","TAACAGCC","ACACAGCC","CCACAGCC","GCACAGCC","TCACAGCC",
+ "AGACAGCC","CGACAGCC","GGACAGCC","TGACAGCC","ATACAGCC","CTACAGCC","GTACAGCC","TTACAGCC",
+ "AACCAGCC","CACCAGCC","GACCAGCC","TACCAGCC","ACCCAGCC","CCCCAGCC","GCCCAGCC","TCCCAGCC",
+ "AGCCAGCC","CGCCAGCC","GGCCAGCC","TGCCAGCC","ATCCAGCC","CTCCAGCC","GTCCAGCC","TTCCAGCC",
+ "AAGCAGCC","CAGCAGCC","GAGCAGCC","TAGCAGCC","ACGCAGCC","CCGCAGCC","GCGCAGCC","TCGCAGCC",
+ "AGGCAGCC","CGGCAGCC","GGGCAGCC","TGGCAGCC","ATGCAGCC","CTGCAGCC","GTGCAGCC","TTGCAGCC",
+ "AATCAGCC","CATCAGCC","GATCAGCC","TATCAGCC","ACTCAGCC","CCTCAGCC","GCTCAGCC","TCTCAGCC",
+ "AGTCAGCC","CGTCAGCC","GGTCAGCC","TGTCAGCC","ATTCAGCC","CTTCAGCC","GTTCAGCC","TTTCAGCC",
+ "AAAGAGCC","CAAGAGCC","GAAGAGCC","TAAGAGCC","ACAGAGCC","CCAGAGCC","GCAGAGCC","TCAGAGCC",
+ "AGAGAGCC","CGAGAGCC","GGAGAGCC","TGAGAGCC","ATAGAGCC","CTAGAGCC","GTAGAGCC","TTAGAGCC",
+ "AACGAGCC","CACGAGCC","GACGAGCC","TACGAGCC","ACCGAGCC","CCCGAGCC","GCCGAGCC","TCCGAGCC",
+ "AGCGAGCC","CGCGAGCC","GGCGAGCC","TGCGAGCC","ATCGAGCC","CTCGAGCC","GTCGAGCC","TTCGAGCC",
+ "AAGGAGCC","CAGGAGCC","GAGGAGCC","TAGGAGCC","ACGGAGCC","CCGGAGCC","GCGGAGCC","TCGGAGCC",
+ "AGGGAGCC","CGGGAGCC","GGGGAGCC","TGGGAGCC","ATGGAGCC","CTGGAGCC","GTGGAGCC","TTGGAGCC",
+ "AATGAGCC","CATGAGCC","GATGAGCC","TATGAGCC","ACTGAGCC","CCTGAGCC","GCTGAGCC","TCTGAGCC",
+ "AGTGAGCC","CGTGAGCC","GGTGAGCC","TGTGAGCC","ATTGAGCC","CTTGAGCC","GTTGAGCC","TTTGAGCC",
+ "AAATAGCC","CAATAGCC","GAATAGCC","TAATAGCC","ACATAGCC","CCATAGCC","GCATAGCC","TCATAGCC",
+ "AGATAGCC","CGATAGCC","GGATAGCC","TGATAGCC","ATATAGCC","CTATAGCC","GTATAGCC","TTATAGCC",
+ "AACTAGCC","CACTAGCC","GACTAGCC","TACTAGCC","ACCTAGCC","CCCTAGCC","GCCTAGCC","TCCTAGCC",
+ "AGCTAGCC","CGCTAGCC","GGCTAGCC","TGCTAGCC","ATCTAGCC","CTCTAGCC","GTCTAGCC","TTCTAGCC",
+ "AAGTAGCC","CAGTAGCC","GAGTAGCC","TAGTAGCC","ACGTAGCC","CCGTAGCC","GCGTAGCC","TCGTAGCC",
+ "AGGTAGCC","CGGTAGCC","GGGTAGCC","TGGTAGCC","ATGTAGCC","CTGTAGCC","GTGTAGCC","TTGTAGCC",
+ "AATTAGCC","CATTAGCC","GATTAGCC","TATTAGCC","ACTTAGCC","CCTTAGCC","GCTTAGCC","TCTTAGCC",
+ "AGTTAGCC","CGTTAGCC","GGTTAGCC","TGTTAGCC","ATTTAGCC","CTTTAGCC","GTTTAGCC","TTTTAGCC",
+ "AAAACGCC","CAAACGCC","GAAACGCC","TAAACGCC","ACAACGCC","CCAACGCC","GCAACGCC","TCAACGCC",
+ "AGAACGCC","CGAACGCC","GGAACGCC","TGAACGCC","ATAACGCC","CTAACGCC","GTAACGCC","TTAACGCC",
+ "AACACGCC","CACACGCC","GACACGCC","TACACGCC","ACCACGCC","CCCACGCC","GCCACGCC","TCCACGCC",
+ "AGCACGCC","CGCACGCC","GGCACGCC","TGCACGCC","ATCACGCC","CTCACGCC","GTCACGCC","TTCACGCC",
+ "AAGACGCC","CAGACGCC","GAGACGCC","TAGACGCC","ACGACGCC","CCGACGCC","GCGACGCC","TCGACGCC",
+ "AGGACGCC","CGGACGCC","GGGACGCC","TGGACGCC","ATGACGCC","CTGACGCC","GTGACGCC","TTGACGCC",
+ "AATACGCC","CATACGCC","GATACGCC","TATACGCC","ACTACGCC","CCTACGCC","GCTACGCC","TCTACGCC",
+ "AGTACGCC","CGTACGCC","GGTACGCC","TGTACGCC","ATTACGCC","CTTACGCC","GTTACGCC","TTTACGCC",
+ "AAACCGCC","CAACCGCC","GAACCGCC","TAACCGCC","ACACCGCC","CCACCGCC","GCACCGCC","TCACCGCC",
+ "AGACCGCC","CGACCGCC","GGACCGCC","TGACCGCC","ATACCGCC","CTACCGCC","GTACCGCC","TTACCGCC",
+ "AACCCGCC","CACCCGCC","GACCCGCC","TACCCGCC","ACCCCGCC","CCCCCGCC","GCCCCGCC","TCCCCGCC",
+ "AGCCCGCC","CGCCCGCC","GGCCCGCC","TGCCCGCC","ATCCCGCC","CTCCCGCC","GTCCCGCC","TTCCCGCC",
+ "AAGCCGCC","CAGCCGCC","GAGCCGCC","TAGCCGCC","ACGCCGCC","CCGCCGCC","GCGCCGCC","TCGCCGCC",
+ "AGGCCGCC","CGGCCGCC","GGGCCGCC","TGGCCGCC","ATGCCGCC","CTGCCGCC","GTGCCGCC","TTGCCGCC",
+ "AATCCGCC","CATCCGCC","GATCCGCC","TATCCGCC","ACTCCGCC","CCTCCGCC","GCTCCGCC","TCTCCGCC",
+ "AGTCCGCC","CGTCCGCC","GGTCCGCC","TGTCCGCC","ATTCCGCC","CTTCCGCC","GTTCCGCC","TTTCCGCC",
+ "AAAGCGCC","CAAGCGCC","GAAGCGCC","TAAGCGCC","ACAGCGCC","CCAGCGCC","GCAGCGCC","TCAGCGCC",
+ "AGAGCGCC","CGAGCGCC","GGAGCGCC","TGAGCGCC","ATAGCGCC","CTAGCGCC","GTAGCGCC","TTAGCGCC",
+ "AACGCGCC","CACGCGCC","GACGCGCC","TACGCGCC","ACCGCGCC","CCCGCGCC","GCCGCGCC","TCCGCGCC",
+ "AGCGCGCC","CGCGCGCC","GGCGCGCC","TGCGCGCC","ATCGCGCC","CTCGCGCC","GTCGCGCC","TTCGCGCC",
+ "AAGGCGCC","CAGGCGCC","GAGGCGCC","TAGGCGCC","ACGGCGCC","CCGGCGCC","GCGGCGCC","TCGGCGCC",
+ "AGGGCGCC","CGGGCGCC","GGGGCGCC","TGGGCGCC","ATGGCGCC","CTGGCGCC","GTGGCGCC","TTGGCGCC",
+ "AATGCGCC","CATGCGCC","GATGCGCC","TATGCGCC","ACTGCGCC","CCTGCGCC","GCTGCGCC","TCTGCGCC",
+ "AGTGCGCC","CGTGCGCC","GGTGCGCC","TGTGCGCC","ATTGCGCC","CTTGCGCC","GTTGCGCC","TTTGCGCC",
+ "AAATCGCC","CAATCGCC","GAATCGCC","TAATCGCC","ACATCGCC","CCATCGCC","GCATCGCC","TCATCGCC",
+ "AGATCGCC","CGATCGCC","GGATCGCC","TGATCGCC","ATATCGCC","CTATCGCC","GTATCGCC","TTATCGCC",
+ "AACTCGCC","CACTCGCC","GACTCGCC","TACTCGCC","ACCTCGCC","CCCTCGCC","GCCTCGCC","TCCTCGCC",
+ "AGCTCGCC","CGCTCGCC","GGCTCGCC","TGCTCGCC","ATCTCGCC","CTCTCGCC","GTCTCGCC","TTCTCGCC",
+ "AAGTCGCC","CAGTCGCC","GAGTCGCC","TAGTCGCC","ACGTCGCC","CCGTCGCC","GCGTCGCC","TCGTCGCC",
+ "AGGTCGCC","CGGTCGCC","GGGTCGCC","TGGTCGCC","ATGTCGCC","CTGTCGCC","GTGTCGCC","TTGTCGCC",
+ "AATTCGCC","CATTCGCC","GATTCGCC","TATTCGCC","ACTTCGCC","CCTTCGCC","GCTTCGCC","TCTTCGCC",
+ "AGTTCGCC","CGTTCGCC","GGTTCGCC","TGTTCGCC","ATTTCGCC","CTTTCGCC","GTTTCGCC","TTTTCGCC",
+ "AAAAGGCC","CAAAGGCC","GAAAGGCC","TAAAGGCC","ACAAGGCC","CCAAGGCC","GCAAGGCC","TCAAGGCC",
+ "AGAAGGCC","CGAAGGCC","GGAAGGCC","TGAAGGCC","ATAAGGCC","CTAAGGCC","GTAAGGCC","TTAAGGCC",
+ "AACAGGCC","CACAGGCC","GACAGGCC","TACAGGCC","ACCAGGCC","CCCAGGCC","GCCAGGCC","TCCAGGCC",
+ "AGCAGGCC","CGCAGGCC","GGCAGGCC","TGCAGGCC","ATCAGGCC","CTCAGGCC","GTCAGGCC","TTCAGGCC",
+ "AAGAGGCC","CAGAGGCC","GAGAGGCC","TAGAGGCC","ACGAGGCC","CCGAGGCC","GCGAGGCC","TCGAGGCC",
+ "AGGAGGCC","CGGAGGCC","GGGAGGCC","TGGAGGCC","ATGAGGCC","CTGAGGCC","GTGAGGCC","TTGAGGCC",
+ "AATAGGCC","CATAGGCC","GATAGGCC","TATAGGCC","ACTAGGCC","CCTAGGCC","GCTAGGCC","TCTAGGCC",
+ "AGTAGGCC","CGTAGGCC","GGTAGGCC","TGTAGGCC","ATTAGGCC","CTTAGGCC","GTTAGGCC","TTTAGGCC",
+ "AAACGGCC","CAACGGCC","GAACGGCC","TAACGGCC","ACACGGCC","CCACGGCC","GCACGGCC","TCACGGCC",
+ "AGACGGCC","CGACGGCC","GGACGGCC","TGACGGCC","ATACGGCC","CTACGGCC","GTACGGCC","TTACGGCC",
+ "AACCGGCC","CACCGGCC","GACCGGCC","TACCGGCC","ACCCGGCC","CCCCGGCC","GCCCGGCC","TCCCGGCC",
+ "AGCCGGCC","CGCCGGCC","GGCCGGCC","TGCCGGCC","ATCCGGCC","CTCCGGCC","GTCCGGCC","TTCCGGCC",
+ "AAGCGGCC","CAGCGGCC","GAGCGGCC","TAGCGGCC","ACGCGGCC","CCGCGGCC","GCGCGGCC","TCGCGGCC",
+ "AGGCGGCC","CGGCGGCC","GGGCGGCC","TGGCGGCC","ATGCGGCC","CTGCGGCC","GTGCGGCC","TTGCGGCC",
+ "AATCGGCC","CATCGGCC","GATCGGCC","TATCGGCC","ACTCGGCC","CCTCGGCC","GCTCGGCC","TCTCGGCC",
+ "AGTCGGCC","CGTCGGCC","GGTCGGCC","TGTCGGCC","ATTCGGCC","CTTCGGCC","GTTCGGCC","TTTCGGCC",
+ "AAAGGGCC","CAAGGGCC","GAAGGGCC","TAAGGGCC","ACAGGGCC","CCAGGGCC","GCAGGGCC","TCAGGGCC",
+ "AGAGGGCC","CGAGGGCC","GGAGGGCC","TGAGGGCC","ATAGGGCC","CTAGGGCC","GTAGGGCC","TTAGGGCC",
+ "AACGGGCC","CACGGGCC","GACGGGCC","TACGGGCC","ACCGGGCC","CCCGGGCC","GCCGGGCC","TCCGGGCC",
+ "AGCGGGCC","CGCGGGCC","GGCGGGCC","TGCGGGCC","ATCGGGCC","CTCGGGCC","GTCGGGCC","TTCGGGCC",
+ "AAGGGGCC","CAGGGGCC","GAGGGGCC","TAGGGGCC","ACGGGGCC","CCGGGGCC","GCGGGGCC","TCGGGGCC",
+ "AGGGGGCC","CGGGGGCC","GGGGGGCC","TGGGGGCC","ATGGGGCC","CTGGGGCC","GTGGGGCC","TTGGGGCC",
+ "AATGGGCC","CATGGGCC","GATGGGCC","TATGGGCC","ACTGGGCC","CCTGGGCC","GCTGGGCC","TCTGGGCC",
+ "AGTGGGCC","CGTGGGCC","GGTGGGCC","TGTGGGCC","ATTGGGCC","CTTGGGCC","GTTGGGCC","TTTGGGCC",
+ "AAATGGCC","CAATGGCC","GAATGGCC","TAATGGCC","ACATGGCC","CCATGGCC","GCATGGCC","TCATGGCC",
+ "AGATGGCC","CGATGGCC","GGATGGCC","TGATGGCC","ATATGGCC","CTATGGCC","GTATGGCC","TTATGGCC",
+ "AACTGGCC","CACTGGCC","GACTGGCC","TACTGGCC","ACCTGGCC","CCCTGGCC","GCCTGGCC","TCCTGGCC",
+ "AGCTGGCC","CGCTGGCC","GGCTGGCC","TGCTGGCC","ATCTGGCC","CTCTGGCC","GTCTGGCC","TTCTGGCC",
+ "AAGTGGCC","CAGTGGCC","GAGTGGCC","TAGTGGCC","ACGTGGCC","CCGTGGCC","GCGTGGCC","TCGTGGCC",
+ "AGGTGGCC","CGGTGGCC","GGGTGGCC","TGGTGGCC","ATGTGGCC","CTGTGGCC","GTGTGGCC","TTGTGGCC",
+ "AATTGGCC","CATTGGCC","GATTGGCC","TATTGGCC","ACTTGGCC","CCTTGGCC","GCTTGGCC","TCTTGGCC",
+ "AGTTGGCC","CGTTGGCC","GGTTGGCC","TGTTGGCC","ATTTGGCC","CTTTGGCC","GTTTGGCC","TTTTGGCC",
+ "AAAATGCC","CAAATGCC","GAAATGCC","TAAATGCC","ACAATGCC","CCAATGCC","GCAATGCC","TCAATGCC",
+ "AGAATGCC","CGAATGCC","GGAATGCC","TGAATGCC","ATAATGCC","CTAATGCC","GTAATGCC","TTAATGCC",
+ "AACATGCC","CACATGCC","GACATGCC","TACATGCC","ACCATGCC","CCCATGCC","GCCATGCC","TCCATGCC",
+ "AGCATGCC","CGCATGCC","GGCATGCC","TGCATGCC","ATCATGCC","CTCATGCC","GTCATGCC","TTCATGCC",
+ "AAGATGCC","CAGATGCC","GAGATGCC","TAGATGCC","ACGATGCC","CCGATGCC","GCGATGCC","TCGATGCC",
+ "AGGATGCC","CGGATGCC","GGGATGCC","TGGATGCC","ATGATGCC","CTGATGCC","GTGATGCC","TTGATGCC",
+ "AATATGCC","CATATGCC","GATATGCC","TATATGCC","ACTATGCC","CCTATGCC","GCTATGCC","TCTATGCC",
+ "AGTATGCC","CGTATGCC","GGTATGCC","TGTATGCC","ATTATGCC","CTTATGCC","GTTATGCC","TTTATGCC",
+ "AAACTGCC","CAACTGCC","GAACTGCC","TAACTGCC","ACACTGCC","CCACTGCC","GCACTGCC","TCACTGCC",
+ "AGACTGCC","CGACTGCC","GGACTGCC","TGACTGCC","ATACTGCC","CTACTGCC","GTACTGCC","TTACTGCC",
+ "AACCTGCC","CACCTGCC","GACCTGCC","TACCTGCC","ACCCTGCC","CCCCTGCC","GCCCTGCC","TCCCTGCC",
+ "AGCCTGCC","CGCCTGCC","GGCCTGCC","TGCCTGCC","ATCCTGCC","CTCCTGCC","GTCCTGCC","TTCCTGCC",
+ "AAGCTGCC","CAGCTGCC","GAGCTGCC","TAGCTGCC","ACGCTGCC","CCGCTGCC","GCGCTGCC","TCGCTGCC",
+ "AGGCTGCC","CGGCTGCC","GGGCTGCC","TGGCTGCC","ATGCTGCC","CTGCTGCC","GTGCTGCC","TTGCTGCC",
+ "AATCTGCC","CATCTGCC","GATCTGCC","TATCTGCC","ACTCTGCC","CCTCTGCC","GCTCTGCC","TCTCTGCC",
+ "AGTCTGCC","CGTCTGCC","GGTCTGCC","TGTCTGCC","ATTCTGCC","CTTCTGCC","GTTCTGCC","TTTCTGCC",
+ "AAAGTGCC","CAAGTGCC","GAAGTGCC","TAAGTGCC","ACAGTGCC","CCAGTGCC","GCAGTGCC","TCAGTGCC",
+ "AGAGTGCC","CGAGTGCC","GGAGTGCC","TGAGTGCC","ATAGTGCC","CTAGTGCC","GTAGTGCC","TTAGTGCC",
+ "AACGTGCC","CACGTGCC","GACGTGCC","TACGTGCC","ACCGTGCC","CCCGTGCC","GCCGTGCC","TCCGTGCC",
+ "AGCGTGCC","CGCGTGCC","GGCGTGCC","TGCGTGCC","ATCGTGCC","CTCGTGCC","GTCGTGCC","TTCGTGCC",
+ "AAGGTGCC","CAGGTGCC","GAGGTGCC","TAGGTGCC","ACGGTGCC","CCGGTGCC","GCGGTGCC","TCGGTGCC",
+ "AGGGTGCC","CGGGTGCC","GGGGTGCC","TGGGTGCC","ATGGTGCC","CTGGTGCC","GTGGTGCC","TTGGTGCC",
+ "AATGTGCC","CATGTGCC","GATGTGCC","TATGTGCC","ACTGTGCC","CCTGTGCC","GCTGTGCC","TCTGTGCC",
+ "AGTGTGCC","CGTGTGCC","GGTGTGCC","TGTGTGCC","ATTGTGCC","CTTGTGCC","GTTGTGCC","TTTGTGCC",
+ "AAATTGCC","CAATTGCC","GAATTGCC","TAATTGCC","ACATTGCC","CCATTGCC","GCATTGCC","TCATTGCC",
+ "AGATTGCC","CGATTGCC","GGATTGCC","TGATTGCC","ATATTGCC","CTATTGCC","GTATTGCC","TTATTGCC",
+ "AACTTGCC","CACTTGCC","GACTTGCC","TACTTGCC","ACCTTGCC","CCCTTGCC","GCCTTGCC","TCCTTGCC",
+ "AGCTTGCC","CGCTTGCC","GGCTTGCC","TGCTTGCC","ATCTTGCC","CTCTTGCC","GTCTTGCC","TTCTTGCC",
+ "AAGTTGCC","CAGTTGCC","GAGTTGCC","TAGTTGCC","ACGTTGCC","CCGTTGCC","GCGTTGCC","TCGTTGCC",
+ "AGGTTGCC","CGGTTGCC","GGGTTGCC","TGGTTGCC","ATGTTGCC","CTGTTGCC","GTGTTGCC","TTGTTGCC",
+ "AATTTGCC","CATTTGCC","GATTTGCC","TATTTGCC","ACTTTGCC","CCTTTGCC","GCTTTGCC","TCTTTGCC",
+ "AGTTTGCC","CGTTTGCC","GGTTTGCC","TGTTTGCC","ATTTTGCC","CTTTTGCC","GTTTTGCC","TTTTTGCC",
+ "AAAAATCC","CAAAATCC","GAAAATCC","TAAAATCC","ACAAATCC","CCAAATCC","GCAAATCC","TCAAATCC",
+ "AGAAATCC","CGAAATCC","GGAAATCC","TGAAATCC","ATAAATCC","CTAAATCC","GTAAATCC","TTAAATCC",
+ "AACAATCC","CACAATCC","GACAATCC","TACAATCC","ACCAATCC","CCCAATCC","GCCAATCC","TCCAATCC",
+ "AGCAATCC","CGCAATCC","GGCAATCC","TGCAATCC","ATCAATCC","CTCAATCC","GTCAATCC","TTCAATCC",
+ "AAGAATCC","CAGAATCC","GAGAATCC","TAGAATCC","ACGAATCC","CCGAATCC","GCGAATCC","TCGAATCC",
+ "AGGAATCC","CGGAATCC","GGGAATCC","TGGAATCC","ATGAATCC","CTGAATCC","GTGAATCC","TTGAATCC",
+ "AATAATCC","CATAATCC","GATAATCC","TATAATCC","ACTAATCC","CCTAATCC","GCTAATCC","TCTAATCC",
+ "AGTAATCC","CGTAATCC","GGTAATCC","TGTAATCC","ATTAATCC","CTTAATCC","GTTAATCC","TTTAATCC",
+ "AAACATCC","CAACATCC","GAACATCC","TAACATCC","ACACATCC","CCACATCC","GCACATCC","TCACATCC",
+ "AGACATCC","CGACATCC","GGACATCC","TGACATCC","ATACATCC","CTACATCC","GTACATCC","TTACATCC",
+ "AACCATCC","CACCATCC","GACCATCC","TACCATCC","ACCCATCC","CCCCATCC","GCCCATCC","TCCCATCC",
+ "AGCCATCC","CGCCATCC","GGCCATCC","TGCCATCC","ATCCATCC","CTCCATCC","GTCCATCC","TTCCATCC",
+ "AAGCATCC","CAGCATCC","GAGCATCC","TAGCATCC","ACGCATCC","CCGCATCC","GCGCATCC","TCGCATCC",
+ "AGGCATCC","CGGCATCC","GGGCATCC","TGGCATCC","ATGCATCC","CTGCATCC","GTGCATCC","TTGCATCC",
+ "AATCATCC","CATCATCC","GATCATCC","TATCATCC","ACTCATCC","CCTCATCC","GCTCATCC","TCTCATCC",
+ "AGTCATCC","CGTCATCC","GGTCATCC","TGTCATCC","ATTCATCC","CTTCATCC","GTTCATCC","TTTCATCC",
+ "AAAGATCC","CAAGATCC","GAAGATCC","TAAGATCC","ACAGATCC","CCAGATCC","GCAGATCC","TCAGATCC",
+ "AGAGATCC","CGAGATCC","GGAGATCC","TGAGATCC","ATAGATCC","CTAGATCC","GTAGATCC","TTAGATCC",
+ "AACGATCC","CACGATCC","GACGATCC","TACGATCC","ACCGATCC","CCCGATCC","GCCGATCC","TCCGATCC",
+ "AGCGATCC","CGCGATCC","GGCGATCC","TGCGATCC","ATCGATCC","CTCGATCC","GTCGATCC","TTCGATCC",
+ "AAGGATCC","CAGGATCC","GAGGATCC","TAGGATCC","ACGGATCC","CCGGATCC","GCGGATCC","TCGGATCC",
+ "AGGGATCC","CGGGATCC","GGGGATCC","TGGGATCC","ATGGATCC","CTGGATCC","GTGGATCC","TTGGATCC",
+ "AATGATCC","CATGATCC","GATGATCC","TATGATCC","ACTGATCC","CCTGATCC","GCTGATCC","TCTGATCC",
+ "AGTGATCC","CGTGATCC","GGTGATCC","TGTGATCC","ATTGATCC","CTTGATCC","GTTGATCC","TTTGATCC",
+ "AAATATCC","CAATATCC","GAATATCC","TAATATCC","ACATATCC","CCATATCC","GCATATCC","TCATATCC",
+ "AGATATCC","CGATATCC","GGATATCC","TGATATCC","ATATATCC","CTATATCC","GTATATCC","TTATATCC",
+ "AACTATCC","CACTATCC","GACTATCC","TACTATCC","ACCTATCC","CCCTATCC","GCCTATCC","TCCTATCC",
+ "AGCTATCC","CGCTATCC","GGCTATCC","TGCTATCC","ATCTATCC","CTCTATCC","GTCTATCC","TTCTATCC",
+ "AAGTATCC","CAGTATCC","GAGTATCC","TAGTATCC","ACGTATCC","CCGTATCC","GCGTATCC","TCGTATCC",
+ "AGGTATCC","CGGTATCC","GGGTATCC","TGGTATCC","ATGTATCC","CTGTATCC","GTGTATCC","TTGTATCC",
+ "AATTATCC","CATTATCC","GATTATCC","TATTATCC","ACTTATCC","CCTTATCC","GCTTATCC","TCTTATCC",
+ "AGTTATCC","CGTTATCC","GGTTATCC","TGTTATCC","ATTTATCC","CTTTATCC","GTTTATCC","TTTTATCC",
+ "AAAACTCC","CAAACTCC","GAAACTCC","TAAACTCC","ACAACTCC","CCAACTCC","GCAACTCC","TCAACTCC",
+ "AGAACTCC","CGAACTCC","GGAACTCC","TGAACTCC","ATAACTCC","CTAACTCC","GTAACTCC","TTAACTCC",
+ "AACACTCC","CACACTCC","GACACTCC","TACACTCC","ACCACTCC","CCCACTCC","GCCACTCC","TCCACTCC",
+ "AGCACTCC","CGCACTCC","GGCACTCC","TGCACTCC","ATCACTCC","CTCACTCC","GTCACTCC","TTCACTCC",
+ "AAGACTCC","CAGACTCC","GAGACTCC","TAGACTCC","ACGACTCC","CCGACTCC","GCGACTCC","TCGACTCC",
+ "AGGACTCC","CGGACTCC","GGGACTCC","TGGACTCC","ATGACTCC","CTGACTCC","GTGACTCC","TTGACTCC",
+ "AATACTCC","CATACTCC","GATACTCC","TATACTCC","ACTACTCC","CCTACTCC","GCTACTCC","TCTACTCC",
+ "AGTACTCC","CGTACTCC","GGTACTCC","TGTACTCC","ATTACTCC","CTTACTCC","GTTACTCC","TTTACTCC",
+ "AAACCTCC","CAACCTCC","GAACCTCC","TAACCTCC","ACACCTCC","CCACCTCC","GCACCTCC","TCACCTCC",
+ "AGACCTCC","CGACCTCC","GGACCTCC","TGACCTCC","ATACCTCC","CTACCTCC","GTACCTCC","TTACCTCC",
+ "AACCCTCC","CACCCTCC","GACCCTCC","TACCCTCC","ACCCCTCC","CCCCCTCC","GCCCCTCC","TCCCCTCC",
+ "AGCCCTCC","CGCCCTCC","GGCCCTCC","TGCCCTCC","ATCCCTCC","CTCCCTCC","GTCCCTCC","TTCCCTCC",
+ "AAGCCTCC","CAGCCTCC","GAGCCTCC","TAGCCTCC","ACGCCTCC","CCGCCTCC","GCGCCTCC","TCGCCTCC",
+ "AGGCCTCC","CGGCCTCC","GGGCCTCC","TGGCCTCC","ATGCCTCC","CTGCCTCC","GTGCCTCC","TTGCCTCC",
+ "AATCCTCC","CATCCTCC","GATCCTCC","TATCCTCC","ACTCCTCC","CCTCCTCC","GCTCCTCC","TCTCCTCC",
+ "AGTCCTCC","CGTCCTCC","GGTCCTCC","TGTCCTCC","ATTCCTCC","CTTCCTCC","GTTCCTCC","TTTCCTCC",
+ "AAAGCTCC","CAAGCTCC","GAAGCTCC","TAAGCTCC","ACAGCTCC","CCAGCTCC","GCAGCTCC","TCAGCTCC",
+ "AGAGCTCC","CGAGCTCC","GGAGCTCC","TGAGCTCC","ATAGCTCC","CTAGCTCC","GTAGCTCC","TTAGCTCC",
+ "AACGCTCC","CACGCTCC","GACGCTCC","TACGCTCC","ACCGCTCC","CCCGCTCC","GCCGCTCC","TCCGCTCC",
+ "AGCGCTCC","CGCGCTCC","GGCGCTCC","TGCGCTCC","ATCGCTCC","CTCGCTCC","GTCGCTCC","TTCGCTCC",
+ "AAGGCTCC","CAGGCTCC","GAGGCTCC","TAGGCTCC","ACGGCTCC","CCGGCTCC","GCGGCTCC","TCGGCTCC",
+ "AGGGCTCC","CGGGCTCC","GGGGCTCC","TGGGCTCC","ATGGCTCC","CTGGCTCC","GTGGCTCC","TTGGCTCC",
+ "AATGCTCC","CATGCTCC","GATGCTCC","TATGCTCC","ACTGCTCC","CCTGCTCC","GCTGCTCC","TCTGCTCC",
+ "AGTGCTCC","CGTGCTCC","GGTGCTCC","TGTGCTCC","ATTGCTCC","CTTGCTCC","GTTGCTCC","TTTGCTCC",
+ "AAATCTCC","CAATCTCC","GAATCTCC","TAATCTCC","ACATCTCC","CCATCTCC","GCATCTCC","TCATCTCC",
+ "AGATCTCC","CGATCTCC","GGATCTCC","TGATCTCC","ATATCTCC","CTATCTCC","GTATCTCC","TTATCTCC",
+ "AACTCTCC","CACTCTCC","GACTCTCC","TACTCTCC","ACCTCTCC","CCCTCTCC","GCCTCTCC","TCCTCTCC",
+ "AGCTCTCC","CGCTCTCC","GGCTCTCC","TGCTCTCC","ATCTCTCC","CTCTCTCC","GTCTCTCC","TTCTCTCC",
+ "AAGTCTCC","CAGTCTCC","GAGTCTCC","TAGTCTCC","ACGTCTCC","CCGTCTCC","GCGTCTCC","TCGTCTCC",
+ "AGGTCTCC","CGGTCTCC","GGGTCTCC","TGGTCTCC","ATGTCTCC","CTGTCTCC","GTGTCTCC","TTGTCTCC",
+ "AATTCTCC","CATTCTCC","GATTCTCC","TATTCTCC","ACTTCTCC","CCTTCTCC","GCTTCTCC","TCTTCTCC",
+ "AGTTCTCC","CGTTCTCC","GGTTCTCC","TGTTCTCC","ATTTCTCC","CTTTCTCC","GTTTCTCC","TTTTCTCC",
+ "AAAAGTCC","CAAAGTCC","GAAAGTCC","TAAAGTCC","ACAAGTCC","CCAAGTCC","GCAAGTCC","TCAAGTCC",
+ "AGAAGTCC","CGAAGTCC","GGAAGTCC","TGAAGTCC","ATAAGTCC","CTAAGTCC","GTAAGTCC","TTAAGTCC",
+ "AACAGTCC","CACAGTCC","GACAGTCC","TACAGTCC","ACCAGTCC","CCCAGTCC","GCCAGTCC","TCCAGTCC",
+ "AGCAGTCC","CGCAGTCC","GGCAGTCC","TGCAGTCC","ATCAGTCC","CTCAGTCC","GTCAGTCC","TTCAGTCC",
+ "AAGAGTCC","CAGAGTCC","GAGAGTCC","TAGAGTCC","ACGAGTCC","CCGAGTCC","GCGAGTCC","TCGAGTCC",
+ "AGGAGTCC","CGGAGTCC","GGGAGTCC","TGGAGTCC","ATGAGTCC","CTGAGTCC","GTGAGTCC","TTGAGTCC",
+ "AATAGTCC","CATAGTCC","GATAGTCC","TATAGTCC","ACTAGTCC","CCTAGTCC","GCTAGTCC","TCTAGTCC",
+ "AGTAGTCC","CGTAGTCC","GGTAGTCC","TGTAGTCC","ATTAGTCC","CTTAGTCC","GTTAGTCC","TTTAGTCC",
+ "AAACGTCC","CAACGTCC","GAACGTCC","TAACGTCC","ACACGTCC","CCACGTCC","GCACGTCC","TCACGTCC",
+ "AGACGTCC","CGACGTCC","GGACGTCC","TGACGTCC","ATACGTCC","CTACGTCC","GTACGTCC","TTACGTCC",
+ "AACCGTCC","CACCGTCC","GACCGTCC","TACCGTCC","ACCCGTCC","CCCCGTCC","GCCCGTCC","TCCCGTCC",
+ "AGCCGTCC","CGCCGTCC","GGCCGTCC","TGCCGTCC","ATCCGTCC","CTCCGTCC","GTCCGTCC","TTCCGTCC",
+ "AAGCGTCC","CAGCGTCC","GAGCGTCC","TAGCGTCC","ACGCGTCC","CCGCGTCC","GCGCGTCC","TCGCGTCC",
+ "AGGCGTCC","CGGCGTCC","GGGCGTCC","TGGCGTCC","ATGCGTCC","CTGCGTCC","GTGCGTCC","TTGCGTCC",
+ "AATCGTCC","CATCGTCC","GATCGTCC","TATCGTCC","ACTCGTCC","CCTCGTCC","GCTCGTCC","TCTCGTCC",
+ "AGTCGTCC","CGTCGTCC","GGTCGTCC","TGTCGTCC","ATTCGTCC","CTTCGTCC","GTTCGTCC","TTTCGTCC",
+ "AAAGGTCC","CAAGGTCC","GAAGGTCC","TAAGGTCC","ACAGGTCC","CCAGGTCC","GCAGGTCC","TCAGGTCC",
+ "AGAGGTCC","CGAGGTCC","GGAGGTCC","TGAGGTCC","ATAGGTCC","CTAGGTCC","GTAGGTCC","TTAGGTCC",
+ "AACGGTCC","CACGGTCC","GACGGTCC","TACGGTCC","ACCGGTCC","CCCGGTCC","GCCGGTCC","TCCGGTCC",
+ "AGCGGTCC","CGCGGTCC","GGCGGTCC","TGCGGTCC","ATCGGTCC","CTCGGTCC","GTCGGTCC","TTCGGTCC",
+ "AAGGGTCC","CAGGGTCC","GAGGGTCC","TAGGGTCC","ACGGGTCC","CCGGGTCC","GCGGGTCC","TCGGGTCC",
+ "AGGGGTCC","CGGGGTCC","GGGGGTCC","TGGGGTCC","ATGGGTCC","CTGGGTCC","GTGGGTCC","TTGGGTCC",
+ "AATGGTCC","CATGGTCC","GATGGTCC","TATGGTCC","ACTGGTCC","CCTGGTCC","GCTGGTCC","TCTGGTCC",
+ "AGTGGTCC","CGTGGTCC","GGTGGTCC","TGTGGTCC","ATTGGTCC","CTTGGTCC","GTTGGTCC","TTTGGTCC",
+ "AAATGTCC","CAATGTCC","GAATGTCC","TAATGTCC","ACATGTCC","CCATGTCC","GCATGTCC","TCATGTCC",
+ "AGATGTCC","CGATGTCC","GGATGTCC","TGATGTCC","ATATGTCC","CTATGTCC","GTATGTCC","TTATGTCC",
+ "AACTGTCC","CACTGTCC","GACTGTCC","TACTGTCC","ACCTGTCC","CCCTGTCC","GCCTGTCC","TCCTGTCC",
+ "AGCTGTCC","CGCTGTCC","GGCTGTCC","TGCTGTCC","ATCTGTCC","CTCTGTCC","GTCTGTCC","TTCTGTCC",
+ "AAGTGTCC","CAGTGTCC","GAGTGTCC","TAGTGTCC","ACGTGTCC","CCGTGTCC","GCGTGTCC","TCGTGTCC",
+ "AGGTGTCC","CGGTGTCC","GGGTGTCC","TGGTGTCC","ATGTGTCC","CTGTGTCC","GTGTGTCC","TTGTGTCC",
+ "AATTGTCC","CATTGTCC","GATTGTCC","TATTGTCC","ACTTGTCC","CCTTGTCC","GCTTGTCC","TCTTGTCC",
+ "AGTTGTCC","CGTTGTCC","GGTTGTCC","TGTTGTCC","ATTTGTCC","CTTTGTCC","GTTTGTCC","TTTTGTCC",
+ "AAAATTCC","CAAATTCC","GAAATTCC","TAAATTCC","ACAATTCC","CCAATTCC","GCAATTCC","TCAATTCC",
+ "AGAATTCC","CGAATTCC","GGAATTCC","TGAATTCC","ATAATTCC","CTAATTCC","GTAATTCC","TTAATTCC",
+ "AACATTCC","CACATTCC","GACATTCC","TACATTCC","ACCATTCC","CCCATTCC","GCCATTCC","TCCATTCC",
+ "AGCATTCC","CGCATTCC","GGCATTCC","TGCATTCC","ATCATTCC","CTCATTCC","GTCATTCC","TTCATTCC",
+ "AAGATTCC","CAGATTCC","GAGATTCC","TAGATTCC","ACGATTCC","CCGATTCC","GCGATTCC","TCGATTCC",
+ "AGGATTCC","CGGATTCC","GGGATTCC","TGGATTCC","ATGATTCC","CTGATTCC","GTGATTCC","TTGATTCC",
+ "AATATTCC","CATATTCC","GATATTCC","TATATTCC","ACTATTCC","CCTATTCC","GCTATTCC","TCTATTCC",
+ "AGTATTCC","CGTATTCC","GGTATTCC","TGTATTCC","ATTATTCC","CTTATTCC","GTTATTCC","TTTATTCC",
+ "AAACTTCC","CAACTTCC","GAACTTCC","TAACTTCC","ACACTTCC","CCACTTCC","GCACTTCC","TCACTTCC",
+ "AGACTTCC","CGACTTCC","GGACTTCC","TGACTTCC","ATACTTCC","CTACTTCC","GTACTTCC","TTACTTCC",
+ "AACCTTCC","CACCTTCC","GACCTTCC","TACCTTCC","ACCCTTCC","CCCCTTCC","GCCCTTCC","TCCCTTCC",
+ "AGCCTTCC","CGCCTTCC","GGCCTTCC","TGCCTTCC","ATCCTTCC","CTCCTTCC","GTCCTTCC","TTCCTTCC",
+ "AAGCTTCC","CAGCTTCC","GAGCTTCC","TAGCTTCC","ACGCTTCC","CCGCTTCC","GCGCTTCC","TCGCTTCC",
+ "AGGCTTCC","CGGCTTCC","GGGCTTCC","TGGCTTCC","ATGCTTCC","CTGCTTCC","GTGCTTCC","TTGCTTCC",
+ "AATCTTCC","CATCTTCC","GATCTTCC","TATCTTCC","ACTCTTCC","CCTCTTCC","GCTCTTCC","TCTCTTCC",
+ "AGTCTTCC","CGTCTTCC","GGTCTTCC","TGTCTTCC","ATTCTTCC","CTTCTTCC","GTTCTTCC","TTTCTTCC",
+ "AAAGTTCC","CAAGTTCC","GAAGTTCC","TAAGTTCC","ACAGTTCC","CCAGTTCC","GCAGTTCC","TCAGTTCC",
+ "AGAGTTCC","CGAGTTCC","GGAGTTCC","TGAGTTCC","ATAGTTCC","CTAGTTCC","GTAGTTCC","TTAGTTCC",
+ "AACGTTCC","CACGTTCC","GACGTTCC","TACGTTCC","ACCGTTCC","CCCGTTCC","GCCGTTCC","TCCGTTCC",
+ "AGCGTTCC","CGCGTTCC","GGCGTTCC","TGCGTTCC","ATCGTTCC","CTCGTTCC","GTCGTTCC","TTCGTTCC",
+ "AAGGTTCC","CAGGTTCC","GAGGTTCC","TAGGTTCC","ACGGTTCC","CCGGTTCC","GCGGTTCC","TCGGTTCC",
+ "AGGGTTCC","CGGGTTCC","GGGGTTCC","TGGGTTCC","ATGGTTCC","CTGGTTCC","GTGGTTCC","TTGGTTCC",
+ "AATGTTCC","CATGTTCC","GATGTTCC","TATGTTCC","ACTGTTCC","CCTGTTCC","GCTGTTCC","TCTGTTCC",
+ "AGTGTTCC","CGTGTTCC","GGTGTTCC","TGTGTTCC","ATTGTTCC","CTTGTTCC","GTTGTTCC","TTTGTTCC",
+ "AAATTTCC","CAATTTCC","GAATTTCC","TAATTTCC","ACATTTCC","CCATTTCC","GCATTTCC","TCATTTCC",
+ "AGATTTCC","CGATTTCC","GGATTTCC","TGATTTCC","ATATTTCC","CTATTTCC","GTATTTCC","TTATTTCC",
+ "AACTTTCC","CACTTTCC","GACTTTCC","TACTTTCC","ACCTTTCC","CCCTTTCC","GCCTTTCC","TCCTTTCC",
+ "AGCTTTCC","CGCTTTCC","GGCTTTCC","TGCTTTCC","ATCTTTCC","CTCTTTCC","GTCTTTCC","TTCTTTCC",
+ "AAGTTTCC","CAGTTTCC","GAGTTTCC","TAGTTTCC","ACGTTTCC","CCGTTTCC","GCGTTTCC","TCGTTTCC",
+ "AGGTTTCC","CGGTTTCC","GGGTTTCC","TGGTTTCC","ATGTTTCC","CTGTTTCC","GTGTTTCC","TTGTTTCC",
+ "AATTTTCC","CATTTTCC","GATTTTCC","TATTTTCC","ACTTTTCC","CCTTTTCC","GCTTTTCC","TCTTTTCC",
+ "AGTTTTCC","CGTTTTCC","GGTTTTCC","TGTTTTCC","ATTTTTCC","CTTTTTCC","GTTTTTCC","TTTTTTCC",
+ "AAAAAAGC","CAAAAAGC","GAAAAAGC","TAAAAAGC","ACAAAAGC","CCAAAAGC","GCAAAAGC","TCAAAAGC",
+ "AGAAAAGC","CGAAAAGC","GGAAAAGC","TGAAAAGC","ATAAAAGC","CTAAAAGC","GTAAAAGC","TTAAAAGC",
+ "AACAAAGC","CACAAAGC","GACAAAGC","TACAAAGC","ACCAAAGC","CCCAAAGC","GCCAAAGC","TCCAAAGC",
+ "AGCAAAGC","CGCAAAGC","GGCAAAGC","TGCAAAGC","ATCAAAGC","CTCAAAGC","GTCAAAGC","TTCAAAGC",
+ "AAGAAAGC","CAGAAAGC","GAGAAAGC","TAGAAAGC","ACGAAAGC","CCGAAAGC","GCGAAAGC","TCGAAAGC",
+ "AGGAAAGC","CGGAAAGC","GGGAAAGC","TGGAAAGC","ATGAAAGC","CTGAAAGC","GTGAAAGC","TTGAAAGC",
+ "AATAAAGC","CATAAAGC","GATAAAGC","TATAAAGC","ACTAAAGC","CCTAAAGC","GCTAAAGC","TCTAAAGC",
+ "AGTAAAGC","CGTAAAGC","GGTAAAGC","TGTAAAGC","ATTAAAGC","CTTAAAGC","GTTAAAGC","TTTAAAGC",
+ "AAACAAGC","CAACAAGC","GAACAAGC","TAACAAGC","ACACAAGC","CCACAAGC","GCACAAGC","TCACAAGC",
+ "AGACAAGC","CGACAAGC","GGACAAGC","TGACAAGC","ATACAAGC","CTACAAGC","GTACAAGC","TTACAAGC",
+ "AACCAAGC","CACCAAGC","GACCAAGC","TACCAAGC","ACCCAAGC","CCCCAAGC","GCCCAAGC","TCCCAAGC",
+ "AGCCAAGC","CGCCAAGC","GGCCAAGC","TGCCAAGC","ATCCAAGC","CTCCAAGC","GTCCAAGC","TTCCAAGC",
+ "AAGCAAGC","CAGCAAGC","GAGCAAGC","TAGCAAGC","ACGCAAGC","CCGCAAGC","GCGCAAGC","TCGCAAGC",
+ "AGGCAAGC","CGGCAAGC","GGGCAAGC","TGGCAAGC","ATGCAAGC","CTGCAAGC","GTGCAAGC","TTGCAAGC",
+ "AATCAAGC","CATCAAGC","GATCAAGC","TATCAAGC","ACTCAAGC","CCTCAAGC","GCTCAAGC","TCTCAAGC",
+ "AGTCAAGC","CGTCAAGC","GGTCAAGC","TGTCAAGC","ATTCAAGC","CTTCAAGC","GTTCAAGC","TTTCAAGC",
+ "AAAGAAGC","CAAGAAGC","GAAGAAGC","TAAGAAGC","ACAGAAGC","CCAGAAGC","GCAGAAGC","TCAGAAGC",
+ "AGAGAAGC","CGAGAAGC","GGAGAAGC","TGAGAAGC","ATAGAAGC","CTAGAAGC","GTAGAAGC","TTAGAAGC",
+ "AACGAAGC","CACGAAGC","GACGAAGC","TACGAAGC","ACCGAAGC","CCCGAAGC","GCCGAAGC","TCCGAAGC",
+ "AGCGAAGC","CGCGAAGC","GGCGAAGC","TGCGAAGC","ATCGAAGC","CTCGAAGC","GTCGAAGC","TTCGAAGC",
+ "AAGGAAGC","CAGGAAGC","GAGGAAGC","TAGGAAGC","ACGGAAGC","CCGGAAGC","GCGGAAGC","TCGGAAGC",
+ "AGGGAAGC","CGGGAAGC","GGGGAAGC","TGGGAAGC","ATGGAAGC","CTGGAAGC","GTGGAAGC","TTGGAAGC",
+ "AATGAAGC","CATGAAGC","GATGAAGC","TATGAAGC","ACTGAAGC","CCTGAAGC","GCTGAAGC","TCTGAAGC",
+ "AGTGAAGC","CGTGAAGC","GGTGAAGC","TGTGAAGC","ATTGAAGC","CTTGAAGC","GTTGAAGC","TTTGAAGC",
+ "AAATAAGC","CAATAAGC","GAATAAGC","TAATAAGC","ACATAAGC","CCATAAGC","GCATAAGC","TCATAAGC",
+ "AGATAAGC","CGATAAGC","GGATAAGC","TGATAAGC","ATATAAGC","CTATAAGC","GTATAAGC","TTATAAGC",
+ "AACTAAGC","CACTAAGC","GACTAAGC","TACTAAGC","ACCTAAGC","CCCTAAGC","GCCTAAGC","TCCTAAGC",
+ "AGCTAAGC","CGCTAAGC","GGCTAAGC","TGCTAAGC","ATCTAAGC","CTCTAAGC","GTCTAAGC","TTCTAAGC",
+ "AAGTAAGC","CAGTAAGC","GAGTAAGC","TAGTAAGC","ACGTAAGC","CCGTAAGC","GCGTAAGC","TCGTAAGC",
+ "AGGTAAGC","CGGTAAGC","GGGTAAGC","TGGTAAGC","ATGTAAGC","CTGTAAGC","GTGTAAGC","TTGTAAGC",
+ "AATTAAGC","CATTAAGC","GATTAAGC","TATTAAGC","ACTTAAGC","CCTTAAGC","GCTTAAGC","TCTTAAGC",
+ "AGTTAAGC","CGTTAAGC","GGTTAAGC","TGTTAAGC","ATTTAAGC","CTTTAAGC","GTTTAAGC","TTTTAAGC",
+ "AAAACAGC","CAAACAGC","GAAACAGC","TAAACAGC","ACAACAGC","CCAACAGC","GCAACAGC","TCAACAGC",
+ "AGAACAGC","CGAACAGC","GGAACAGC","TGAACAGC","ATAACAGC","CTAACAGC","GTAACAGC","TTAACAGC",
+ "AACACAGC","CACACAGC","GACACAGC","TACACAGC","ACCACAGC","CCCACAGC","GCCACAGC","TCCACAGC",
+ "AGCACAGC","CGCACAGC","GGCACAGC","TGCACAGC","ATCACAGC","CTCACAGC","GTCACAGC","TTCACAGC",
+ "AAGACAGC","CAGACAGC","GAGACAGC","TAGACAGC","ACGACAGC","CCGACAGC","GCGACAGC","TCGACAGC",
+ "AGGACAGC","CGGACAGC","GGGACAGC","TGGACAGC","ATGACAGC","CTGACAGC","GTGACAGC","TTGACAGC",
+ "AATACAGC","CATACAGC","GATACAGC","TATACAGC","ACTACAGC","CCTACAGC","GCTACAGC","TCTACAGC",
+ "AGTACAGC","CGTACAGC","GGTACAGC","TGTACAGC","ATTACAGC","CTTACAGC","GTTACAGC","TTTACAGC",
+ "AAACCAGC","CAACCAGC","GAACCAGC","TAACCAGC","ACACCAGC","CCACCAGC","GCACCAGC","TCACCAGC",
+ "AGACCAGC","CGACCAGC","GGACCAGC","TGACCAGC","ATACCAGC","CTACCAGC","GTACCAGC","TTACCAGC",
+ "AACCCAGC","CACCCAGC","GACCCAGC","TACCCAGC","ACCCCAGC","CCCCCAGC","GCCCCAGC","TCCCCAGC",
+ "AGCCCAGC","CGCCCAGC","GGCCCAGC","TGCCCAGC","ATCCCAGC","CTCCCAGC","GTCCCAGC","TTCCCAGC",
+ "AAGCCAGC","CAGCCAGC","GAGCCAGC","TAGCCAGC","ACGCCAGC","CCGCCAGC","GCGCCAGC","TCGCCAGC",
+ "AGGCCAGC","CGGCCAGC","GGGCCAGC","TGGCCAGC","ATGCCAGC","CTGCCAGC","GTGCCAGC","TTGCCAGC",
+ "AATCCAGC","CATCCAGC","GATCCAGC","TATCCAGC","ACTCCAGC","CCTCCAGC","GCTCCAGC","TCTCCAGC",
+ "AGTCCAGC","CGTCCAGC","GGTCCAGC","TGTCCAGC","ATTCCAGC","CTTCCAGC","GTTCCAGC","TTTCCAGC",
+ "AAAGCAGC","CAAGCAGC","GAAGCAGC","TAAGCAGC","ACAGCAGC","CCAGCAGC","GCAGCAGC","TCAGCAGC",
+ "AGAGCAGC","CGAGCAGC","GGAGCAGC","TGAGCAGC","ATAGCAGC","CTAGCAGC","GTAGCAGC","TTAGCAGC",
+ "AACGCAGC","CACGCAGC","GACGCAGC","TACGCAGC","ACCGCAGC","CCCGCAGC","GCCGCAGC","TCCGCAGC",
+ "AGCGCAGC","CGCGCAGC","GGCGCAGC","TGCGCAGC","ATCGCAGC","CTCGCAGC","GTCGCAGC","TTCGCAGC",
+ "AAGGCAGC","CAGGCAGC","GAGGCAGC","TAGGCAGC","ACGGCAGC","CCGGCAGC","GCGGCAGC","TCGGCAGC",
+ "AGGGCAGC","CGGGCAGC","GGGGCAGC","TGGGCAGC","ATGGCAGC","CTGGCAGC","GTGGCAGC","TTGGCAGC",
+ "AATGCAGC","CATGCAGC","GATGCAGC","TATGCAGC","ACTGCAGC","CCTGCAGC","GCTGCAGC","TCTGCAGC",
+ "AGTGCAGC","CGTGCAGC","GGTGCAGC","TGTGCAGC","ATTGCAGC","CTTGCAGC","GTTGCAGC","TTTGCAGC",
+ "AAATCAGC","CAATCAGC","GAATCAGC","TAATCAGC","ACATCAGC","CCATCAGC","GCATCAGC","TCATCAGC",
+ "AGATCAGC","CGATCAGC","GGATCAGC","TGATCAGC","ATATCAGC","CTATCAGC","GTATCAGC","TTATCAGC",
+ "AACTCAGC","CACTCAGC","GACTCAGC","TACTCAGC","ACCTCAGC","CCCTCAGC","GCCTCAGC","TCCTCAGC",
+ "AGCTCAGC","CGCTCAGC","GGCTCAGC","TGCTCAGC","ATCTCAGC","CTCTCAGC","GTCTCAGC","TTCTCAGC",
+ "AAGTCAGC","CAGTCAGC","GAGTCAGC","TAGTCAGC","ACGTCAGC","CCGTCAGC","GCGTCAGC","TCGTCAGC",
+ "AGGTCAGC","CGGTCAGC","GGGTCAGC","TGGTCAGC","ATGTCAGC","CTGTCAGC","GTGTCAGC","TTGTCAGC",
+ "AATTCAGC","CATTCAGC","GATTCAGC","TATTCAGC","ACTTCAGC","CCTTCAGC","GCTTCAGC","TCTTCAGC",
+ "AGTTCAGC","CGTTCAGC","GGTTCAGC","TGTTCAGC","ATTTCAGC","CTTTCAGC","GTTTCAGC","TTTTCAGC",
+ "AAAAGAGC","CAAAGAGC","GAAAGAGC","TAAAGAGC","ACAAGAGC","CCAAGAGC","GCAAGAGC","TCAAGAGC",
+ "AGAAGAGC","CGAAGAGC","GGAAGAGC","TGAAGAGC","ATAAGAGC","CTAAGAGC","GTAAGAGC","TTAAGAGC",
+ "AACAGAGC","CACAGAGC","GACAGAGC","TACAGAGC","ACCAGAGC","CCCAGAGC","GCCAGAGC","TCCAGAGC",
+ "AGCAGAGC","CGCAGAGC","GGCAGAGC","TGCAGAGC","ATCAGAGC","CTCAGAGC","GTCAGAGC","TTCAGAGC",
+ "AAGAGAGC","CAGAGAGC","GAGAGAGC","TAGAGAGC","ACGAGAGC","CCGAGAGC","GCGAGAGC","TCGAGAGC",
+ "AGGAGAGC","CGGAGAGC","GGGAGAGC","TGGAGAGC","ATGAGAGC","CTGAGAGC","GTGAGAGC","TTGAGAGC",
+ "AATAGAGC","CATAGAGC","GATAGAGC","TATAGAGC","ACTAGAGC","CCTAGAGC","GCTAGAGC","TCTAGAGC",
+ "AGTAGAGC","CGTAGAGC","GGTAGAGC","TGTAGAGC","ATTAGAGC","CTTAGAGC","GTTAGAGC","TTTAGAGC",
+ "AAACGAGC","CAACGAGC","GAACGAGC","TAACGAGC","ACACGAGC","CCACGAGC","GCACGAGC","TCACGAGC",
+ "AGACGAGC","CGACGAGC","GGACGAGC","TGACGAGC","ATACGAGC","CTACGAGC","GTACGAGC","TTACGAGC",
+ "AACCGAGC","CACCGAGC","GACCGAGC","TACCGAGC","ACCCGAGC","CCCCGAGC","GCCCGAGC","TCCCGAGC",
+ "AGCCGAGC","CGCCGAGC","GGCCGAGC","TGCCGAGC","ATCCGAGC","CTCCGAGC","GTCCGAGC","TTCCGAGC",
+ "AAGCGAGC","CAGCGAGC","GAGCGAGC","TAGCGAGC","ACGCGAGC","CCGCGAGC","GCGCGAGC","TCGCGAGC",
+ "AGGCGAGC","CGGCGAGC","GGGCGAGC","TGGCGAGC","ATGCGAGC","CTGCGAGC","GTGCGAGC","TTGCGAGC",
+ "AATCGAGC","CATCGAGC","GATCGAGC","TATCGAGC","ACTCGAGC","CCTCGAGC","GCTCGAGC","TCTCGAGC",
+ "AGTCGAGC","CGTCGAGC","GGTCGAGC","TGTCGAGC","ATTCGAGC","CTTCGAGC","GTTCGAGC","TTTCGAGC",
+ "AAAGGAGC","CAAGGAGC","GAAGGAGC","TAAGGAGC","ACAGGAGC","CCAGGAGC","GCAGGAGC","TCAGGAGC",
+ "AGAGGAGC","CGAGGAGC","GGAGGAGC","TGAGGAGC","ATAGGAGC","CTAGGAGC","GTAGGAGC","TTAGGAGC",
+ "AACGGAGC","CACGGAGC","GACGGAGC","TACGGAGC","ACCGGAGC","CCCGGAGC","GCCGGAGC","TCCGGAGC",
+ "AGCGGAGC","CGCGGAGC","GGCGGAGC","TGCGGAGC","ATCGGAGC","CTCGGAGC","GTCGGAGC","TTCGGAGC",
+ "AAGGGAGC","CAGGGAGC","GAGGGAGC","TAGGGAGC","ACGGGAGC","CCGGGAGC","GCGGGAGC","TCGGGAGC",
+ "AGGGGAGC","CGGGGAGC","GGGGGAGC","TGGGGAGC","ATGGGAGC","CTGGGAGC","GTGGGAGC","TTGGGAGC",
+ "AATGGAGC","CATGGAGC","GATGGAGC","TATGGAGC","ACTGGAGC","CCTGGAGC","GCTGGAGC","TCTGGAGC",
+ "AGTGGAGC","CGTGGAGC","GGTGGAGC","TGTGGAGC","ATTGGAGC","CTTGGAGC","GTTGGAGC","TTTGGAGC",
+ "AAATGAGC","CAATGAGC","GAATGAGC","TAATGAGC","ACATGAGC","CCATGAGC","GCATGAGC","TCATGAGC",
+ "AGATGAGC","CGATGAGC","GGATGAGC","TGATGAGC","ATATGAGC","CTATGAGC","GTATGAGC","TTATGAGC",
+ "AACTGAGC","CACTGAGC","GACTGAGC","TACTGAGC","ACCTGAGC","CCCTGAGC","GCCTGAGC","TCCTGAGC",
+ "AGCTGAGC","CGCTGAGC","GGCTGAGC","TGCTGAGC","ATCTGAGC","CTCTGAGC","GTCTGAGC","TTCTGAGC",
+ "AAGTGAGC","CAGTGAGC","GAGTGAGC","TAGTGAGC","ACGTGAGC","CCGTGAGC","GCGTGAGC","TCGTGAGC",
+ "AGGTGAGC","CGGTGAGC","GGGTGAGC","TGGTGAGC","ATGTGAGC","CTGTGAGC","GTGTGAGC","TTGTGAGC",
+ "AATTGAGC","CATTGAGC","GATTGAGC","TATTGAGC","ACTTGAGC","CCTTGAGC","GCTTGAGC","TCTTGAGC",
+ "AGTTGAGC","CGTTGAGC","GGTTGAGC","TGTTGAGC","ATTTGAGC","CTTTGAGC","GTTTGAGC","TTTTGAGC",
+ "AAAATAGC","CAAATAGC","GAAATAGC","TAAATAGC","ACAATAGC","CCAATAGC","GCAATAGC","TCAATAGC",
+ "AGAATAGC","CGAATAGC","GGAATAGC","TGAATAGC","ATAATAGC","CTAATAGC","GTAATAGC","TTAATAGC",
+ "AACATAGC","CACATAGC","GACATAGC","TACATAGC","ACCATAGC","CCCATAGC","GCCATAGC","TCCATAGC",
+ "AGCATAGC","CGCATAGC","GGCATAGC","TGCATAGC","ATCATAGC","CTCATAGC","GTCATAGC","TTCATAGC",
+ "AAGATAGC","CAGATAGC","GAGATAGC","TAGATAGC","ACGATAGC","CCGATAGC","GCGATAGC","TCGATAGC",
+ "AGGATAGC","CGGATAGC","GGGATAGC","TGGATAGC","ATGATAGC","CTGATAGC","GTGATAGC","TTGATAGC",
+ "AATATAGC","CATATAGC","GATATAGC","TATATAGC","ACTATAGC","CCTATAGC","GCTATAGC","TCTATAGC",
+ "AGTATAGC","CGTATAGC","GGTATAGC","TGTATAGC","ATTATAGC","CTTATAGC","GTTATAGC","TTTATAGC",
+ "AAACTAGC","CAACTAGC","GAACTAGC","TAACTAGC","ACACTAGC","CCACTAGC","GCACTAGC","TCACTAGC",
+ "AGACTAGC","CGACTAGC","GGACTAGC","TGACTAGC","ATACTAGC","CTACTAGC","GTACTAGC","TTACTAGC",
+ "AACCTAGC","CACCTAGC","GACCTAGC","TACCTAGC","ACCCTAGC","CCCCTAGC","GCCCTAGC","TCCCTAGC",
+ "AGCCTAGC","CGCCTAGC","GGCCTAGC","TGCCTAGC","ATCCTAGC","CTCCTAGC","GTCCTAGC","TTCCTAGC",
+ "AAGCTAGC","CAGCTAGC","GAGCTAGC","TAGCTAGC","ACGCTAGC","CCGCTAGC","GCGCTAGC","TCGCTAGC",
+ "AGGCTAGC","CGGCTAGC","GGGCTAGC","TGGCTAGC","ATGCTAGC","CTGCTAGC","GTGCTAGC","TTGCTAGC",
+ "AATCTAGC","CATCTAGC","GATCTAGC","TATCTAGC","ACTCTAGC","CCTCTAGC","GCTCTAGC","TCTCTAGC",
+ "AGTCTAGC","CGTCTAGC","GGTCTAGC","TGTCTAGC","ATTCTAGC","CTTCTAGC","GTTCTAGC","TTTCTAGC",
+ "AAAGTAGC","CAAGTAGC","GAAGTAGC","TAAGTAGC","ACAGTAGC","CCAGTAGC","GCAGTAGC","TCAGTAGC",
+ "AGAGTAGC","CGAGTAGC","GGAGTAGC","TGAGTAGC","ATAGTAGC","CTAGTAGC","GTAGTAGC","TTAGTAGC",
+ "AACGTAGC","CACGTAGC","GACGTAGC","TACGTAGC","ACCGTAGC","CCCGTAGC","GCCGTAGC","TCCGTAGC",
+ "AGCGTAGC","CGCGTAGC","GGCGTAGC","TGCGTAGC","ATCGTAGC","CTCGTAGC","GTCGTAGC","TTCGTAGC",
+ "AAGGTAGC","CAGGTAGC","GAGGTAGC","TAGGTAGC","ACGGTAGC","CCGGTAGC","GCGGTAGC","TCGGTAGC",
+ "AGGGTAGC","CGGGTAGC","GGGGTAGC","TGGGTAGC","ATGGTAGC","CTGGTAGC","GTGGTAGC","TTGGTAGC",
+ "AATGTAGC","CATGTAGC","GATGTAGC","TATGTAGC","ACTGTAGC","CCTGTAGC","GCTGTAGC","TCTGTAGC",
+ "AGTGTAGC","CGTGTAGC","GGTGTAGC","TGTGTAGC","ATTGTAGC","CTTGTAGC","GTTGTAGC","TTTGTAGC",
+ "AAATTAGC","CAATTAGC","GAATTAGC","TAATTAGC","ACATTAGC","CCATTAGC","GCATTAGC","TCATTAGC",
+ "AGATTAGC","CGATTAGC","GGATTAGC","TGATTAGC","ATATTAGC","CTATTAGC","GTATTAGC","TTATTAGC",
+ "AACTTAGC","CACTTAGC","GACTTAGC","TACTTAGC","ACCTTAGC","CCCTTAGC","GCCTTAGC","TCCTTAGC",
+ "AGCTTAGC","CGCTTAGC","GGCTTAGC","TGCTTAGC","ATCTTAGC","CTCTTAGC","GTCTTAGC","TTCTTAGC",
+ "AAGTTAGC","CAGTTAGC","GAGTTAGC","TAGTTAGC","ACGTTAGC","CCGTTAGC","GCGTTAGC","TCGTTAGC",
+ "AGGTTAGC","CGGTTAGC","GGGTTAGC","TGGTTAGC","ATGTTAGC","CTGTTAGC","GTGTTAGC","TTGTTAGC",
+ "AATTTAGC","CATTTAGC","GATTTAGC","TATTTAGC","ACTTTAGC","CCTTTAGC","GCTTTAGC","TCTTTAGC",
+ "AGTTTAGC","CGTTTAGC","GGTTTAGC","TGTTTAGC","ATTTTAGC","CTTTTAGC","GTTTTAGC","TTTTTAGC",
+ "AAAAACGC","CAAAACGC","GAAAACGC","TAAAACGC","ACAAACGC","CCAAACGC","GCAAACGC","TCAAACGC",
+ "AGAAACGC","CGAAACGC","GGAAACGC","TGAAACGC","ATAAACGC","CTAAACGC","GTAAACGC","TTAAACGC",
+ "AACAACGC","CACAACGC","GACAACGC","TACAACGC","ACCAACGC","CCCAACGC","GCCAACGC","TCCAACGC",
+ "AGCAACGC","CGCAACGC","GGCAACGC","TGCAACGC","ATCAACGC","CTCAACGC","GTCAACGC","TTCAACGC",
+ "AAGAACGC","CAGAACGC","GAGAACGC","TAGAACGC","ACGAACGC","CCGAACGC","GCGAACGC","TCGAACGC",
+ "AGGAACGC","CGGAACGC","GGGAACGC","TGGAACGC","ATGAACGC","CTGAACGC","GTGAACGC","TTGAACGC",
+ "AATAACGC","CATAACGC","GATAACGC","TATAACGC","ACTAACGC","CCTAACGC","GCTAACGC","TCTAACGC",
+ "AGTAACGC","CGTAACGC","GGTAACGC","TGTAACGC","ATTAACGC","CTTAACGC","GTTAACGC","TTTAACGC",
+ "AAACACGC","CAACACGC","GAACACGC","TAACACGC","ACACACGC","CCACACGC","GCACACGC","TCACACGC",
+ "AGACACGC","CGACACGC","GGACACGC","TGACACGC","ATACACGC","CTACACGC","GTACACGC","TTACACGC",
+ "AACCACGC","CACCACGC","GACCACGC","TACCACGC","ACCCACGC","CCCCACGC","GCCCACGC","TCCCACGC",
+ "AGCCACGC","CGCCACGC","GGCCACGC","TGCCACGC","ATCCACGC","CTCCACGC","GTCCACGC","TTCCACGC",
+ "AAGCACGC","CAGCACGC","GAGCACGC","TAGCACGC","ACGCACGC","CCGCACGC","GCGCACGC","TCGCACGC",
+ "AGGCACGC","CGGCACGC","GGGCACGC","TGGCACGC","ATGCACGC","CTGCACGC","GTGCACGC","TTGCACGC",
+ "AATCACGC","CATCACGC","GATCACGC","TATCACGC","ACTCACGC","CCTCACGC","GCTCACGC","TCTCACGC",
+ "AGTCACGC","CGTCACGC","GGTCACGC","TGTCACGC","ATTCACGC","CTTCACGC","GTTCACGC","TTTCACGC",
+ "AAAGACGC","CAAGACGC","GAAGACGC","TAAGACGC","ACAGACGC","CCAGACGC","GCAGACGC","TCAGACGC",
+ "AGAGACGC","CGAGACGC","GGAGACGC","TGAGACGC","ATAGACGC","CTAGACGC","GTAGACGC","TTAGACGC",
+ "AACGACGC","CACGACGC","GACGACGC","TACGACGC","ACCGACGC","CCCGACGC","GCCGACGC","TCCGACGC",
+ "AGCGACGC","CGCGACGC","GGCGACGC","TGCGACGC","ATCGACGC","CTCGACGC","GTCGACGC","TTCGACGC",
+ "AAGGACGC","CAGGACGC","GAGGACGC","TAGGACGC","ACGGACGC","CCGGACGC","GCGGACGC","TCGGACGC",
+ "AGGGACGC","CGGGACGC","GGGGACGC","TGGGACGC","ATGGACGC","CTGGACGC","GTGGACGC","TTGGACGC",
+ "AATGACGC","CATGACGC","GATGACGC","TATGACGC","ACTGACGC","CCTGACGC","GCTGACGC","TCTGACGC",
+ "AGTGACGC","CGTGACGC","GGTGACGC","TGTGACGC","ATTGACGC","CTTGACGC","GTTGACGC","TTTGACGC",
+ "AAATACGC","CAATACGC","GAATACGC","TAATACGC","ACATACGC","CCATACGC","GCATACGC","TCATACGC",
+ "AGATACGC","CGATACGC","GGATACGC","TGATACGC","ATATACGC","CTATACGC","GTATACGC","TTATACGC",
+ "AACTACGC","CACTACGC","GACTACGC","TACTACGC","ACCTACGC","CCCTACGC","GCCTACGC","TCCTACGC",
+ "AGCTACGC","CGCTACGC","GGCTACGC","TGCTACGC","ATCTACGC","CTCTACGC","GTCTACGC","TTCTACGC",
+ "AAGTACGC","CAGTACGC","GAGTACGC","TAGTACGC","ACGTACGC","CCGTACGC","GCGTACGC","TCGTACGC",
+ "AGGTACGC","CGGTACGC","GGGTACGC","TGGTACGC","ATGTACGC","CTGTACGC","GTGTACGC","TTGTACGC",
+ "AATTACGC","CATTACGC","GATTACGC","TATTACGC","ACTTACGC","CCTTACGC","GCTTACGC","TCTTACGC",
+ "AGTTACGC","CGTTACGC","GGTTACGC","TGTTACGC","ATTTACGC","CTTTACGC","GTTTACGC","TTTTACGC",
+ "AAAACCGC","CAAACCGC","GAAACCGC","TAAACCGC","ACAACCGC","CCAACCGC","GCAACCGC","TCAACCGC",
+ "AGAACCGC","CGAACCGC","GGAACCGC","TGAACCGC","ATAACCGC","CTAACCGC","GTAACCGC","TTAACCGC",
+ "AACACCGC","CACACCGC","GACACCGC","TACACCGC","ACCACCGC","CCCACCGC","GCCACCGC","TCCACCGC",
+ "AGCACCGC","CGCACCGC","GGCACCGC","TGCACCGC","ATCACCGC","CTCACCGC","GTCACCGC","TTCACCGC",
+ "AAGACCGC","CAGACCGC","GAGACCGC","TAGACCGC","ACGACCGC","CCGACCGC","GCGACCGC","TCGACCGC",
+ "AGGACCGC","CGGACCGC","GGGACCGC","TGGACCGC","ATGACCGC","CTGACCGC","GTGACCGC","TTGACCGC",
+ "AATACCGC","CATACCGC","GATACCGC","TATACCGC","ACTACCGC","CCTACCGC","GCTACCGC","TCTACCGC",
+ "AGTACCGC","CGTACCGC","GGTACCGC","TGTACCGC","ATTACCGC","CTTACCGC","GTTACCGC","TTTACCGC",
+ "AAACCCGC","CAACCCGC","GAACCCGC","TAACCCGC","ACACCCGC","CCACCCGC","GCACCCGC","TCACCCGC",
+ "AGACCCGC","CGACCCGC","GGACCCGC","TGACCCGC","ATACCCGC","CTACCCGC","GTACCCGC","TTACCCGC",
+ "AACCCCGC","CACCCCGC","GACCCCGC","TACCCCGC","ACCCCCGC","CCCCCCGC","GCCCCCGC","TCCCCCGC",
+ "AGCCCCGC","CGCCCCGC","GGCCCCGC","TGCCCCGC","ATCCCCGC","CTCCCCGC","GTCCCCGC","TTCCCCGC",
+ "AAGCCCGC","CAGCCCGC","GAGCCCGC","TAGCCCGC","ACGCCCGC","CCGCCCGC","GCGCCCGC","TCGCCCGC",
+ "AGGCCCGC","CGGCCCGC","GGGCCCGC","TGGCCCGC","ATGCCCGC","CTGCCCGC","GTGCCCGC","TTGCCCGC",
+ "AATCCCGC","CATCCCGC","GATCCCGC","TATCCCGC","ACTCCCGC","CCTCCCGC","GCTCCCGC","TCTCCCGC",
+ "AGTCCCGC","CGTCCCGC","GGTCCCGC","TGTCCCGC","ATTCCCGC","CTTCCCGC","GTTCCCGC","TTTCCCGC",
+ "AAAGCCGC","CAAGCCGC","GAAGCCGC","TAAGCCGC","ACAGCCGC","CCAGCCGC","GCAGCCGC","TCAGCCGC",
+ "AGAGCCGC","CGAGCCGC","GGAGCCGC","TGAGCCGC","ATAGCCGC","CTAGCCGC","GTAGCCGC","TTAGCCGC",
+ "AACGCCGC","CACGCCGC","GACGCCGC","TACGCCGC","ACCGCCGC","CCCGCCGC","GCCGCCGC","TCCGCCGC",
+ "AGCGCCGC","CGCGCCGC","GGCGCCGC","TGCGCCGC","ATCGCCGC","CTCGCCGC","GTCGCCGC","TTCGCCGC",
+ "AAGGCCGC","CAGGCCGC","GAGGCCGC","TAGGCCGC","ACGGCCGC","CCGGCCGC","GCGGCCGC","TCGGCCGC",
+ "AGGGCCGC","CGGGCCGC","GGGGCCGC","TGGGCCGC","ATGGCCGC","CTGGCCGC","GTGGCCGC","TTGGCCGC",
+ "AATGCCGC","CATGCCGC","GATGCCGC","TATGCCGC","ACTGCCGC","CCTGCCGC","GCTGCCGC","TCTGCCGC",
+ "AGTGCCGC","CGTGCCGC","GGTGCCGC","TGTGCCGC","ATTGCCGC","CTTGCCGC","GTTGCCGC","TTTGCCGC",
+ "AAATCCGC","CAATCCGC","GAATCCGC","TAATCCGC","ACATCCGC","CCATCCGC","GCATCCGC","TCATCCGC",
+ "AGATCCGC","CGATCCGC","GGATCCGC","TGATCCGC","ATATCCGC","CTATCCGC","GTATCCGC","TTATCCGC",
+ "AACTCCGC","CACTCCGC","GACTCCGC","TACTCCGC","ACCTCCGC","CCCTCCGC","GCCTCCGC","TCCTCCGC",
+ "AGCTCCGC","CGCTCCGC","GGCTCCGC","TGCTCCGC","ATCTCCGC","CTCTCCGC","GTCTCCGC","TTCTCCGC",
+ "AAGTCCGC","CAGTCCGC","GAGTCCGC","TAGTCCGC","ACGTCCGC","CCGTCCGC","GCGTCCGC","TCGTCCGC",
+ "AGGTCCGC","CGGTCCGC","GGGTCCGC","TGGTCCGC","ATGTCCGC","CTGTCCGC","GTGTCCGC","TTGTCCGC",
+ "AATTCCGC","CATTCCGC","GATTCCGC","TATTCCGC","ACTTCCGC","CCTTCCGC","GCTTCCGC","TCTTCCGC",
+ "AGTTCCGC","CGTTCCGC","GGTTCCGC","TGTTCCGC","ATTTCCGC","CTTTCCGC","GTTTCCGC","TTTTCCGC",
+ "AAAAGCGC","CAAAGCGC","GAAAGCGC","TAAAGCGC","ACAAGCGC","CCAAGCGC","GCAAGCGC","TCAAGCGC",
+ "AGAAGCGC","CGAAGCGC","GGAAGCGC","TGAAGCGC","ATAAGCGC","CTAAGCGC","GTAAGCGC","TTAAGCGC",
+ "AACAGCGC","CACAGCGC","GACAGCGC","TACAGCGC","ACCAGCGC","CCCAGCGC","GCCAGCGC","TCCAGCGC",
+ "AGCAGCGC","CGCAGCGC","GGCAGCGC","TGCAGCGC","ATCAGCGC","CTCAGCGC","GTCAGCGC","TTCAGCGC",
+ "AAGAGCGC","CAGAGCGC","GAGAGCGC","TAGAGCGC","ACGAGCGC","CCGAGCGC","GCGAGCGC","TCGAGCGC",
+ "AGGAGCGC","CGGAGCGC","GGGAGCGC","TGGAGCGC","ATGAGCGC","CTGAGCGC","GTGAGCGC","TTGAGCGC",
+ "AATAGCGC","CATAGCGC","GATAGCGC","TATAGCGC","ACTAGCGC","CCTAGCGC","GCTAGCGC","TCTAGCGC",
+ "AGTAGCGC","CGTAGCGC","GGTAGCGC","TGTAGCGC","ATTAGCGC","CTTAGCGC","GTTAGCGC","TTTAGCGC",
+ "AAACGCGC","CAACGCGC","GAACGCGC","TAACGCGC","ACACGCGC","CCACGCGC","GCACGCGC","TCACGCGC",
+ "AGACGCGC","CGACGCGC","GGACGCGC","TGACGCGC","ATACGCGC","CTACGCGC","GTACGCGC","TTACGCGC",
+ "AACCGCGC","CACCGCGC","GACCGCGC","TACCGCGC","ACCCGCGC","CCCCGCGC","GCCCGCGC","TCCCGCGC",
+ "AGCCGCGC","CGCCGCGC","GGCCGCGC","TGCCGCGC","ATCCGCGC","CTCCGCGC","GTCCGCGC","TTCCGCGC",
+ "AAGCGCGC","CAGCGCGC","GAGCGCGC","TAGCGCGC","ACGCGCGC","CCGCGCGC","GCGCGCGC","TCGCGCGC",
+ "AGGCGCGC","CGGCGCGC","GGGCGCGC","TGGCGCGC","ATGCGCGC","CTGCGCGC","GTGCGCGC","TTGCGCGC",
+ "AATCGCGC","CATCGCGC","GATCGCGC","TATCGCGC","ACTCGCGC","CCTCGCGC","GCTCGCGC","TCTCGCGC",
+ "AGTCGCGC","CGTCGCGC","GGTCGCGC","TGTCGCGC","ATTCGCGC","CTTCGCGC","GTTCGCGC","TTTCGCGC",
+ "AAAGGCGC","CAAGGCGC","GAAGGCGC","TAAGGCGC","ACAGGCGC","CCAGGCGC","GCAGGCGC","TCAGGCGC",
+ "AGAGGCGC","CGAGGCGC","GGAGGCGC","TGAGGCGC","ATAGGCGC","CTAGGCGC","GTAGGCGC","TTAGGCGC",
+ "AACGGCGC","CACGGCGC","GACGGCGC","TACGGCGC","ACCGGCGC","CCCGGCGC","GCCGGCGC","TCCGGCGC",
+ "AGCGGCGC","CGCGGCGC","GGCGGCGC","TGCGGCGC","ATCGGCGC","CTCGGCGC","GTCGGCGC","TTCGGCGC",
+ "AAGGGCGC","CAGGGCGC","GAGGGCGC","TAGGGCGC","ACGGGCGC","CCGGGCGC","GCGGGCGC","TCGGGCGC",
+ "AGGGGCGC","CGGGGCGC","GGGGGCGC","TGGGGCGC","ATGGGCGC","CTGGGCGC","GTGGGCGC","TTGGGCGC",
+ "AATGGCGC","CATGGCGC","GATGGCGC","TATGGCGC","ACTGGCGC","CCTGGCGC","GCTGGCGC","TCTGGCGC",
+ "AGTGGCGC","CGTGGCGC","GGTGGCGC","TGTGGCGC","ATTGGCGC","CTTGGCGC","GTTGGCGC","TTTGGCGC",
+ "AAATGCGC","CAATGCGC","GAATGCGC","TAATGCGC","ACATGCGC","CCATGCGC","GCATGCGC","TCATGCGC",
+ "AGATGCGC","CGATGCGC","GGATGCGC","TGATGCGC","ATATGCGC","CTATGCGC","GTATGCGC","TTATGCGC",
+ "AACTGCGC","CACTGCGC","GACTGCGC","TACTGCGC","ACCTGCGC","CCCTGCGC","GCCTGCGC","TCCTGCGC",
+ "AGCTGCGC","CGCTGCGC","GGCTGCGC","TGCTGCGC","ATCTGCGC","CTCTGCGC","GTCTGCGC","TTCTGCGC",
+ "AAGTGCGC","CAGTGCGC","GAGTGCGC","TAGTGCGC","ACGTGCGC","CCGTGCGC","GCGTGCGC","TCGTGCGC",
+ "AGGTGCGC","CGGTGCGC","GGGTGCGC","TGGTGCGC","ATGTGCGC","CTGTGCGC","GTGTGCGC","TTGTGCGC",
+ "AATTGCGC","CATTGCGC","GATTGCGC","TATTGCGC","ACTTGCGC","CCTTGCGC","GCTTGCGC","TCTTGCGC",
+ "AGTTGCGC","CGTTGCGC","GGTTGCGC","TGTTGCGC","ATTTGCGC","CTTTGCGC","GTTTGCGC","TTTTGCGC",
+ "AAAATCGC","CAAATCGC","GAAATCGC","TAAATCGC","ACAATCGC","CCAATCGC","GCAATCGC","TCAATCGC",
+ "AGAATCGC","CGAATCGC","GGAATCGC","TGAATCGC","ATAATCGC","CTAATCGC","GTAATCGC","TTAATCGC",
+ "AACATCGC","CACATCGC","GACATCGC","TACATCGC","ACCATCGC","CCCATCGC","GCCATCGC","TCCATCGC",
+ "AGCATCGC","CGCATCGC","GGCATCGC","TGCATCGC","ATCATCGC","CTCATCGC","GTCATCGC","TTCATCGC",
+ "AAGATCGC","CAGATCGC","GAGATCGC","TAGATCGC","ACGATCGC","CCGATCGC","GCGATCGC","TCGATCGC",
+ "AGGATCGC","CGGATCGC","GGGATCGC","TGGATCGC","ATGATCGC","CTGATCGC","GTGATCGC","TTGATCGC",
+ "AATATCGC","CATATCGC","GATATCGC","TATATCGC","ACTATCGC","CCTATCGC","GCTATCGC","TCTATCGC",
+ "AGTATCGC","CGTATCGC","GGTATCGC","TGTATCGC","ATTATCGC","CTTATCGC","GTTATCGC","TTTATCGC",
+ "AAACTCGC","CAACTCGC","GAACTCGC","TAACTCGC","ACACTCGC","CCACTCGC","GCACTCGC","TCACTCGC",
+ "AGACTCGC","CGACTCGC","GGACTCGC","TGACTCGC","ATACTCGC","CTACTCGC","GTACTCGC","TTACTCGC",
+ "AACCTCGC","CACCTCGC","GACCTCGC","TACCTCGC","ACCCTCGC","CCCCTCGC","GCCCTCGC","TCCCTCGC",
+ "AGCCTCGC","CGCCTCGC","GGCCTCGC","TGCCTCGC","ATCCTCGC","CTCCTCGC","GTCCTCGC","TTCCTCGC",
+ "AAGCTCGC","CAGCTCGC","GAGCTCGC","TAGCTCGC","ACGCTCGC","CCGCTCGC","GCGCTCGC","TCGCTCGC",
+ "AGGCTCGC","CGGCTCGC","GGGCTCGC","TGGCTCGC","ATGCTCGC","CTGCTCGC","GTGCTCGC","TTGCTCGC",
+ "AATCTCGC","CATCTCGC","GATCTCGC","TATCTCGC","ACTCTCGC","CCTCTCGC","GCTCTCGC","TCTCTCGC",
+ "AGTCTCGC","CGTCTCGC","GGTCTCGC","TGTCTCGC","ATTCTCGC","CTTCTCGC","GTTCTCGC","TTTCTCGC",
+ "AAAGTCGC","CAAGTCGC","GAAGTCGC","TAAGTCGC","ACAGTCGC","CCAGTCGC","GCAGTCGC","TCAGTCGC",
+ "AGAGTCGC","CGAGTCGC","GGAGTCGC","TGAGTCGC","ATAGTCGC","CTAGTCGC","GTAGTCGC","TTAGTCGC",
+ "AACGTCGC","CACGTCGC","GACGTCGC","TACGTCGC","ACCGTCGC","CCCGTCGC","GCCGTCGC","TCCGTCGC",
+ "AGCGTCGC","CGCGTCGC","GGCGTCGC","TGCGTCGC","ATCGTCGC","CTCGTCGC","GTCGTCGC","TTCGTCGC",
+ "AAGGTCGC","CAGGTCGC","GAGGTCGC","TAGGTCGC","ACGGTCGC","CCGGTCGC","GCGGTCGC","TCGGTCGC",
+ "AGGGTCGC","CGGGTCGC","GGGGTCGC","TGGGTCGC","ATGGTCGC","CTGGTCGC","GTGGTCGC","TTGGTCGC",
+ "AATGTCGC","CATGTCGC","GATGTCGC","TATGTCGC","ACTGTCGC","CCTGTCGC","GCTGTCGC","TCTGTCGC",
+ "AGTGTCGC","CGTGTCGC","GGTGTCGC","TGTGTCGC","ATTGTCGC","CTTGTCGC","GTTGTCGC","TTTGTCGC",
+ "AAATTCGC","CAATTCGC","GAATTCGC","TAATTCGC","ACATTCGC","CCATTCGC","GCATTCGC","TCATTCGC",
+ "AGATTCGC","CGATTCGC","GGATTCGC","TGATTCGC","ATATTCGC","CTATTCGC","GTATTCGC","TTATTCGC",
+ "AACTTCGC","CACTTCGC","GACTTCGC","TACTTCGC","ACCTTCGC","CCCTTCGC","GCCTTCGC","TCCTTCGC",
+ "AGCTTCGC","CGCTTCGC","GGCTTCGC","TGCTTCGC","ATCTTCGC","CTCTTCGC","GTCTTCGC","TTCTTCGC",
+ "AAGTTCGC","CAGTTCGC","GAGTTCGC","TAGTTCGC","ACGTTCGC","CCGTTCGC","GCGTTCGC","TCGTTCGC",
+ "AGGTTCGC","CGGTTCGC","GGGTTCGC","TGGTTCGC","ATGTTCGC","CTGTTCGC","GTGTTCGC","TTGTTCGC",
+ "AATTTCGC","CATTTCGC","GATTTCGC","TATTTCGC","ACTTTCGC","CCTTTCGC","GCTTTCGC","TCTTTCGC",
+ "AGTTTCGC","CGTTTCGC","GGTTTCGC","TGTTTCGC","ATTTTCGC","CTTTTCGC","GTTTTCGC","TTTTTCGC",
+ "AAAAAGGC","CAAAAGGC","GAAAAGGC","TAAAAGGC","ACAAAGGC","CCAAAGGC","GCAAAGGC","TCAAAGGC",
+ "AGAAAGGC","CGAAAGGC","GGAAAGGC","TGAAAGGC","ATAAAGGC","CTAAAGGC","GTAAAGGC","TTAAAGGC",
+ "AACAAGGC","CACAAGGC","GACAAGGC","TACAAGGC","ACCAAGGC","CCCAAGGC","GCCAAGGC","TCCAAGGC",
+ "AGCAAGGC","CGCAAGGC","GGCAAGGC","TGCAAGGC","ATCAAGGC","CTCAAGGC","GTCAAGGC","TTCAAGGC",
+ "AAGAAGGC","CAGAAGGC","GAGAAGGC","TAGAAGGC","ACGAAGGC","CCGAAGGC","GCGAAGGC","TCGAAGGC",
+ "AGGAAGGC","CGGAAGGC","GGGAAGGC","TGGAAGGC","ATGAAGGC","CTGAAGGC","GTGAAGGC","TTGAAGGC",
+ "AATAAGGC","CATAAGGC","GATAAGGC","TATAAGGC","ACTAAGGC","CCTAAGGC","GCTAAGGC","TCTAAGGC",
+ "AGTAAGGC","CGTAAGGC","GGTAAGGC","TGTAAGGC","ATTAAGGC","CTTAAGGC","GTTAAGGC","TTTAAGGC",
+ "AAACAGGC","CAACAGGC","GAACAGGC","TAACAGGC","ACACAGGC","CCACAGGC","GCACAGGC","TCACAGGC",
+ "AGACAGGC","CGACAGGC","GGACAGGC","TGACAGGC","ATACAGGC","CTACAGGC","GTACAGGC","TTACAGGC",
+ "AACCAGGC","CACCAGGC","GACCAGGC","TACCAGGC","ACCCAGGC","CCCCAGGC","GCCCAGGC","TCCCAGGC",
+ "AGCCAGGC","CGCCAGGC","GGCCAGGC","TGCCAGGC","ATCCAGGC","CTCCAGGC","GTCCAGGC","TTCCAGGC",
+ "AAGCAGGC","CAGCAGGC","GAGCAGGC","TAGCAGGC","ACGCAGGC","CCGCAGGC","GCGCAGGC","TCGCAGGC",
+ "AGGCAGGC","CGGCAGGC","GGGCAGGC","TGGCAGGC","ATGCAGGC","CTGCAGGC","GTGCAGGC","TTGCAGGC",
+ "AATCAGGC","CATCAGGC","GATCAGGC","TATCAGGC","ACTCAGGC","CCTCAGGC","GCTCAGGC","TCTCAGGC",
+ "AGTCAGGC","CGTCAGGC","GGTCAGGC","TGTCAGGC","ATTCAGGC","CTTCAGGC","GTTCAGGC","TTTCAGGC",
+ "AAAGAGGC","CAAGAGGC","GAAGAGGC","TAAGAGGC","ACAGAGGC","CCAGAGGC","GCAGAGGC","TCAGAGGC",
+ "AGAGAGGC","CGAGAGGC","GGAGAGGC","TGAGAGGC","ATAGAGGC","CTAGAGGC","GTAGAGGC","TTAGAGGC",
+ "AACGAGGC","CACGAGGC","GACGAGGC","TACGAGGC","ACCGAGGC","CCCGAGGC","GCCGAGGC","TCCGAGGC",
+ "AGCGAGGC","CGCGAGGC","GGCGAGGC","TGCGAGGC","ATCGAGGC","CTCGAGGC","GTCGAGGC","TTCGAGGC",
+ "AAGGAGGC","CAGGAGGC","GAGGAGGC","TAGGAGGC","ACGGAGGC","CCGGAGGC","GCGGAGGC","TCGGAGGC",
+ "AGGGAGGC","CGGGAGGC","GGGGAGGC","TGGGAGGC","ATGGAGGC","CTGGAGGC","GTGGAGGC","TTGGAGGC",
+ "AATGAGGC","CATGAGGC","GATGAGGC","TATGAGGC","ACTGAGGC","CCTGAGGC","GCTGAGGC","TCTGAGGC",
+ "AGTGAGGC","CGTGAGGC","GGTGAGGC","TGTGAGGC","ATTGAGGC","CTTGAGGC","GTTGAGGC","TTTGAGGC",
+ "AAATAGGC","CAATAGGC","GAATAGGC","TAATAGGC","ACATAGGC","CCATAGGC","GCATAGGC","TCATAGGC",
+ "AGATAGGC","CGATAGGC","GGATAGGC","TGATAGGC","ATATAGGC","CTATAGGC","GTATAGGC","TTATAGGC",
+ "AACTAGGC","CACTAGGC","GACTAGGC","TACTAGGC","ACCTAGGC","CCCTAGGC","GCCTAGGC","TCCTAGGC",
+ "AGCTAGGC","CGCTAGGC","GGCTAGGC","TGCTAGGC","ATCTAGGC","CTCTAGGC","GTCTAGGC","TTCTAGGC",
+ "AAGTAGGC","CAGTAGGC","GAGTAGGC","TAGTAGGC","ACGTAGGC","CCGTAGGC","GCGTAGGC","TCGTAGGC",
+ "AGGTAGGC","CGGTAGGC","GGGTAGGC","TGGTAGGC","ATGTAGGC","CTGTAGGC","GTGTAGGC","TTGTAGGC",
+ "AATTAGGC","CATTAGGC","GATTAGGC","TATTAGGC","ACTTAGGC","CCTTAGGC","GCTTAGGC","TCTTAGGC",
+ "AGTTAGGC","CGTTAGGC","GGTTAGGC","TGTTAGGC","ATTTAGGC","CTTTAGGC","GTTTAGGC","TTTTAGGC",
+ "AAAACGGC","CAAACGGC","GAAACGGC","TAAACGGC","ACAACGGC","CCAACGGC","GCAACGGC","TCAACGGC",
+ "AGAACGGC","CGAACGGC","GGAACGGC","TGAACGGC","ATAACGGC","CTAACGGC","GTAACGGC","TTAACGGC",
+ "AACACGGC","CACACGGC","GACACGGC","TACACGGC","ACCACGGC","CCCACGGC","GCCACGGC","TCCACGGC",
+ "AGCACGGC","CGCACGGC","GGCACGGC","TGCACGGC","ATCACGGC","CTCACGGC","GTCACGGC","TTCACGGC",
+ "AAGACGGC","CAGACGGC","GAGACGGC","TAGACGGC","ACGACGGC","CCGACGGC","GCGACGGC","TCGACGGC",
+ "AGGACGGC","CGGACGGC","GGGACGGC","TGGACGGC","ATGACGGC","CTGACGGC","GTGACGGC","TTGACGGC",
+ "AATACGGC","CATACGGC","GATACGGC","TATACGGC","ACTACGGC","CCTACGGC","GCTACGGC","TCTACGGC",
+ "AGTACGGC","CGTACGGC","GGTACGGC","TGTACGGC","ATTACGGC","CTTACGGC","GTTACGGC","TTTACGGC",
+ "AAACCGGC","CAACCGGC","GAACCGGC","TAACCGGC","ACACCGGC","CCACCGGC","GCACCGGC","TCACCGGC",
+ "AGACCGGC","CGACCGGC","GGACCGGC","TGACCGGC","ATACCGGC","CTACCGGC","GTACCGGC","TTACCGGC",
+ "AACCCGGC","CACCCGGC","GACCCGGC","TACCCGGC","ACCCCGGC","CCCCCGGC","GCCCCGGC","TCCCCGGC",
+ "AGCCCGGC","CGCCCGGC","GGCCCGGC","TGCCCGGC","ATCCCGGC","CTCCCGGC","GTCCCGGC","TTCCCGGC",
+ "AAGCCGGC","CAGCCGGC","GAGCCGGC","TAGCCGGC","ACGCCGGC","CCGCCGGC","GCGCCGGC","TCGCCGGC",
+ "AGGCCGGC","CGGCCGGC","GGGCCGGC","TGGCCGGC","ATGCCGGC","CTGCCGGC","GTGCCGGC","TTGCCGGC",
+ "AATCCGGC","CATCCGGC","GATCCGGC","TATCCGGC","ACTCCGGC","CCTCCGGC","GCTCCGGC","TCTCCGGC",
+ "AGTCCGGC","CGTCCGGC","GGTCCGGC","TGTCCGGC","ATTCCGGC","CTTCCGGC","GTTCCGGC","TTTCCGGC",
+ "AAAGCGGC","CAAGCGGC","GAAGCGGC","TAAGCGGC","ACAGCGGC","CCAGCGGC","GCAGCGGC","TCAGCGGC",
+ "AGAGCGGC","CGAGCGGC","GGAGCGGC","TGAGCGGC","ATAGCGGC","CTAGCGGC","GTAGCGGC","TTAGCGGC",
+ "AACGCGGC","CACGCGGC","GACGCGGC","TACGCGGC","ACCGCGGC","CCCGCGGC","GCCGCGGC","TCCGCGGC",
+ "AGCGCGGC","CGCGCGGC","GGCGCGGC","TGCGCGGC","ATCGCGGC","CTCGCGGC","GTCGCGGC","TTCGCGGC",
+ "AAGGCGGC","CAGGCGGC","GAGGCGGC","TAGGCGGC","ACGGCGGC","CCGGCGGC","GCGGCGGC","TCGGCGGC",
+ "AGGGCGGC","CGGGCGGC","GGGGCGGC","TGGGCGGC","ATGGCGGC","CTGGCGGC","GTGGCGGC","TTGGCGGC",
+ "AATGCGGC","CATGCGGC","GATGCGGC","TATGCGGC","ACTGCGGC","CCTGCGGC","GCTGCGGC","TCTGCGGC",
+ "AGTGCGGC","CGTGCGGC","GGTGCGGC","TGTGCGGC","ATTGCGGC","CTTGCGGC","GTTGCGGC","TTTGCGGC",
+ "AAATCGGC","CAATCGGC","GAATCGGC","TAATCGGC","ACATCGGC","CCATCGGC","GCATCGGC","TCATCGGC",
+ "AGATCGGC","CGATCGGC","GGATCGGC","TGATCGGC","ATATCGGC","CTATCGGC","GTATCGGC","TTATCGGC",
+ "AACTCGGC","CACTCGGC","GACTCGGC","TACTCGGC","ACCTCGGC","CCCTCGGC","GCCTCGGC","TCCTCGGC",
+ "AGCTCGGC","CGCTCGGC","GGCTCGGC","TGCTCGGC","ATCTCGGC","CTCTCGGC","GTCTCGGC","TTCTCGGC",
+ "AAGTCGGC","CAGTCGGC","GAGTCGGC","TAGTCGGC","ACGTCGGC","CCGTCGGC","GCGTCGGC","TCGTCGGC",
+ "AGGTCGGC","CGGTCGGC","GGGTCGGC","TGGTCGGC","ATGTCGGC","CTGTCGGC","GTGTCGGC","TTGTCGGC",
+ "AATTCGGC","CATTCGGC","GATTCGGC","TATTCGGC","ACTTCGGC","CCTTCGGC","GCTTCGGC","TCTTCGGC",
+ "AGTTCGGC","CGTTCGGC","GGTTCGGC","TGTTCGGC","ATTTCGGC","CTTTCGGC","GTTTCGGC","TTTTCGGC",
+ "AAAAGGGC","CAAAGGGC","GAAAGGGC","TAAAGGGC","ACAAGGGC","CCAAGGGC","GCAAGGGC","TCAAGGGC",
+ "AGAAGGGC","CGAAGGGC","GGAAGGGC","TGAAGGGC","ATAAGGGC","CTAAGGGC","GTAAGGGC","TTAAGGGC",
+ "AACAGGGC","CACAGGGC","GACAGGGC","TACAGGGC","ACCAGGGC","CCCAGGGC","GCCAGGGC","TCCAGGGC",
+ "AGCAGGGC","CGCAGGGC","GGCAGGGC","TGCAGGGC","ATCAGGGC","CTCAGGGC","GTCAGGGC","TTCAGGGC",
+ "AAGAGGGC","CAGAGGGC","GAGAGGGC","TAGAGGGC","ACGAGGGC","CCGAGGGC","GCGAGGGC","TCGAGGGC",
+ "AGGAGGGC","CGGAGGGC","GGGAGGGC","TGGAGGGC","ATGAGGGC","CTGAGGGC","GTGAGGGC","TTGAGGGC",
+ "AATAGGGC","CATAGGGC","GATAGGGC","TATAGGGC","ACTAGGGC","CCTAGGGC","GCTAGGGC","TCTAGGGC",
+ "AGTAGGGC","CGTAGGGC","GGTAGGGC","TGTAGGGC","ATTAGGGC","CTTAGGGC","GTTAGGGC","TTTAGGGC",
+ "AAACGGGC","CAACGGGC","GAACGGGC","TAACGGGC","ACACGGGC","CCACGGGC","GCACGGGC","TCACGGGC",
+ "AGACGGGC","CGACGGGC","GGACGGGC","TGACGGGC","ATACGGGC","CTACGGGC","GTACGGGC","TTACGGGC",
+ "AACCGGGC","CACCGGGC","GACCGGGC","TACCGGGC","ACCCGGGC","CCCCGGGC","GCCCGGGC","TCCCGGGC",
+ "AGCCGGGC","CGCCGGGC","GGCCGGGC","TGCCGGGC","ATCCGGGC","CTCCGGGC","GTCCGGGC","TTCCGGGC",
+ "AAGCGGGC","CAGCGGGC","GAGCGGGC","TAGCGGGC","ACGCGGGC","CCGCGGGC","GCGCGGGC","TCGCGGGC",
+ "AGGCGGGC","CGGCGGGC","GGGCGGGC","TGGCGGGC","ATGCGGGC","CTGCGGGC","GTGCGGGC","TTGCGGGC",
+ "AATCGGGC","CATCGGGC","GATCGGGC","TATCGGGC","ACTCGGGC","CCTCGGGC","GCTCGGGC","TCTCGGGC",
+ "AGTCGGGC","CGTCGGGC","GGTCGGGC","TGTCGGGC","ATTCGGGC","CTTCGGGC","GTTCGGGC","TTTCGGGC",
+ "AAAGGGGC","CAAGGGGC","GAAGGGGC","TAAGGGGC","ACAGGGGC","CCAGGGGC","GCAGGGGC","TCAGGGGC",
+ "AGAGGGGC","CGAGGGGC","GGAGGGGC","TGAGGGGC","ATAGGGGC","CTAGGGGC","GTAGGGGC","TTAGGGGC",
+ "AACGGGGC","CACGGGGC","GACGGGGC","TACGGGGC","ACCGGGGC","CCCGGGGC","GCCGGGGC","TCCGGGGC",
+ "AGCGGGGC","CGCGGGGC","GGCGGGGC","TGCGGGGC","ATCGGGGC","CTCGGGGC","GTCGGGGC","TTCGGGGC",
+ "AAGGGGGC","CAGGGGGC","GAGGGGGC","TAGGGGGC","ACGGGGGC","CCGGGGGC","GCGGGGGC","TCGGGGGC",
+ "AGGGGGGC","CGGGGGGC","GGGGGGGC","TGGGGGGC","ATGGGGGC","CTGGGGGC","GTGGGGGC","TTGGGGGC",
+ "AATGGGGC","CATGGGGC","GATGGGGC","TATGGGGC","ACTGGGGC","CCTGGGGC","GCTGGGGC","TCTGGGGC",
+ "AGTGGGGC","CGTGGGGC","GGTGGGGC","TGTGGGGC","ATTGGGGC","CTTGGGGC","GTTGGGGC","TTTGGGGC",
+ "AAATGGGC","CAATGGGC","GAATGGGC","TAATGGGC","ACATGGGC","CCATGGGC","GCATGGGC","TCATGGGC",
+ "AGATGGGC","CGATGGGC","GGATGGGC","TGATGGGC","ATATGGGC","CTATGGGC","GTATGGGC","TTATGGGC",
+ "AACTGGGC","CACTGGGC","GACTGGGC","TACTGGGC","ACCTGGGC","CCCTGGGC","GCCTGGGC","TCCTGGGC",
+ "AGCTGGGC","CGCTGGGC","GGCTGGGC","TGCTGGGC","ATCTGGGC","CTCTGGGC","GTCTGGGC","TTCTGGGC",
+ "AAGTGGGC","CAGTGGGC","GAGTGGGC","TAGTGGGC","ACGTGGGC","CCGTGGGC","GCGTGGGC","TCGTGGGC",
+ "AGGTGGGC","CGGTGGGC","GGGTGGGC","TGGTGGGC","ATGTGGGC","CTGTGGGC","GTGTGGGC","TTGTGGGC",
+ "AATTGGGC","CATTGGGC","GATTGGGC","TATTGGGC","ACTTGGGC","CCTTGGGC","GCTTGGGC","TCTTGGGC",
+ "AGTTGGGC","CGTTGGGC","GGTTGGGC","TGTTGGGC","ATTTGGGC","CTTTGGGC","GTTTGGGC","TTTTGGGC",
+ "AAAATGGC","CAAATGGC","GAAATGGC","TAAATGGC","ACAATGGC","CCAATGGC","GCAATGGC","TCAATGGC",
+ "AGAATGGC","CGAATGGC","GGAATGGC","TGAATGGC","ATAATGGC","CTAATGGC","GTAATGGC","TTAATGGC",
+ "AACATGGC","CACATGGC","GACATGGC","TACATGGC","ACCATGGC","CCCATGGC","GCCATGGC","TCCATGGC",
+ "AGCATGGC","CGCATGGC","GGCATGGC","TGCATGGC","ATCATGGC","CTCATGGC","GTCATGGC","TTCATGGC",
+ "AAGATGGC","CAGATGGC","GAGATGGC","TAGATGGC","ACGATGGC","CCGATGGC","GCGATGGC","TCGATGGC",
+ "AGGATGGC","CGGATGGC","GGGATGGC","TGGATGGC","ATGATGGC","CTGATGGC","GTGATGGC","TTGATGGC",
+ "AATATGGC","CATATGGC","GATATGGC","TATATGGC","ACTATGGC","CCTATGGC","GCTATGGC","TCTATGGC",
+ "AGTATGGC","CGTATGGC","GGTATGGC","TGTATGGC","ATTATGGC","CTTATGGC","GTTATGGC","TTTATGGC",
+ "AAACTGGC","CAACTGGC","GAACTGGC","TAACTGGC","ACACTGGC","CCACTGGC","GCACTGGC","TCACTGGC",
+ "AGACTGGC","CGACTGGC","GGACTGGC","TGACTGGC","ATACTGGC","CTACTGGC","GTACTGGC","TTACTGGC",
+ "AACCTGGC","CACCTGGC","GACCTGGC","TACCTGGC","ACCCTGGC","CCCCTGGC","GCCCTGGC","TCCCTGGC",
+ "AGCCTGGC","CGCCTGGC","GGCCTGGC","TGCCTGGC","ATCCTGGC","CTCCTGGC","GTCCTGGC","TTCCTGGC",
+ "AAGCTGGC","CAGCTGGC","GAGCTGGC","TAGCTGGC","ACGCTGGC","CCGCTGGC","GCGCTGGC","TCGCTGGC",
+ "AGGCTGGC","CGGCTGGC","GGGCTGGC","TGGCTGGC","ATGCTGGC","CTGCTGGC","GTGCTGGC","TTGCTGGC",
+ "AATCTGGC","CATCTGGC","GATCTGGC","TATCTGGC","ACTCTGGC","CCTCTGGC","GCTCTGGC","TCTCTGGC",
+ "AGTCTGGC","CGTCTGGC","GGTCTGGC","TGTCTGGC","ATTCTGGC","CTTCTGGC","GTTCTGGC","TTTCTGGC",
+ "AAAGTGGC","CAAGTGGC","GAAGTGGC","TAAGTGGC","ACAGTGGC","CCAGTGGC","GCAGTGGC","TCAGTGGC",
+ "AGAGTGGC","CGAGTGGC","GGAGTGGC","TGAGTGGC","ATAGTGGC","CTAGTGGC","GTAGTGGC","TTAGTGGC",
+ "AACGTGGC","CACGTGGC","GACGTGGC","TACGTGGC","ACCGTGGC","CCCGTGGC","GCCGTGGC","TCCGTGGC",
+ "AGCGTGGC","CGCGTGGC","GGCGTGGC","TGCGTGGC","ATCGTGGC","CTCGTGGC","GTCGTGGC","TTCGTGGC",
+ "AAGGTGGC","CAGGTGGC","GAGGTGGC","TAGGTGGC","ACGGTGGC","CCGGTGGC","GCGGTGGC","TCGGTGGC",
+ "AGGGTGGC","CGGGTGGC","GGGGTGGC","TGGGTGGC","ATGGTGGC","CTGGTGGC","GTGGTGGC","TTGGTGGC",
+ "AATGTGGC","CATGTGGC","GATGTGGC","TATGTGGC","ACTGTGGC","CCTGTGGC","GCTGTGGC","TCTGTGGC",
+ "AGTGTGGC","CGTGTGGC","GGTGTGGC","TGTGTGGC","ATTGTGGC","CTTGTGGC","GTTGTGGC","TTTGTGGC",
+ "AAATTGGC","CAATTGGC","GAATTGGC","TAATTGGC","ACATTGGC","CCATTGGC","GCATTGGC","TCATTGGC",
+ "AGATTGGC","CGATTGGC","GGATTGGC","TGATTGGC","ATATTGGC","CTATTGGC","GTATTGGC","TTATTGGC",
+ "AACTTGGC","CACTTGGC","GACTTGGC","TACTTGGC","ACCTTGGC","CCCTTGGC","GCCTTGGC","TCCTTGGC",
+ "AGCTTGGC","CGCTTGGC","GGCTTGGC","TGCTTGGC","ATCTTGGC","CTCTTGGC","GTCTTGGC","TTCTTGGC",
+ "AAGTTGGC","CAGTTGGC","GAGTTGGC","TAGTTGGC","ACGTTGGC","CCGTTGGC","GCGTTGGC","TCGTTGGC",
+ "AGGTTGGC","CGGTTGGC","GGGTTGGC","TGGTTGGC","ATGTTGGC","CTGTTGGC","GTGTTGGC","TTGTTGGC",
+ "AATTTGGC","CATTTGGC","GATTTGGC","TATTTGGC","ACTTTGGC","CCTTTGGC","GCTTTGGC","TCTTTGGC",
+ "AGTTTGGC","CGTTTGGC","GGTTTGGC","TGTTTGGC","ATTTTGGC","CTTTTGGC","GTTTTGGC","TTTTTGGC",
+ "AAAAATGC","CAAAATGC","GAAAATGC","TAAAATGC","ACAAATGC","CCAAATGC","GCAAATGC","TCAAATGC",
+ "AGAAATGC","CGAAATGC","GGAAATGC","TGAAATGC","ATAAATGC","CTAAATGC","GTAAATGC","TTAAATGC",
+ "AACAATGC","CACAATGC","GACAATGC","TACAATGC","ACCAATGC","CCCAATGC","GCCAATGC","TCCAATGC",
+ "AGCAATGC","CGCAATGC","GGCAATGC","TGCAATGC","ATCAATGC","CTCAATGC","GTCAATGC","TTCAATGC",
+ "AAGAATGC","CAGAATGC","GAGAATGC","TAGAATGC","ACGAATGC","CCGAATGC","GCGAATGC","TCGAATGC",
+ "AGGAATGC","CGGAATGC","GGGAATGC","TGGAATGC","ATGAATGC","CTGAATGC","GTGAATGC","TTGAATGC",
+ "AATAATGC","CATAATGC","GATAATGC","TATAATGC","ACTAATGC","CCTAATGC","GCTAATGC","TCTAATGC",
+ "AGTAATGC","CGTAATGC","GGTAATGC","TGTAATGC","ATTAATGC","CTTAATGC","GTTAATGC","TTTAATGC",
+ "AAACATGC","CAACATGC","GAACATGC","TAACATGC","ACACATGC","CCACATGC","GCACATGC","TCACATGC",
+ "AGACATGC","CGACATGC","GGACATGC","TGACATGC","ATACATGC","CTACATGC","GTACATGC","TTACATGC",
+ "AACCATGC","CACCATGC","GACCATGC","TACCATGC","ACCCATGC","CCCCATGC","GCCCATGC","TCCCATGC",
+ "AGCCATGC","CGCCATGC","GGCCATGC","TGCCATGC","ATCCATGC","CTCCATGC","GTCCATGC","TTCCATGC",
+ "AAGCATGC","CAGCATGC","GAGCATGC","TAGCATGC","ACGCATGC","CCGCATGC","GCGCATGC","TCGCATGC",
+ "AGGCATGC","CGGCATGC","GGGCATGC","TGGCATGC","ATGCATGC","CTGCATGC","GTGCATGC","TTGCATGC",
+ "AATCATGC","CATCATGC","GATCATGC","TATCATGC","ACTCATGC","CCTCATGC","GCTCATGC","TCTCATGC",
+ "AGTCATGC","CGTCATGC","GGTCATGC","TGTCATGC","ATTCATGC","CTTCATGC","GTTCATGC","TTTCATGC",
+ "AAAGATGC","CAAGATGC","GAAGATGC","TAAGATGC","ACAGATGC","CCAGATGC","GCAGATGC","TCAGATGC",
+ "AGAGATGC","CGAGATGC","GGAGATGC","TGAGATGC","ATAGATGC","CTAGATGC","GTAGATGC","TTAGATGC",
+ "AACGATGC","CACGATGC","GACGATGC","TACGATGC","ACCGATGC","CCCGATGC","GCCGATGC","TCCGATGC",
+ "AGCGATGC","CGCGATGC","GGCGATGC","TGCGATGC","ATCGATGC","CTCGATGC","GTCGATGC","TTCGATGC",
+ "AAGGATGC","CAGGATGC","GAGGATGC","TAGGATGC","ACGGATGC","CCGGATGC","GCGGATGC","TCGGATGC",
+ "AGGGATGC","CGGGATGC","GGGGATGC","TGGGATGC","ATGGATGC","CTGGATGC","GTGGATGC","TTGGATGC",
+ "AATGATGC","CATGATGC","GATGATGC","TATGATGC","ACTGATGC","CCTGATGC","GCTGATGC","TCTGATGC",
+ "AGTGATGC","CGTGATGC","GGTGATGC","TGTGATGC","ATTGATGC","CTTGATGC","GTTGATGC","TTTGATGC",
+ "AAATATGC","CAATATGC","GAATATGC","TAATATGC","ACATATGC","CCATATGC","GCATATGC","TCATATGC",
+ "AGATATGC","CGATATGC","GGATATGC","TGATATGC","ATATATGC","CTATATGC","GTATATGC","TTATATGC",
+ "AACTATGC","CACTATGC","GACTATGC","TACTATGC","ACCTATGC","CCCTATGC","GCCTATGC","TCCTATGC",
+ "AGCTATGC","CGCTATGC","GGCTATGC","TGCTATGC","ATCTATGC","CTCTATGC","GTCTATGC","TTCTATGC",
+ "AAGTATGC","CAGTATGC","GAGTATGC","TAGTATGC","ACGTATGC","CCGTATGC","GCGTATGC","TCGTATGC",
+ "AGGTATGC","CGGTATGC","GGGTATGC","TGGTATGC","ATGTATGC","CTGTATGC","GTGTATGC","TTGTATGC",
+ "AATTATGC","CATTATGC","GATTATGC","TATTATGC","ACTTATGC","CCTTATGC","GCTTATGC","TCTTATGC",
+ "AGTTATGC","CGTTATGC","GGTTATGC","TGTTATGC","ATTTATGC","CTTTATGC","GTTTATGC","TTTTATGC",
+ "AAAACTGC","CAAACTGC","GAAACTGC","TAAACTGC","ACAACTGC","CCAACTGC","GCAACTGC","TCAACTGC",
+ "AGAACTGC","CGAACTGC","GGAACTGC","TGAACTGC","ATAACTGC","CTAACTGC","GTAACTGC","TTAACTGC",
+ "AACACTGC","CACACTGC","GACACTGC","TACACTGC","ACCACTGC","CCCACTGC","GCCACTGC","TCCACTGC",
+ "AGCACTGC","CGCACTGC","GGCACTGC","TGCACTGC","ATCACTGC","CTCACTGC","GTCACTGC","TTCACTGC",
+ "AAGACTGC","CAGACTGC","GAGACTGC","TAGACTGC","ACGACTGC","CCGACTGC","GCGACTGC","TCGACTGC",
+ "AGGACTGC","CGGACTGC","GGGACTGC","TGGACTGC","ATGACTGC","CTGACTGC","GTGACTGC","TTGACTGC",
+ "AATACTGC","CATACTGC","GATACTGC","TATACTGC","ACTACTGC","CCTACTGC","GCTACTGC","TCTACTGC",
+ "AGTACTGC","CGTACTGC","GGTACTGC","TGTACTGC","ATTACTGC","CTTACTGC","GTTACTGC","TTTACTGC",
+ "AAACCTGC","CAACCTGC","GAACCTGC","TAACCTGC","ACACCTGC","CCACCTGC","GCACCTGC","TCACCTGC",
+ "AGACCTGC","CGACCTGC","GGACCTGC","TGACCTGC","ATACCTGC","CTACCTGC","GTACCTGC","TTACCTGC",
+ "AACCCTGC","CACCCTGC","GACCCTGC","TACCCTGC","ACCCCTGC","CCCCCTGC","GCCCCTGC","TCCCCTGC",
+ "AGCCCTGC","CGCCCTGC","GGCCCTGC","TGCCCTGC","ATCCCTGC","CTCCCTGC","GTCCCTGC","TTCCCTGC",
+ "AAGCCTGC","CAGCCTGC","GAGCCTGC","TAGCCTGC","ACGCCTGC","CCGCCTGC","GCGCCTGC","TCGCCTGC",
+ "AGGCCTGC","CGGCCTGC","GGGCCTGC","TGGCCTGC","ATGCCTGC","CTGCCTGC","GTGCCTGC","TTGCCTGC",
+ "AATCCTGC","CATCCTGC","GATCCTGC","TATCCTGC","ACTCCTGC","CCTCCTGC","GCTCCTGC","TCTCCTGC",
+ "AGTCCTGC","CGTCCTGC","GGTCCTGC","TGTCCTGC","ATTCCTGC","CTTCCTGC","GTTCCTGC","TTTCCTGC",
+ "AAAGCTGC","CAAGCTGC","GAAGCTGC","TAAGCTGC","ACAGCTGC","CCAGCTGC","GCAGCTGC","TCAGCTGC",
+ "AGAGCTGC","CGAGCTGC","GGAGCTGC","TGAGCTGC","ATAGCTGC","CTAGCTGC","GTAGCTGC","TTAGCTGC",
+ "AACGCTGC","CACGCTGC","GACGCTGC","TACGCTGC","ACCGCTGC","CCCGCTGC","GCCGCTGC","TCCGCTGC",
+ "AGCGCTGC","CGCGCTGC","GGCGCTGC","TGCGCTGC","ATCGCTGC","CTCGCTGC","GTCGCTGC","TTCGCTGC",
+ "AAGGCTGC","CAGGCTGC","GAGGCTGC","TAGGCTGC","ACGGCTGC","CCGGCTGC","GCGGCTGC","TCGGCTGC",
+ "AGGGCTGC","CGGGCTGC","GGGGCTGC","TGGGCTGC","ATGGCTGC","CTGGCTGC","GTGGCTGC","TTGGCTGC",
+ "AATGCTGC","CATGCTGC","GATGCTGC","TATGCTGC","ACTGCTGC","CCTGCTGC","GCTGCTGC","TCTGCTGC",
+ "AGTGCTGC","CGTGCTGC","GGTGCTGC","TGTGCTGC","ATTGCTGC","CTTGCTGC","GTTGCTGC","TTTGCTGC",
+ "AAATCTGC","CAATCTGC","GAATCTGC","TAATCTGC","ACATCTGC","CCATCTGC","GCATCTGC","TCATCTGC",
+ "AGATCTGC","CGATCTGC","GGATCTGC","TGATCTGC","ATATCTGC","CTATCTGC","GTATCTGC","TTATCTGC",
+ "AACTCTGC","CACTCTGC","GACTCTGC","TACTCTGC","ACCTCTGC","CCCTCTGC","GCCTCTGC","TCCTCTGC",
+ "AGCTCTGC","CGCTCTGC","GGCTCTGC","TGCTCTGC","ATCTCTGC","CTCTCTGC","GTCTCTGC","TTCTCTGC",
+ "AAGTCTGC","CAGTCTGC","GAGTCTGC","TAGTCTGC","ACGTCTGC","CCGTCTGC","GCGTCTGC","TCGTCTGC",
+ "AGGTCTGC","CGGTCTGC","GGGTCTGC","TGGTCTGC","ATGTCTGC","CTGTCTGC","GTGTCTGC","TTGTCTGC",
+ "AATTCTGC","CATTCTGC","GATTCTGC","TATTCTGC","ACTTCTGC","CCTTCTGC","GCTTCTGC","TCTTCTGC",
+ "AGTTCTGC","CGTTCTGC","GGTTCTGC","TGTTCTGC","ATTTCTGC","CTTTCTGC","GTTTCTGC","TTTTCTGC",
+ "AAAAGTGC","CAAAGTGC","GAAAGTGC","TAAAGTGC","ACAAGTGC","CCAAGTGC","GCAAGTGC","TCAAGTGC",
+ "AGAAGTGC","CGAAGTGC","GGAAGTGC","TGAAGTGC","ATAAGTGC","CTAAGTGC","GTAAGTGC","TTAAGTGC",
+ "AACAGTGC","CACAGTGC","GACAGTGC","TACAGTGC","ACCAGTGC","CCCAGTGC","GCCAGTGC","TCCAGTGC",
+ "AGCAGTGC","CGCAGTGC","GGCAGTGC","TGCAGTGC","ATCAGTGC","CTCAGTGC","GTCAGTGC","TTCAGTGC",
+ "AAGAGTGC","CAGAGTGC","GAGAGTGC","TAGAGTGC","ACGAGTGC","CCGAGTGC","GCGAGTGC","TCGAGTGC",
+ "AGGAGTGC","CGGAGTGC","GGGAGTGC","TGGAGTGC","ATGAGTGC","CTGAGTGC","GTGAGTGC","TTGAGTGC",
+ "AATAGTGC","CATAGTGC","GATAGTGC","TATAGTGC","ACTAGTGC","CCTAGTGC","GCTAGTGC","TCTAGTGC",
+ "AGTAGTGC","CGTAGTGC","GGTAGTGC","TGTAGTGC","ATTAGTGC","CTTAGTGC","GTTAGTGC","TTTAGTGC",
+ "AAACGTGC","CAACGTGC","GAACGTGC","TAACGTGC","ACACGTGC","CCACGTGC","GCACGTGC","TCACGTGC",
+ "AGACGTGC","CGACGTGC","GGACGTGC","TGACGTGC","ATACGTGC","CTACGTGC","GTACGTGC","TTACGTGC",
+ "AACCGTGC","CACCGTGC","GACCGTGC","TACCGTGC","ACCCGTGC","CCCCGTGC","GCCCGTGC","TCCCGTGC",
+ "AGCCGTGC","CGCCGTGC","GGCCGTGC","TGCCGTGC","ATCCGTGC","CTCCGTGC","GTCCGTGC","TTCCGTGC",
+ "AAGCGTGC","CAGCGTGC","GAGCGTGC","TAGCGTGC","ACGCGTGC","CCGCGTGC","GCGCGTGC","TCGCGTGC",
+ "AGGCGTGC","CGGCGTGC","GGGCGTGC","TGGCGTGC","ATGCGTGC","CTGCGTGC","GTGCGTGC","TTGCGTGC",
+ "AATCGTGC","CATCGTGC","GATCGTGC","TATCGTGC","ACTCGTGC","CCTCGTGC","GCTCGTGC","TCTCGTGC",
+ "AGTCGTGC","CGTCGTGC","GGTCGTGC","TGTCGTGC","ATTCGTGC","CTTCGTGC","GTTCGTGC","TTTCGTGC",
+ "AAAGGTGC","CAAGGTGC","GAAGGTGC","TAAGGTGC","ACAGGTGC","CCAGGTGC","GCAGGTGC","TCAGGTGC",
+ "AGAGGTGC","CGAGGTGC","GGAGGTGC","TGAGGTGC","ATAGGTGC","CTAGGTGC","GTAGGTGC","TTAGGTGC",
+ "AACGGTGC","CACGGTGC","GACGGTGC","TACGGTGC","ACCGGTGC","CCCGGTGC","GCCGGTGC","TCCGGTGC",
+ "AGCGGTGC","CGCGGTGC","GGCGGTGC","TGCGGTGC","ATCGGTGC","CTCGGTGC","GTCGGTGC","TTCGGTGC",
+ "AAGGGTGC","CAGGGTGC","GAGGGTGC","TAGGGTGC","ACGGGTGC","CCGGGTGC","GCGGGTGC","TCGGGTGC",
+ "AGGGGTGC","CGGGGTGC","GGGGGTGC","TGGGGTGC","ATGGGTGC","CTGGGTGC","GTGGGTGC","TTGGGTGC",
+ "AATGGTGC","CATGGTGC","GATGGTGC","TATGGTGC","ACTGGTGC","CCTGGTGC","GCTGGTGC","TCTGGTGC",
+ "AGTGGTGC","CGTGGTGC","GGTGGTGC","TGTGGTGC","ATTGGTGC","CTTGGTGC","GTTGGTGC","TTTGGTGC",
+ "AAATGTGC","CAATGTGC","GAATGTGC","TAATGTGC","ACATGTGC","CCATGTGC","GCATGTGC","TCATGTGC",
+ "AGATGTGC","CGATGTGC","GGATGTGC","TGATGTGC","ATATGTGC","CTATGTGC","GTATGTGC","TTATGTGC",
+ "AACTGTGC","CACTGTGC","GACTGTGC","TACTGTGC","ACCTGTGC","CCCTGTGC","GCCTGTGC","TCCTGTGC",
+ "AGCTGTGC","CGCTGTGC","GGCTGTGC","TGCTGTGC","ATCTGTGC","CTCTGTGC","GTCTGTGC","TTCTGTGC",
+ "AAGTGTGC","CAGTGTGC","GAGTGTGC","TAGTGTGC","ACGTGTGC","CCGTGTGC","GCGTGTGC","TCGTGTGC",
+ "AGGTGTGC","CGGTGTGC","GGGTGTGC","TGGTGTGC","ATGTGTGC","CTGTGTGC","GTGTGTGC","TTGTGTGC",
+ "AATTGTGC","CATTGTGC","GATTGTGC","TATTGTGC","ACTTGTGC","CCTTGTGC","GCTTGTGC","TCTTGTGC",
+ "AGTTGTGC","CGTTGTGC","GGTTGTGC","TGTTGTGC","ATTTGTGC","CTTTGTGC","GTTTGTGC","TTTTGTGC",
+ "AAAATTGC","CAAATTGC","GAAATTGC","TAAATTGC","ACAATTGC","CCAATTGC","GCAATTGC","TCAATTGC",
+ "AGAATTGC","CGAATTGC","GGAATTGC","TGAATTGC","ATAATTGC","CTAATTGC","GTAATTGC","TTAATTGC",
+ "AACATTGC","CACATTGC","GACATTGC","TACATTGC","ACCATTGC","CCCATTGC","GCCATTGC","TCCATTGC",
+ "AGCATTGC","CGCATTGC","GGCATTGC","TGCATTGC","ATCATTGC","CTCATTGC","GTCATTGC","TTCATTGC",
+ "AAGATTGC","CAGATTGC","GAGATTGC","TAGATTGC","ACGATTGC","CCGATTGC","GCGATTGC","TCGATTGC",
+ "AGGATTGC","CGGATTGC","GGGATTGC","TGGATTGC","ATGATTGC","CTGATTGC","GTGATTGC","TTGATTGC",
+ "AATATTGC","CATATTGC","GATATTGC","TATATTGC","ACTATTGC","CCTATTGC","GCTATTGC","TCTATTGC",
+ "AGTATTGC","CGTATTGC","GGTATTGC","TGTATTGC","ATTATTGC","CTTATTGC","GTTATTGC","TTTATTGC",
+ "AAACTTGC","CAACTTGC","GAACTTGC","TAACTTGC","ACACTTGC","CCACTTGC","GCACTTGC","TCACTTGC",
+ "AGACTTGC","CGACTTGC","GGACTTGC","TGACTTGC","ATACTTGC","CTACTTGC","GTACTTGC","TTACTTGC",
+ "AACCTTGC","CACCTTGC","GACCTTGC","TACCTTGC","ACCCTTGC","CCCCTTGC","GCCCTTGC","TCCCTTGC",
+ "AGCCTTGC","CGCCTTGC","GGCCTTGC","TGCCTTGC","ATCCTTGC","CTCCTTGC","GTCCTTGC","TTCCTTGC",
+ "AAGCTTGC","CAGCTTGC","GAGCTTGC","TAGCTTGC","ACGCTTGC","CCGCTTGC","GCGCTTGC","TCGCTTGC",
+ "AGGCTTGC","CGGCTTGC","GGGCTTGC","TGGCTTGC","ATGCTTGC","CTGCTTGC","GTGCTTGC","TTGCTTGC",
+ "AATCTTGC","CATCTTGC","GATCTTGC","TATCTTGC","ACTCTTGC","CCTCTTGC","GCTCTTGC","TCTCTTGC",
+ "AGTCTTGC","CGTCTTGC","GGTCTTGC","TGTCTTGC","ATTCTTGC","CTTCTTGC","GTTCTTGC","TTTCTTGC",
+ "AAAGTTGC","CAAGTTGC","GAAGTTGC","TAAGTTGC","ACAGTTGC","CCAGTTGC","GCAGTTGC","TCAGTTGC",
+ "AGAGTTGC","CGAGTTGC","GGAGTTGC","TGAGTTGC","ATAGTTGC","CTAGTTGC","GTAGTTGC","TTAGTTGC",
+ "AACGTTGC","CACGTTGC","GACGTTGC","TACGTTGC","ACCGTTGC","CCCGTTGC","GCCGTTGC","TCCGTTGC",
+ "AGCGTTGC","CGCGTTGC","GGCGTTGC","TGCGTTGC","ATCGTTGC","CTCGTTGC","GTCGTTGC","TTCGTTGC",
+ "AAGGTTGC","CAGGTTGC","GAGGTTGC","TAGGTTGC","ACGGTTGC","CCGGTTGC","GCGGTTGC","TCGGTTGC",
+ "AGGGTTGC","CGGGTTGC","GGGGTTGC","TGGGTTGC","ATGGTTGC","CTGGTTGC","GTGGTTGC","TTGGTTGC",
+ "AATGTTGC","CATGTTGC","GATGTTGC","TATGTTGC","ACTGTTGC","CCTGTTGC","GCTGTTGC","TCTGTTGC",
+ "AGTGTTGC","CGTGTTGC","GGTGTTGC","TGTGTTGC","ATTGTTGC","CTTGTTGC","GTTGTTGC","TTTGTTGC",
+ "AAATTTGC","CAATTTGC","GAATTTGC","TAATTTGC","ACATTTGC","CCATTTGC","GCATTTGC","TCATTTGC",
+ "AGATTTGC","CGATTTGC","GGATTTGC","TGATTTGC","ATATTTGC","CTATTTGC","GTATTTGC","TTATTTGC",
+ "AACTTTGC","CACTTTGC","GACTTTGC","TACTTTGC","ACCTTTGC","CCCTTTGC","GCCTTTGC","TCCTTTGC",
+ "AGCTTTGC","CGCTTTGC","GGCTTTGC","TGCTTTGC","ATCTTTGC","CTCTTTGC","GTCTTTGC","TTCTTTGC",
+ "AAGTTTGC","CAGTTTGC","GAGTTTGC","TAGTTTGC","ACGTTTGC","CCGTTTGC","GCGTTTGC","TCGTTTGC",
+ "AGGTTTGC","CGGTTTGC","GGGTTTGC","TGGTTTGC","ATGTTTGC","CTGTTTGC","GTGTTTGC","TTGTTTGC",
+ "AATTTTGC","CATTTTGC","GATTTTGC","TATTTTGC","ACTTTTGC","CCTTTTGC","GCTTTTGC","TCTTTTGC",
+ "AGTTTTGC","CGTTTTGC","GGTTTTGC","TGTTTTGC","ATTTTTGC","CTTTTTGC","GTTTTTGC","TTTTTTGC",
+ "AAAAAATC","CAAAAATC","GAAAAATC","TAAAAATC","ACAAAATC","CCAAAATC","GCAAAATC","TCAAAATC",
+ "AGAAAATC","CGAAAATC","GGAAAATC","TGAAAATC","ATAAAATC","CTAAAATC","GTAAAATC","TTAAAATC",
+ "AACAAATC","CACAAATC","GACAAATC","TACAAATC","ACCAAATC","CCCAAATC","GCCAAATC","TCCAAATC",
+ "AGCAAATC","CGCAAATC","GGCAAATC","TGCAAATC","ATCAAATC","CTCAAATC","GTCAAATC","TTCAAATC",
+ "AAGAAATC","CAGAAATC","GAGAAATC","TAGAAATC","ACGAAATC","CCGAAATC","GCGAAATC","TCGAAATC",
+ "AGGAAATC","CGGAAATC","GGGAAATC","TGGAAATC","ATGAAATC","CTGAAATC","GTGAAATC","TTGAAATC",
+ "AATAAATC","CATAAATC","GATAAATC","TATAAATC","ACTAAATC","CCTAAATC","GCTAAATC","TCTAAATC",
+ "AGTAAATC","CGTAAATC","GGTAAATC","TGTAAATC","ATTAAATC","CTTAAATC","GTTAAATC","TTTAAATC",
+ "AAACAATC","CAACAATC","GAACAATC","TAACAATC","ACACAATC","CCACAATC","GCACAATC","TCACAATC",
+ "AGACAATC","CGACAATC","GGACAATC","TGACAATC","ATACAATC","CTACAATC","GTACAATC","TTACAATC",
+ "AACCAATC","CACCAATC","GACCAATC","TACCAATC","ACCCAATC","CCCCAATC","GCCCAATC","TCCCAATC",
+ "AGCCAATC","CGCCAATC","GGCCAATC","TGCCAATC","ATCCAATC","CTCCAATC","GTCCAATC","TTCCAATC",
+ "AAGCAATC","CAGCAATC","GAGCAATC","TAGCAATC","ACGCAATC","CCGCAATC","GCGCAATC","TCGCAATC",
+ "AGGCAATC","CGGCAATC","GGGCAATC","TGGCAATC","ATGCAATC","CTGCAATC","GTGCAATC","TTGCAATC",
+ "AATCAATC","CATCAATC","GATCAATC","TATCAATC","ACTCAATC","CCTCAATC","GCTCAATC","TCTCAATC",
+ "AGTCAATC","CGTCAATC","GGTCAATC","TGTCAATC","ATTCAATC","CTTCAATC","GTTCAATC","TTTCAATC",
+ "AAAGAATC","CAAGAATC","GAAGAATC","TAAGAATC","ACAGAATC","CCAGAATC","GCAGAATC","TCAGAATC",
+ "AGAGAATC","CGAGAATC","GGAGAATC","TGAGAATC","ATAGAATC","CTAGAATC","GTAGAATC","TTAGAATC",
+ "AACGAATC","CACGAATC","GACGAATC","TACGAATC","ACCGAATC","CCCGAATC","GCCGAATC","TCCGAATC",
+ "AGCGAATC","CGCGAATC","GGCGAATC","TGCGAATC","ATCGAATC","CTCGAATC","GTCGAATC","TTCGAATC",
+ "AAGGAATC","CAGGAATC","GAGGAATC","TAGGAATC","ACGGAATC","CCGGAATC","GCGGAATC","TCGGAATC",
+ "AGGGAATC","CGGGAATC","GGGGAATC","TGGGAATC","ATGGAATC","CTGGAATC","GTGGAATC","TTGGAATC",
+ "AATGAATC","CATGAATC","GATGAATC","TATGAATC","ACTGAATC","CCTGAATC","GCTGAATC","TCTGAATC",
+ "AGTGAATC","CGTGAATC","GGTGAATC","TGTGAATC","ATTGAATC","CTTGAATC","GTTGAATC","TTTGAATC",
+ "AAATAATC","CAATAATC","GAATAATC","TAATAATC","ACATAATC","CCATAATC","GCATAATC","TCATAATC",
+ "AGATAATC","CGATAATC","GGATAATC","TGATAATC","ATATAATC","CTATAATC","GTATAATC","TTATAATC",
+ "AACTAATC","CACTAATC","GACTAATC","TACTAATC","ACCTAATC","CCCTAATC","GCCTAATC","TCCTAATC",
+ "AGCTAATC","CGCTAATC","GGCTAATC","TGCTAATC","ATCTAATC","CTCTAATC","GTCTAATC","TTCTAATC",
+ "AAGTAATC","CAGTAATC","GAGTAATC","TAGTAATC","ACGTAATC","CCGTAATC","GCGTAATC","TCGTAATC",
+ "AGGTAATC","CGGTAATC","GGGTAATC","TGGTAATC","ATGTAATC","CTGTAATC","GTGTAATC","TTGTAATC",
+ "AATTAATC","CATTAATC","GATTAATC","TATTAATC","ACTTAATC","CCTTAATC","GCTTAATC","TCTTAATC",
+ "AGTTAATC","CGTTAATC","GGTTAATC","TGTTAATC","ATTTAATC","CTTTAATC","GTTTAATC","TTTTAATC",
+ "AAAACATC","CAAACATC","GAAACATC","TAAACATC","ACAACATC","CCAACATC","GCAACATC","TCAACATC",
+ "AGAACATC","CGAACATC","GGAACATC","TGAACATC","ATAACATC","CTAACATC","GTAACATC","TTAACATC",
+ "AACACATC","CACACATC","GACACATC","TACACATC","ACCACATC","CCCACATC","GCCACATC","TCCACATC",
+ "AGCACATC","CGCACATC","GGCACATC","TGCACATC","ATCACATC","CTCACATC","GTCACATC","TTCACATC",
+ "AAGACATC","CAGACATC","GAGACATC","TAGACATC","ACGACATC","CCGACATC","GCGACATC","TCGACATC",
+ "AGGACATC","CGGACATC","GGGACATC","TGGACATC","ATGACATC","CTGACATC","GTGACATC","TTGACATC",
+ "AATACATC","CATACATC","GATACATC","TATACATC","ACTACATC","CCTACATC","GCTACATC","TCTACATC",
+ "AGTACATC","CGTACATC","GGTACATC","TGTACATC","ATTACATC","CTTACATC","GTTACATC","TTTACATC",
+ "AAACCATC","CAACCATC","GAACCATC","TAACCATC","ACACCATC","CCACCATC","GCACCATC","TCACCATC",
+ "AGACCATC","CGACCATC","GGACCATC","TGACCATC","ATACCATC","CTACCATC","GTACCATC","TTACCATC",
+ "AACCCATC","CACCCATC","GACCCATC","TACCCATC","ACCCCATC","CCCCCATC","GCCCCATC","TCCCCATC",
+ "AGCCCATC","CGCCCATC","GGCCCATC","TGCCCATC","ATCCCATC","CTCCCATC","GTCCCATC","TTCCCATC",
+ "AAGCCATC","CAGCCATC","GAGCCATC","TAGCCATC","ACGCCATC","CCGCCATC","GCGCCATC","TCGCCATC",
+ "AGGCCATC","CGGCCATC","GGGCCATC","TGGCCATC","ATGCCATC","CTGCCATC","GTGCCATC","TTGCCATC",
+ "AATCCATC","CATCCATC","GATCCATC","TATCCATC","ACTCCATC","CCTCCATC","GCTCCATC","TCTCCATC",
+ "AGTCCATC","CGTCCATC","GGTCCATC","TGTCCATC","ATTCCATC","CTTCCATC","GTTCCATC","TTTCCATC",
+ "AAAGCATC","CAAGCATC","GAAGCATC","TAAGCATC","ACAGCATC","CCAGCATC","GCAGCATC","TCAGCATC",
+ "AGAGCATC","CGAGCATC","GGAGCATC","TGAGCATC","ATAGCATC","CTAGCATC","GTAGCATC","TTAGCATC",
+ "AACGCATC","CACGCATC","GACGCATC","TACGCATC","ACCGCATC","CCCGCATC","GCCGCATC","TCCGCATC",
+ "AGCGCATC","CGCGCATC","GGCGCATC","TGCGCATC","ATCGCATC","CTCGCATC","GTCGCATC","TTCGCATC",
+ "AAGGCATC","CAGGCATC","GAGGCATC","TAGGCATC","ACGGCATC","CCGGCATC","GCGGCATC","TCGGCATC",
+ "AGGGCATC","CGGGCATC","GGGGCATC","TGGGCATC","ATGGCATC","CTGGCATC","GTGGCATC","TTGGCATC",
+ "AATGCATC","CATGCATC","GATGCATC","TATGCATC","ACTGCATC","CCTGCATC","GCTGCATC","TCTGCATC",
+ "AGTGCATC","CGTGCATC","GGTGCATC","TGTGCATC","ATTGCATC","CTTGCATC","GTTGCATC","TTTGCATC",
+ "AAATCATC","CAATCATC","GAATCATC","TAATCATC","ACATCATC","CCATCATC","GCATCATC","TCATCATC",
+ "AGATCATC","CGATCATC","GGATCATC","TGATCATC","ATATCATC","CTATCATC","GTATCATC","TTATCATC",
+ "AACTCATC","CACTCATC","GACTCATC","TACTCATC","ACCTCATC","CCCTCATC","GCCTCATC","TCCTCATC",
+ "AGCTCATC","CGCTCATC","GGCTCATC","TGCTCATC","ATCTCATC","CTCTCATC","GTCTCATC","TTCTCATC",
+ "AAGTCATC","CAGTCATC","GAGTCATC","TAGTCATC","ACGTCATC","CCGTCATC","GCGTCATC","TCGTCATC",
+ "AGGTCATC","CGGTCATC","GGGTCATC","TGGTCATC","ATGTCATC","CTGTCATC","GTGTCATC","TTGTCATC",
+ "AATTCATC","CATTCATC","GATTCATC","TATTCATC","ACTTCATC","CCTTCATC","GCTTCATC","TCTTCATC",
+ "AGTTCATC","CGTTCATC","GGTTCATC","TGTTCATC","ATTTCATC","CTTTCATC","GTTTCATC","TTTTCATC",
+ "AAAAGATC","CAAAGATC","GAAAGATC","TAAAGATC","ACAAGATC","CCAAGATC","GCAAGATC","TCAAGATC",
+ "AGAAGATC","CGAAGATC","GGAAGATC","TGAAGATC","ATAAGATC","CTAAGATC","GTAAGATC","TTAAGATC",
+ "AACAGATC","CACAGATC","GACAGATC","TACAGATC","ACCAGATC","CCCAGATC","GCCAGATC","TCCAGATC",
+ "AGCAGATC","CGCAGATC","GGCAGATC","TGCAGATC","ATCAGATC","CTCAGATC","GTCAGATC","TTCAGATC",
+ "AAGAGATC","CAGAGATC","GAGAGATC","TAGAGATC","ACGAGATC","CCGAGATC","GCGAGATC","TCGAGATC",
+ "AGGAGATC","CGGAGATC","GGGAGATC","TGGAGATC","ATGAGATC","CTGAGATC","GTGAGATC","TTGAGATC",
+ "AATAGATC","CATAGATC","GATAGATC","TATAGATC","ACTAGATC","CCTAGATC","GCTAGATC","TCTAGATC",
+ "AGTAGATC","CGTAGATC","GGTAGATC","TGTAGATC","ATTAGATC","CTTAGATC","GTTAGATC","TTTAGATC",
+ "AAACGATC","CAACGATC","GAACGATC","TAACGATC","ACACGATC","CCACGATC","GCACGATC","TCACGATC",
+ "AGACGATC","CGACGATC","GGACGATC","TGACGATC","ATACGATC","CTACGATC","GTACGATC","TTACGATC",
+ "AACCGATC","CACCGATC","GACCGATC","TACCGATC","ACCCGATC","CCCCGATC","GCCCGATC","TCCCGATC",
+ "AGCCGATC","CGCCGATC","GGCCGATC","TGCCGATC","ATCCGATC","CTCCGATC","GTCCGATC","TTCCGATC",
+ "AAGCGATC","CAGCGATC","GAGCGATC","TAGCGATC","ACGCGATC","CCGCGATC","GCGCGATC","TCGCGATC",
+ "AGGCGATC","CGGCGATC","GGGCGATC","TGGCGATC","ATGCGATC","CTGCGATC","GTGCGATC","TTGCGATC",
+ "AATCGATC","CATCGATC","GATCGATC","TATCGATC","ACTCGATC","CCTCGATC","GCTCGATC","TCTCGATC",
+ "AGTCGATC","CGTCGATC","GGTCGATC","TGTCGATC","ATTCGATC","CTTCGATC","GTTCGATC","TTTCGATC",
+ "AAAGGATC","CAAGGATC","GAAGGATC","TAAGGATC","ACAGGATC","CCAGGATC","GCAGGATC","TCAGGATC",
+ "AGAGGATC","CGAGGATC","GGAGGATC","TGAGGATC","ATAGGATC","CTAGGATC","GTAGGATC","TTAGGATC",
+ "AACGGATC","CACGGATC","GACGGATC","TACGGATC","ACCGGATC","CCCGGATC","GCCGGATC","TCCGGATC",
+ "AGCGGATC","CGCGGATC","GGCGGATC","TGCGGATC","ATCGGATC","CTCGGATC","GTCGGATC","TTCGGATC",
+ "AAGGGATC","CAGGGATC","GAGGGATC","TAGGGATC","ACGGGATC","CCGGGATC","GCGGGATC","TCGGGATC",
+ "AGGGGATC","CGGGGATC","GGGGGATC","TGGGGATC","ATGGGATC","CTGGGATC","GTGGGATC","TTGGGATC",
+ "AATGGATC","CATGGATC","GATGGATC","TATGGATC","ACTGGATC","CCTGGATC","GCTGGATC","TCTGGATC",
+ "AGTGGATC","CGTGGATC","GGTGGATC","TGTGGATC","ATTGGATC","CTTGGATC","GTTGGATC","TTTGGATC",
+ "AAATGATC","CAATGATC","GAATGATC","TAATGATC","ACATGATC","CCATGATC","GCATGATC","TCATGATC",
+ "AGATGATC","CGATGATC","GGATGATC","TGATGATC","ATATGATC","CTATGATC","GTATGATC","TTATGATC",
+ "AACTGATC","CACTGATC","GACTGATC","TACTGATC","ACCTGATC","CCCTGATC","GCCTGATC","TCCTGATC",
+ "AGCTGATC","CGCTGATC","GGCTGATC","TGCTGATC","ATCTGATC","CTCTGATC","GTCTGATC","TTCTGATC",
+ "AAGTGATC","CAGTGATC","GAGTGATC","TAGTGATC","ACGTGATC","CCGTGATC","GCGTGATC","TCGTGATC",
+ "AGGTGATC","CGGTGATC","GGGTGATC","TGGTGATC","ATGTGATC","CTGTGATC","GTGTGATC","TTGTGATC",
+ "AATTGATC","CATTGATC","GATTGATC","TATTGATC","ACTTGATC","CCTTGATC","GCTTGATC","TCTTGATC",
+ "AGTTGATC","CGTTGATC","GGTTGATC","TGTTGATC","ATTTGATC","CTTTGATC","GTTTGATC","TTTTGATC",
+ "AAAATATC","CAAATATC","GAAATATC","TAAATATC","ACAATATC","CCAATATC","GCAATATC","TCAATATC",
+ "AGAATATC","CGAATATC","GGAATATC","TGAATATC","ATAATATC","CTAATATC","GTAATATC","TTAATATC",
+ "AACATATC","CACATATC","GACATATC","TACATATC","ACCATATC","CCCATATC","GCCATATC","TCCATATC",
+ "AGCATATC","CGCATATC","GGCATATC","TGCATATC","ATCATATC","CTCATATC","GTCATATC","TTCATATC",
+ "AAGATATC","CAGATATC","GAGATATC","TAGATATC","ACGATATC","CCGATATC","GCGATATC","TCGATATC",
+ "AGGATATC","CGGATATC","GGGATATC","TGGATATC","ATGATATC","CTGATATC","GTGATATC","TTGATATC",
+ "AATATATC","CATATATC","GATATATC","TATATATC","ACTATATC","CCTATATC","GCTATATC","TCTATATC",
+ "AGTATATC","CGTATATC","GGTATATC","TGTATATC","ATTATATC","CTTATATC","GTTATATC","TTTATATC",
+ "AAACTATC","CAACTATC","GAACTATC","TAACTATC","ACACTATC","CCACTATC","GCACTATC","TCACTATC",
+ "AGACTATC","CGACTATC","GGACTATC","TGACTATC","ATACTATC","CTACTATC","GTACTATC","TTACTATC",
+ "AACCTATC","CACCTATC","GACCTATC","TACCTATC","ACCCTATC","CCCCTATC","GCCCTATC","TCCCTATC",
+ "AGCCTATC","CGCCTATC","GGCCTATC","TGCCTATC","ATCCTATC","CTCCTATC","GTCCTATC","TTCCTATC",
+ "AAGCTATC","CAGCTATC","GAGCTATC","TAGCTATC","ACGCTATC","CCGCTATC","GCGCTATC","TCGCTATC",
+ "AGGCTATC","CGGCTATC","GGGCTATC","TGGCTATC","ATGCTATC","CTGCTATC","GTGCTATC","TTGCTATC",
+ "AATCTATC","CATCTATC","GATCTATC","TATCTATC","ACTCTATC","CCTCTATC","GCTCTATC","TCTCTATC",
+ "AGTCTATC","CGTCTATC","GGTCTATC","TGTCTATC","ATTCTATC","CTTCTATC","GTTCTATC","TTTCTATC",
+ "AAAGTATC","CAAGTATC","GAAGTATC","TAAGTATC","ACAGTATC","CCAGTATC","GCAGTATC","TCAGTATC",
+ "AGAGTATC","CGAGTATC","GGAGTATC","TGAGTATC","ATAGTATC","CTAGTATC","GTAGTATC","TTAGTATC",
+ "AACGTATC","CACGTATC","GACGTATC","TACGTATC","ACCGTATC","CCCGTATC","GCCGTATC","TCCGTATC",
+ "AGCGTATC","CGCGTATC","GGCGTATC","TGCGTATC","ATCGTATC","CTCGTATC","GTCGTATC","TTCGTATC",
+ "AAGGTATC","CAGGTATC","GAGGTATC","TAGGTATC","ACGGTATC","CCGGTATC","GCGGTATC","TCGGTATC",
+ "AGGGTATC","CGGGTATC","GGGGTATC","TGGGTATC","ATGGTATC","CTGGTATC","GTGGTATC","TTGGTATC",
+ "AATGTATC","CATGTATC","GATGTATC","TATGTATC","ACTGTATC","CCTGTATC","GCTGTATC","TCTGTATC",
+ "AGTGTATC","CGTGTATC","GGTGTATC","TGTGTATC","ATTGTATC","CTTGTATC","GTTGTATC","TTTGTATC",
+ "AAATTATC","CAATTATC","GAATTATC","TAATTATC","ACATTATC","CCATTATC","GCATTATC","TCATTATC",
+ "AGATTATC","CGATTATC","GGATTATC","TGATTATC","ATATTATC","CTATTATC","GTATTATC","TTATTATC",
+ "AACTTATC","CACTTATC","GACTTATC","TACTTATC","ACCTTATC","CCCTTATC","GCCTTATC","TCCTTATC",
+ "AGCTTATC","CGCTTATC","GGCTTATC","TGCTTATC","ATCTTATC","CTCTTATC","GTCTTATC","TTCTTATC",
+ "AAGTTATC","CAGTTATC","GAGTTATC","TAGTTATC","ACGTTATC","CCGTTATC","GCGTTATC","TCGTTATC",
+ "AGGTTATC","CGGTTATC","GGGTTATC","TGGTTATC","ATGTTATC","CTGTTATC","GTGTTATC","TTGTTATC",
+ "AATTTATC","CATTTATC","GATTTATC","TATTTATC","ACTTTATC","CCTTTATC","GCTTTATC","TCTTTATC",
+ "AGTTTATC","CGTTTATC","GGTTTATC","TGTTTATC","ATTTTATC","CTTTTATC","GTTTTATC","TTTTTATC",
+ "AAAAACTC","CAAAACTC","GAAAACTC","TAAAACTC","ACAAACTC","CCAAACTC","GCAAACTC","TCAAACTC",
+ "AGAAACTC","CGAAACTC","GGAAACTC","TGAAACTC","ATAAACTC","CTAAACTC","GTAAACTC","TTAAACTC",
+ "AACAACTC","CACAACTC","GACAACTC","TACAACTC","ACCAACTC","CCCAACTC","GCCAACTC","TCCAACTC",
+ "AGCAACTC","CGCAACTC","GGCAACTC","TGCAACTC","ATCAACTC","CTCAACTC","GTCAACTC","TTCAACTC",
+ "AAGAACTC","CAGAACTC","GAGAACTC","TAGAACTC","ACGAACTC","CCGAACTC","GCGAACTC","TCGAACTC",
+ "AGGAACTC","CGGAACTC","GGGAACTC","TGGAACTC","ATGAACTC","CTGAACTC","GTGAACTC","TTGAACTC",
+ "AATAACTC","CATAACTC","GATAACTC","TATAACTC","ACTAACTC","CCTAACTC","GCTAACTC","TCTAACTC",
+ "AGTAACTC","CGTAACTC","GGTAACTC","TGTAACTC","ATTAACTC","CTTAACTC","GTTAACTC","TTTAACTC",
+ "AAACACTC","CAACACTC","GAACACTC","TAACACTC","ACACACTC","CCACACTC","GCACACTC","TCACACTC",
+ "AGACACTC","CGACACTC","GGACACTC","TGACACTC","ATACACTC","CTACACTC","GTACACTC","TTACACTC",
+ "AACCACTC","CACCACTC","GACCACTC","TACCACTC","ACCCACTC","CCCCACTC","GCCCACTC","TCCCACTC",
+ "AGCCACTC","CGCCACTC","GGCCACTC","TGCCACTC","ATCCACTC","CTCCACTC","GTCCACTC","TTCCACTC",
+ "AAGCACTC","CAGCACTC","GAGCACTC","TAGCACTC","ACGCACTC","CCGCACTC","GCGCACTC","TCGCACTC",
+ "AGGCACTC","CGGCACTC","GGGCACTC","TGGCACTC","ATGCACTC","CTGCACTC","GTGCACTC","TTGCACTC",
+ "AATCACTC","CATCACTC","GATCACTC","TATCACTC","ACTCACTC","CCTCACTC","GCTCACTC","TCTCACTC",
+ "AGTCACTC","CGTCACTC","GGTCACTC","TGTCACTC","ATTCACTC","CTTCACTC","GTTCACTC","TTTCACTC",
+ "AAAGACTC","CAAGACTC","GAAGACTC","TAAGACTC","ACAGACTC","CCAGACTC","GCAGACTC","TCAGACTC",
+ "AGAGACTC","CGAGACTC","GGAGACTC","TGAGACTC","ATAGACTC","CTAGACTC","GTAGACTC","TTAGACTC",
+ "AACGACTC","CACGACTC","GACGACTC","TACGACTC","ACCGACTC","CCCGACTC","GCCGACTC","TCCGACTC",
+ "AGCGACTC","CGCGACTC","GGCGACTC","TGCGACTC","ATCGACTC","CTCGACTC","GTCGACTC","TTCGACTC",
+ "AAGGACTC","CAGGACTC","GAGGACTC","TAGGACTC","ACGGACTC","CCGGACTC","GCGGACTC","TCGGACTC",
+ "AGGGACTC","CGGGACTC","GGGGACTC","TGGGACTC","ATGGACTC","CTGGACTC","GTGGACTC","TTGGACTC",
+ "AATGACTC","CATGACTC","GATGACTC","TATGACTC","ACTGACTC","CCTGACTC","GCTGACTC","TCTGACTC",
+ "AGTGACTC","CGTGACTC","GGTGACTC","TGTGACTC","ATTGACTC","CTTGACTC","GTTGACTC","TTTGACTC",
+ "AAATACTC","CAATACTC","GAATACTC","TAATACTC","ACATACTC","CCATACTC","GCATACTC","TCATACTC",
+ "AGATACTC","CGATACTC","GGATACTC","TGATACTC","ATATACTC","CTATACTC","GTATACTC","TTATACTC",
+ "AACTACTC","CACTACTC","GACTACTC","TACTACTC","ACCTACTC","CCCTACTC","GCCTACTC","TCCTACTC",
+ "AGCTACTC","CGCTACTC","GGCTACTC","TGCTACTC","ATCTACTC","CTCTACTC","GTCTACTC","TTCTACTC",
+ "AAGTACTC","CAGTACTC","GAGTACTC","TAGTACTC","ACGTACTC","CCGTACTC","GCGTACTC","TCGTACTC",
+ "AGGTACTC","CGGTACTC","GGGTACTC","TGGTACTC","ATGTACTC","CTGTACTC","GTGTACTC","TTGTACTC",
+ "AATTACTC","CATTACTC","GATTACTC","TATTACTC","ACTTACTC","CCTTACTC","GCTTACTC","TCTTACTC",
+ "AGTTACTC","CGTTACTC","GGTTACTC","TGTTACTC","ATTTACTC","CTTTACTC","GTTTACTC","TTTTACTC",
+ "AAAACCTC","CAAACCTC","GAAACCTC","TAAACCTC","ACAACCTC","CCAACCTC","GCAACCTC","TCAACCTC",
+ "AGAACCTC","CGAACCTC","GGAACCTC","TGAACCTC","ATAACCTC","CTAACCTC","GTAACCTC","TTAACCTC",
+ "AACACCTC","CACACCTC","GACACCTC","TACACCTC","ACCACCTC","CCCACCTC","GCCACCTC","TCCACCTC",
+ "AGCACCTC","CGCACCTC","GGCACCTC","TGCACCTC","ATCACCTC","CTCACCTC","GTCACCTC","TTCACCTC",
+ "AAGACCTC","CAGACCTC","GAGACCTC","TAGACCTC","ACGACCTC","CCGACCTC","GCGACCTC","TCGACCTC",
+ "AGGACCTC","CGGACCTC","GGGACCTC","TGGACCTC","ATGACCTC","CTGACCTC","GTGACCTC","TTGACCTC",
+ "AATACCTC","CATACCTC","GATACCTC","TATACCTC","ACTACCTC","CCTACCTC","GCTACCTC","TCTACCTC",
+ "AGTACCTC","CGTACCTC","GGTACCTC","TGTACCTC","ATTACCTC","CTTACCTC","GTTACCTC","TTTACCTC",
+ "AAACCCTC","CAACCCTC","GAACCCTC","TAACCCTC","ACACCCTC","CCACCCTC","GCACCCTC","TCACCCTC",
+ "AGACCCTC","CGACCCTC","GGACCCTC","TGACCCTC","ATACCCTC","CTACCCTC","GTACCCTC","TTACCCTC",
+ "AACCCCTC","CACCCCTC","GACCCCTC","TACCCCTC","ACCCCCTC","CCCCCCTC","GCCCCCTC","TCCCCCTC",
+ "AGCCCCTC","CGCCCCTC","GGCCCCTC","TGCCCCTC","ATCCCCTC","CTCCCCTC","GTCCCCTC","TTCCCCTC",
+ "AAGCCCTC","CAGCCCTC","GAGCCCTC","TAGCCCTC","ACGCCCTC","CCGCCCTC","GCGCCCTC","TCGCCCTC",
+ "AGGCCCTC","CGGCCCTC","GGGCCCTC","TGGCCCTC","ATGCCCTC","CTGCCCTC","GTGCCCTC","TTGCCCTC",
+ "AATCCCTC","CATCCCTC","GATCCCTC","TATCCCTC","ACTCCCTC","CCTCCCTC","GCTCCCTC","TCTCCCTC",
+ "AGTCCCTC","CGTCCCTC","GGTCCCTC","TGTCCCTC","ATTCCCTC","CTTCCCTC","GTTCCCTC","TTTCCCTC",
+ "AAAGCCTC","CAAGCCTC","GAAGCCTC","TAAGCCTC","ACAGCCTC","CCAGCCTC","GCAGCCTC","TCAGCCTC",
+ "AGAGCCTC","CGAGCCTC","GGAGCCTC","TGAGCCTC","ATAGCCTC","CTAGCCTC","GTAGCCTC","TTAGCCTC",
+ "AACGCCTC","CACGCCTC","GACGCCTC","TACGCCTC","ACCGCCTC","CCCGCCTC","GCCGCCTC","TCCGCCTC",
+ "AGCGCCTC","CGCGCCTC","GGCGCCTC","TGCGCCTC","ATCGCCTC","CTCGCCTC","GTCGCCTC","TTCGCCTC",
+ "AAGGCCTC","CAGGCCTC","GAGGCCTC","TAGGCCTC","ACGGCCTC","CCGGCCTC","GCGGCCTC","TCGGCCTC",
+ "AGGGCCTC","CGGGCCTC","GGGGCCTC","TGGGCCTC","ATGGCCTC","CTGGCCTC","GTGGCCTC","TTGGCCTC",
+ "AATGCCTC","CATGCCTC","GATGCCTC","TATGCCTC","ACTGCCTC","CCTGCCTC","GCTGCCTC","TCTGCCTC",
+ "AGTGCCTC","CGTGCCTC","GGTGCCTC","TGTGCCTC","ATTGCCTC","CTTGCCTC","GTTGCCTC","TTTGCCTC",
+ "AAATCCTC","CAATCCTC","GAATCCTC","TAATCCTC","ACATCCTC","CCATCCTC","GCATCCTC","TCATCCTC",
+ "AGATCCTC","CGATCCTC","GGATCCTC","TGATCCTC","ATATCCTC","CTATCCTC","GTATCCTC","TTATCCTC",
+ "AACTCCTC","CACTCCTC","GACTCCTC","TACTCCTC","ACCTCCTC","CCCTCCTC","GCCTCCTC","TCCTCCTC",
+ "AGCTCCTC","CGCTCCTC","GGCTCCTC","TGCTCCTC","ATCTCCTC","CTCTCCTC","GTCTCCTC","TTCTCCTC",
+ "AAGTCCTC","CAGTCCTC","GAGTCCTC","TAGTCCTC","ACGTCCTC","CCGTCCTC","GCGTCCTC","TCGTCCTC",
+ "AGGTCCTC","CGGTCCTC","GGGTCCTC","TGGTCCTC","ATGTCCTC","CTGTCCTC","GTGTCCTC","TTGTCCTC",
+ "AATTCCTC","CATTCCTC","GATTCCTC","TATTCCTC","ACTTCCTC","CCTTCCTC","GCTTCCTC","TCTTCCTC",
+ "AGTTCCTC","CGTTCCTC","GGTTCCTC","TGTTCCTC","ATTTCCTC","CTTTCCTC","GTTTCCTC","TTTTCCTC",
+ "AAAAGCTC","CAAAGCTC","GAAAGCTC","TAAAGCTC","ACAAGCTC","CCAAGCTC","GCAAGCTC","TCAAGCTC",
+ "AGAAGCTC","CGAAGCTC","GGAAGCTC","TGAAGCTC","ATAAGCTC","CTAAGCTC","GTAAGCTC","TTAAGCTC",
+ "AACAGCTC","CACAGCTC","GACAGCTC","TACAGCTC","ACCAGCTC","CCCAGCTC","GCCAGCTC","TCCAGCTC",
+ "AGCAGCTC","CGCAGCTC","GGCAGCTC","TGCAGCTC","ATCAGCTC","CTCAGCTC","GTCAGCTC","TTCAGCTC",
+ "AAGAGCTC","CAGAGCTC","GAGAGCTC","TAGAGCTC","ACGAGCTC","CCGAGCTC","GCGAGCTC","TCGAGCTC",
+ "AGGAGCTC","CGGAGCTC","GGGAGCTC","TGGAGCTC","ATGAGCTC","CTGAGCTC","GTGAGCTC","TTGAGCTC",
+ "AATAGCTC","CATAGCTC","GATAGCTC","TATAGCTC","ACTAGCTC","CCTAGCTC","GCTAGCTC","TCTAGCTC",
+ "AGTAGCTC","CGTAGCTC","GGTAGCTC","TGTAGCTC","ATTAGCTC","CTTAGCTC","GTTAGCTC","TTTAGCTC",
+ "AAACGCTC","CAACGCTC","GAACGCTC","TAACGCTC","ACACGCTC","CCACGCTC","GCACGCTC","TCACGCTC",
+ "AGACGCTC","CGACGCTC","GGACGCTC","TGACGCTC","ATACGCTC","CTACGCTC","GTACGCTC","TTACGCTC",
+ "AACCGCTC","CACCGCTC","GACCGCTC","TACCGCTC","ACCCGCTC","CCCCGCTC","GCCCGCTC","TCCCGCTC",
+ "AGCCGCTC","CGCCGCTC","GGCCGCTC","TGCCGCTC","ATCCGCTC","CTCCGCTC","GTCCGCTC","TTCCGCTC",
+ "AAGCGCTC","CAGCGCTC","GAGCGCTC","TAGCGCTC","ACGCGCTC","CCGCGCTC","GCGCGCTC","TCGCGCTC",
+ "AGGCGCTC","CGGCGCTC","GGGCGCTC","TGGCGCTC","ATGCGCTC","CTGCGCTC","GTGCGCTC","TTGCGCTC",
+ "AATCGCTC","CATCGCTC","GATCGCTC","TATCGCTC","ACTCGCTC","CCTCGCTC","GCTCGCTC","TCTCGCTC",
+ "AGTCGCTC","CGTCGCTC","GGTCGCTC","TGTCGCTC","ATTCGCTC","CTTCGCTC","GTTCGCTC","TTTCGCTC",
+ "AAAGGCTC","CAAGGCTC","GAAGGCTC","TAAGGCTC","ACAGGCTC","CCAGGCTC","GCAGGCTC","TCAGGCTC",
+ "AGAGGCTC","CGAGGCTC","GGAGGCTC","TGAGGCTC","ATAGGCTC","CTAGGCTC","GTAGGCTC","TTAGGCTC",
+ "AACGGCTC","CACGGCTC","GACGGCTC","TACGGCTC","ACCGGCTC","CCCGGCTC","GCCGGCTC","TCCGGCTC",
+ "AGCGGCTC","CGCGGCTC","GGCGGCTC","TGCGGCTC","ATCGGCTC","CTCGGCTC","GTCGGCTC","TTCGGCTC",
+ "AAGGGCTC","CAGGGCTC","GAGGGCTC","TAGGGCTC","ACGGGCTC","CCGGGCTC","GCGGGCTC","TCGGGCTC",
+ "AGGGGCTC","CGGGGCTC","GGGGGCTC","TGGGGCTC","ATGGGCTC","CTGGGCTC","GTGGGCTC","TTGGGCTC",
+ "AATGGCTC","CATGGCTC","GATGGCTC","TATGGCTC","ACTGGCTC","CCTGGCTC","GCTGGCTC","TCTGGCTC",
+ "AGTGGCTC","CGTGGCTC","GGTGGCTC","TGTGGCTC","ATTGGCTC","CTTGGCTC","GTTGGCTC","TTTGGCTC",
+ "AAATGCTC","CAATGCTC","GAATGCTC","TAATGCTC","ACATGCTC","CCATGCTC","GCATGCTC","TCATGCTC",
+ "AGATGCTC","CGATGCTC","GGATGCTC","TGATGCTC","ATATGCTC","CTATGCTC","GTATGCTC","TTATGCTC",
+ "AACTGCTC","CACTGCTC","GACTGCTC","TACTGCTC","ACCTGCTC","CCCTGCTC","GCCTGCTC","TCCTGCTC",
+ "AGCTGCTC","CGCTGCTC","GGCTGCTC","TGCTGCTC","ATCTGCTC","CTCTGCTC","GTCTGCTC","TTCTGCTC",
+ "AAGTGCTC","CAGTGCTC","GAGTGCTC","TAGTGCTC","ACGTGCTC","CCGTGCTC","GCGTGCTC","TCGTGCTC",
+ "AGGTGCTC","CGGTGCTC","GGGTGCTC","TGGTGCTC","ATGTGCTC","CTGTGCTC","GTGTGCTC","TTGTGCTC",
+ "AATTGCTC","CATTGCTC","GATTGCTC","TATTGCTC","ACTTGCTC","CCTTGCTC","GCTTGCTC","TCTTGCTC",
+ "AGTTGCTC","CGTTGCTC","GGTTGCTC","TGTTGCTC","ATTTGCTC","CTTTGCTC","GTTTGCTC","TTTTGCTC",
+ "AAAATCTC","CAAATCTC","GAAATCTC","TAAATCTC","ACAATCTC","CCAATCTC","GCAATCTC","TCAATCTC",
+ "AGAATCTC","CGAATCTC","GGAATCTC","TGAATCTC","ATAATCTC","CTAATCTC","GTAATCTC","TTAATCTC",
+ "AACATCTC","CACATCTC","GACATCTC","TACATCTC","ACCATCTC","CCCATCTC","GCCATCTC","TCCATCTC",
+ "AGCATCTC","CGCATCTC","GGCATCTC","TGCATCTC","ATCATCTC","CTCATCTC","GTCATCTC","TTCATCTC",
+ "AAGATCTC","CAGATCTC","GAGATCTC","TAGATCTC","ACGATCTC","CCGATCTC","GCGATCTC","TCGATCTC",
+ "AGGATCTC","CGGATCTC","GGGATCTC","TGGATCTC","ATGATCTC","CTGATCTC","GTGATCTC","TTGATCTC",
+ "AATATCTC","CATATCTC","GATATCTC","TATATCTC","ACTATCTC","CCTATCTC","GCTATCTC","TCTATCTC",
+ "AGTATCTC","CGTATCTC","GGTATCTC","TGTATCTC","ATTATCTC","CTTATCTC","GTTATCTC","TTTATCTC",
+ "AAACTCTC","CAACTCTC","GAACTCTC","TAACTCTC","ACACTCTC","CCACTCTC","GCACTCTC","TCACTCTC",
+ "AGACTCTC","CGACTCTC","GGACTCTC","TGACTCTC","ATACTCTC","CTACTCTC","GTACTCTC","TTACTCTC",
+ "AACCTCTC","CACCTCTC","GACCTCTC","TACCTCTC","ACCCTCTC","CCCCTCTC","GCCCTCTC","TCCCTCTC",
+ "AGCCTCTC","CGCCTCTC","GGCCTCTC","TGCCTCTC","ATCCTCTC","CTCCTCTC","GTCCTCTC","TTCCTCTC",
+ "AAGCTCTC","CAGCTCTC","GAGCTCTC","TAGCTCTC","ACGCTCTC","CCGCTCTC","GCGCTCTC","TCGCTCTC",
+ "AGGCTCTC","CGGCTCTC","GGGCTCTC","TGGCTCTC","ATGCTCTC","CTGCTCTC","GTGCTCTC","TTGCTCTC",
+ "AATCTCTC","CATCTCTC","GATCTCTC","TATCTCTC","ACTCTCTC","CCTCTCTC","GCTCTCTC","TCTCTCTC",
+ "AGTCTCTC","CGTCTCTC","GGTCTCTC","TGTCTCTC","ATTCTCTC","CTTCTCTC","GTTCTCTC","TTTCTCTC",
+ "AAAGTCTC","CAAGTCTC","GAAGTCTC","TAAGTCTC","ACAGTCTC","CCAGTCTC","GCAGTCTC","TCAGTCTC",
+ "AGAGTCTC","CGAGTCTC","GGAGTCTC","TGAGTCTC","ATAGTCTC","CTAGTCTC","GTAGTCTC","TTAGTCTC",
+ "AACGTCTC","CACGTCTC","GACGTCTC","TACGTCTC","ACCGTCTC","CCCGTCTC","GCCGTCTC","TCCGTCTC",
+ "AGCGTCTC","CGCGTCTC","GGCGTCTC","TGCGTCTC","ATCGTCTC","CTCGTCTC","GTCGTCTC","TTCGTCTC",
+ "AAGGTCTC","CAGGTCTC","GAGGTCTC","TAGGTCTC","ACGGTCTC","CCGGTCTC","GCGGTCTC","TCGGTCTC",
+ "AGGGTCTC","CGGGTCTC","GGGGTCTC","TGGGTCTC","ATGGTCTC","CTGGTCTC","GTGGTCTC","TTGGTCTC",
+ "AATGTCTC","CATGTCTC","GATGTCTC","TATGTCTC","ACTGTCTC","CCTGTCTC","GCTGTCTC","TCTGTCTC",
+ "AGTGTCTC","CGTGTCTC","GGTGTCTC","TGTGTCTC","ATTGTCTC","CTTGTCTC","GTTGTCTC","TTTGTCTC",
+ "AAATTCTC","CAATTCTC","GAATTCTC","TAATTCTC","ACATTCTC","CCATTCTC","GCATTCTC","TCATTCTC",
+ "AGATTCTC","CGATTCTC","GGATTCTC","TGATTCTC","ATATTCTC","CTATTCTC","GTATTCTC","TTATTCTC",
+ "AACTTCTC","CACTTCTC","GACTTCTC","TACTTCTC","ACCTTCTC","CCCTTCTC","GCCTTCTC","TCCTTCTC",
+ "AGCTTCTC","CGCTTCTC","GGCTTCTC","TGCTTCTC","ATCTTCTC","CTCTTCTC","GTCTTCTC","TTCTTCTC",
+ "AAGTTCTC","CAGTTCTC","GAGTTCTC","TAGTTCTC","ACGTTCTC","CCGTTCTC","GCGTTCTC","TCGTTCTC",
+ "AGGTTCTC","CGGTTCTC","GGGTTCTC","TGGTTCTC","ATGTTCTC","CTGTTCTC","GTGTTCTC","TTGTTCTC",
+ "AATTTCTC","CATTTCTC","GATTTCTC","TATTTCTC","ACTTTCTC","CCTTTCTC","GCTTTCTC","TCTTTCTC",
+ "AGTTTCTC","CGTTTCTC","GGTTTCTC","TGTTTCTC","ATTTTCTC","CTTTTCTC","GTTTTCTC","TTTTTCTC",
+ "AAAAAGTC","CAAAAGTC","GAAAAGTC","TAAAAGTC","ACAAAGTC","CCAAAGTC","GCAAAGTC","TCAAAGTC",
+ "AGAAAGTC","CGAAAGTC","GGAAAGTC","TGAAAGTC","ATAAAGTC","CTAAAGTC","GTAAAGTC","TTAAAGTC",
+ "AACAAGTC","CACAAGTC","GACAAGTC","TACAAGTC","ACCAAGTC","CCCAAGTC","GCCAAGTC","TCCAAGTC",
+ "AGCAAGTC","CGCAAGTC","GGCAAGTC","TGCAAGTC","ATCAAGTC","CTCAAGTC","GTCAAGTC","TTCAAGTC",
+ "AAGAAGTC","CAGAAGTC","GAGAAGTC","TAGAAGTC","ACGAAGTC","CCGAAGTC","GCGAAGTC","TCGAAGTC",
+ "AGGAAGTC","CGGAAGTC","GGGAAGTC","TGGAAGTC","ATGAAGTC","CTGAAGTC","GTGAAGTC","TTGAAGTC",
+ "AATAAGTC","CATAAGTC","GATAAGTC","TATAAGTC","ACTAAGTC","CCTAAGTC","GCTAAGTC","TCTAAGTC",
+ "AGTAAGTC","CGTAAGTC","GGTAAGTC","TGTAAGTC","ATTAAGTC","CTTAAGTC","GTTAAGTC","TTTAAGTC",
+ "AAACAGTC","CAACAGTC","GAACAGTC","TAACAGTC","ACACAGTC","CCACAGTC","GCACAGTC","TCACAGTC",
+ "AGACAGTC","CGACAGTC","GGACAGTC","TGACAGTC","ATACAGTC","CTACAGTC","GTACAGTC","TTACAGTC",
+ "AACCAGTC","CACCAGTC","GACCAGTC","TACCAGTC","ACCCAGTC","CCCCAGTC","GCCCAGTC","TCCCAGTC",
+ "AGCCAGTC","CGCCAGTC","GGCCAGTC","TGCCAGTC","ATCCAGTC","CTCCAGTC","GTCCAGTC","TTCCAGTC",
+ "AAGCAGTC","CAGCAGTC","GAGCAGTC","TAGCAGTC","ACGCAGTC","CCGCAGTC","GCGCAGTC","TCGCAGTC",
+ "AGGCAGTC","CGGCAGTC","GGGCAGTC","TGGCAGTC","ATGCAGTC","CTGCAGTC","GTGCAGTC","TTGCAGTC",
+ "AATCAGTC","CATCAGTC","GATCAGTC","TATCAGTC","ACTCAGTC","CCTCAGTC","GCTCAGTC","TCTCAGTC",
+ "AGTCAGTC","CGTCAGTC","GGTCAGTC","TGTCAGTC","ATTCAGTC","CTTCAGTC","GTTCAGTC","TTTCAGTC",
+ "AAAGAGTC","CAAGAGTC","GAAGAGTC","TAAGAGTC","ACAGAGTC","CCAGAGTC","GCAGAGTC","TCAGAGTC",
+ "AGAGAGTC","CGAGAGTC","GGAGAGTC","TGAGAGTC","ATAGAGTC","CTAGAGTC","GTAGAGTC","TTAGAGTC",
+ "AACGAGTC","CACGAGTC","GACGAGTC","TACGAGTC","ACCGAGTC","CCCGAGTC","GCCGAGTC","TCCGAGTC",
+ "AGCGAGTC","CGCGAGTC","GGCGAGTC","TGCGAGTC","ATCGAGTC","CTCGAGTC","GTCGAGTC","TTCGAGTC",
+ "AAGGAGTC","CAGGAGTC","GAGGAGTC","TAGGAGTC","ACGGAGTC","CCGGAGTC","GCGGAGTC","TCGGAGTC",
+ "AGGGAGTC","CGGGAGTC","GGGGAGTC","TGGGAGTC","ATGGAGTC","CTGGAGTC","GTGGAGTC","TTGGAGTC",
+ "AATGAGTC","CATGAGTC","GATGAGTC","TATGAGTC","ACTGAGTC","CCTGAGTC","GCTGAGTC","TCTGAGTC",
+ "AGTGAGTC","CGTGAGTC","GGTGAGTC","TGTGAGTC","ATTGAGTC","CTTGAGTC","GTTGAGTC","TTTGAGTC",
+ "AAATAGTC","CAATAGTC","GAATAGTC","TAATAGTC","ACATAGTC","CCATAGTC","GCATAGTC","TCATAGTC",
+ "AGATAGTC","CGATAGTC","GGATAGTC","TGATAGTC","ATATAGTC","CTATAGTC","GTATAGTC","TTATAGTC",
+ "AACTAGTC","CACTAGTC","GACTAGTC","TACTAGTC","ACCTAGTC","CCCTAGTC","GCCTAGTC","TCCTAGTC",
+ "AGCTAGTC","CGCTAGTC","GGCTAGTC","TGCTAGTC","ATCTAGTC","CTCTAGTC","GTCTAGTC","TTCTAGTC",
+ "AAGTAGTC","CAGTAGTC","GAGTAGTC","TAGTAGTC","ACGTAGTC","CCGTAGTC","GCGTAGTC","TCGTAGTC",
+ "AGGTAGTC","CGGTAGTC","GGGTAGTC","TGGTAGTC","ATGTAGTC","CTGTAGTC","GTGTAGTC","TTGTAGTC",
+ "AATTAGTC","CATTAGTC","GATTAGTC","TATTAGTC","ACTTAGTC","CCTTAGTC","GCTTAGTC","TCTTAGTC",
+ "AGTTAGTC","CGTTAGTC","GGTTAGTC","TGTTAGTC","ATTTAGTC","CTTTAGTC","GTTTAGTC","TTTTAGTC",
+ "AAAACGTC","CAAACGTC","GAAACGTC","TAAACGTC","ACAACGTC","CCAACGTC","GCAACGTC","TCAACGTC",
+ "AGAACGTC","CGAACGTC","GGAACGTC","TGAACGTC","ATAACGTC","CTAACGTC","GTAACGTC","TTAACGTC",
+ "AACACGTC","CACACGTC","GACACGTC","TACACGTC","ACCACGTC","CCCACGTC","GCCACGTC","TCCACGTC",
+ "AGCACGTC","CGCACGTC","GGCACGTC","TGCACGTC","ATCACGTC","CTCACGTC","GTCACGTC","TTCACGTC",
+ "AAGACGTC","CAGACGTC","GAGACGTC","TAGACGTC","ACGACGTC","CCGACGTC","GCGACGTC","TCGACGTC",
+ "AGGACGTC","CGGACGTC","GGGACGTC","TGGACGTC","ATGACGTC","CTGACGTC","GTGACGTC","TTGACGTC",
+ "AATACGTC","CATACGTC","GATACGTC","TATACGTC","ACTACGTC","CCTACGTC","GCTACGTC","TCTACGTC",
+ "AGTACGTC","CGTACGTC","GGTACGTC","TGTACGTC","ATTACGTC","CTTACGTC","GTTACGTC","TTTACGTC",
+ "AAACCGTC","CAACCGTC","GAACCGTC","TAACCGTC","ACACCGTC","CCACCGTC","GCACCGTC","TCACCGTC",
+ "AGACCGTC","CGACCGTC","GGACCGTC","TGACCGTC","ATACCGTC","CTACCGTC","GTACCGTC","TTACCGTC",
+ "AACCCGTC","CACCCGTC","GACCCGTC","TACCCGTC","ACCCCGTC","CCCCCGTC","GCCCCGTC","TCCCCGTC",
+ "AGCCCGTC","CGCCCGTC","GGCCCGTC","TGCCCGTC","ATCCCGTC","CTCCCGTC","GTCCCGTC","TTCCCGTC",
+ "AAGCCGTC","CAGCCGTC","GAGCCGTC","TAGCCGTC","ACGCCGTC","CCGCCGTC","GCGCCGTC","TCGCCGTC",
+ "AGGCCGTC","CGGCCGTC","GGGCCGTC","TGGCCGTC","ATGCCGTC","CTGCCGTC","GTGCCGTC","TTGCCGTC",
+ "AATCCGTC","CATCCGTC","GATCCGTC","TATCCGTC","ACTCCGTC","CCTCCGTC","GCTCCGTC","TCTCCGTC",
+ "AGTCCGTC","CGTCCGTC","GGTCCGTC","TGTCCGTC","ATTCCGTC","CTTCCGTC","GTTCCGTC","TTTCCGTC",
+ "AAAGCGTC","CAAGCGTC","GAAGCGTC","TAAGCGTC","ACAGCGTC","CCAGCGTC","GCAGCGTC","TCAGCGTC",
+ "AGAGCGTC","CGAGCGTC","GGAGCGTC","TGAGCGTC","ATAGCGTC","CTAGCGTC","GTAGCGTC","TTAGCGTC",
+ "AACGCGTC","CACGCGTC","GACGCGTC","TACGCGTC","ACCGCGTC","CCCGCGTC","GCCGCGTC","TCCGCGTC",
+ "AGCGCGTC","CGCGCGTC","GGCGCGTC","TGCGCGTC","ATCGCGTC","CTCGCGTC","GTCGCGTC","TTCGCGTC",
+ "AAGGCGTC","CAGGCGTC","GAGGCGTC","TAGGCGTC","ACGGCGTC","CCGGCGTC","GCGGCGTC","TCGGCGTC",
+ "AGGGCGTC","CGGGCGTC","GGGGCGTC","TGGGCGTC","ATGGCGTC","CTGGCGTC","GTGGCGTC","TTGGCGTC",
+ "AATGCGTC","CATGCGTC","GATGCGTC","TATGCGTC","ACTGCGTC","CCTGCGTC","GCTGCGTC","TCTGCGTC",
+ "AGTGCGTC","CGTGCGTC","GGTGCGTC","TGTGCGTC","ATTGCGTC","CTTGCGTC","GTTGCGTC","TTTGCGTC",
+ "AAATCGTC","CAATCGTC","GAATCGTC","TAATCGTC","ACATCGTC","CCATCGTC","GCATCGTC","TCATCGTC",
+ "AGATCGTC","CGATCGTC","GGATCGTC","TGATCGTC","ATATCGTC","CTATCGTC","GTATCGTC","TTATCGTC",
+ "AACTCGTC","CACTCGTC","GACTCGTC","TACTCGTC","ACCTCGTC","CCCTCGTC","GCCTCGTC","TCCTCGTC",
+ "AGCTCGTC","CGCTCGTC","GGCTCGTC","TGCTCGTC","ATCTCGTC","CTCTCGTC","GTCTCGTC","TTCTCGTC",
+ "AAGTCGTC","CAGTCGTC","GAGTCGTC","TAGTCGTC","ACGTCGTC","CCGTCGTC","GCGTCGTC","TCGTCGTC",
+ "AGGTCGTC","CGGTCGTC","GGGTCGTC","TGGTCGTC","ATGTCGTC","CTGTCGTC","GTGTCGTC","TTGTCGTC",
+ "AATTCGTC","CATTCGTC","GATTCGTC","TATTCGTC","ACTTCGTC","CCTTCGTC","GCTTCGTC","TCTTCGTC",
+ "AGTTCGTC","CGTTCGTC","GGTTCGTC","TGTTCGTC","ATTTCGTC","CTTTCGTC","GTTTCGTC","TTTTCGTC",
+ "AAAAGGTC","CAAAGGTC","GAAAGGTC","TAAAGGTC","ACAAGGTC","CCAAGGTC","GCAAGGTC","TCAAGGTC",
+ "AGAAGGTC","CGAAGGTC","GGAAGGTC","TGAAGGTC","ATAAGGTC","CTAAGGTC","GTAAGGTC","TTAAGGTC",
+ "AACAGGTC","CACAGGTC","GACAGGTC","TACAGGTC","ACCAGGTC","CCCAGGTC","GCCAGGTC","TCCAGGTC",
+ "AGCAGGTC","CGCAGGTC","GGCAGGTC","TGCAGGTC","ATCAGGTC","CTCAGGTC","GTCAGGTC","TTCAGGTC",
+ "AAGAGGTC","CAGAGGTC","GAGAGGTC","TAGAGGTC","ACGAGGTC","CCGAGGTC","GCGAGGTC","TCGAGGTC",
+ "AGGAGGTC","CGGAGGTC","GGGAGGTC","TGGAGGTC","ATGAGGTC","CTGAGGTC","GTGAGGTC","TTGAGGTC",
+ "AATAGGTC","CATAGGTC","GATAGGTC","TATAGGTC","ACTAGGTC","CCTAGGTC","GCTAGGTC","TCTAGGTC",
+ "AGTAGGTC","CGTAGGTC","GGTAGGTC","TGTAGGTC","ATTAGGTC","CTTAGGTC","GTTAGGTC","TTTAGGTC",
+ "AAACGGTC","CAACGGTC","GAACGGTC","TAACGGTC","ACACGGTC","CCACGGTC","GCACGGTC","TCACGGTC",
+ "AGACGGTC","CGACGGTC","GGACGGTC","TGACGGTC","ATACGGTC","CTACGGTC","GTACGGTC","TTACGGTC",
+ "AACCGGTC","CACCGGTC","GACCGGTC","TACCGGTC","ACCCGGTC","CCCCGGTC","GCCCGGTC","TCCCGGTC",
+ "AGCCGGTC","CGCCGGTC","GGCCGGTC","TGCCGGTC","ATCCGGTC","CTCCGGTC","GTCCGGTC","TTCCGGTC",
+ "AAGCGGTC","CAGCGGTC","GAGCGGTC","TAGCGGTC","ACGCGGTC","CCGCGGTC","GCGCGGTC","TCGCGGTC",
+ "AGGCGGTC","CGGCGGTC","GGGCGGTC","TGGCGGTC","ATGCGGTC","CTGCGGTC","GTGCGGTC","TTGCGGTC",
+ "AATCGGTC","CATCGGTC","GATCGGTC","TATCGGTC","ACTCGGTC","CCTCGGTC","GCTCGGTC","TCTCGGTC",
+ "AGTCGGTC","CGTCGGTC","GGTCGGTC","TGTCGGTC","ATTCGGTC","CTTCGGTC","GTTCGGTC","TTTCGGTC",
+ "AAAGGGTC","CAAGGGTC","GAAGGGTC","TAAGGGTC","ACAGGGTC","CCAGGGTC","GCAGGGTC","TCAGGGTC",
+ "AGAGGGTC","CGAGGGTC","GGAGGGTC","TGAGGGTC","ATAGGGTC","CTAGGGTC","GTAGGGTC","TTAGGGTC",
+ "AACGGGTC","CACGGGTC","GACGGGTC","TACGGGTC","ACCGGGTC","CCCGGGTC","GCCGGGTC","TCCGGGTC",
+ "AGCGGGTC","CGCGGGTC","GGCGGGTC","TGCGGGTC","ATCGGGTC","CTCGGGTC","GTCGGGTC","TTCGGGTC",
+ "AAGGGGTC","CAGGGGTC","GAGGGGTC","TAGGGGTC","ACGGGGTC","CCGGGGTC","GCGGGGTC","TCGGGGTC",
+ "AGGGGGTC","CGGGGGTC","GGGGGGTC","TGGGGGTC","ATGGGGTC","CTGGGGTC","GTGGGGTC","TTGGGGTC",
+ "AATGGGTC","CATGGGTC","GATGGGTC","TATGGGTC","ACTGGGTC","CCTGGGTC","GCTGGGTC","TCTGGGTC",
+ "AGTGGGTC","CGTGGGTC","GGTGGGTC","TGTGGGTC","ATTGGGTC","CTTGGGTC","GTTGGGTC","TTTGGGTC",
+ "AAATGGTC","CAATGGTC","GAATGGTC","TAATGGTC","ACATGGTC","CCATGGTC","GCATGGTC","TCATGGTC",
+ "AGATGGTC","CGATGGTC","GGATGGTC","TGATGGTC","ATATGGTC","CTATGGTC","GTATGGTC","TTATGGTC",
+ "AACTGGTC","CACTGGTC","GACTGGTC","TACTGGTC","ACCTGGTC","CCCTGGTC","GCCTGGTC","TCCTGGTC",
+ "AGCTGGTC","CGCTGGTC","GGCTGGTC","TGCTGGTC","ATCTGGTC","CTCTGGTC","GTCTGGTC","TTCTGGTC",
+ "AAGTGGTC","CAGTGGTC","GAGTGGTC","TAGTGGTC","ACGTGGTC","CCGTGGTC","GCGTGGTC","TCGTGGTC",
+ "AGGTGGTC","CGGTGGTC","GGGTGGTC","TGGTGGTC","ATGTGGTC","CTGTGGTC","GTGTGGTC","TTGTGGTC",
+ "AATTGGTC","CATTGGTC","GATTGGTC","TATTGGTC","ACTTGGTC","CCTTGGTC","GCTTGGTC","TCTTGGTC",
+ "AGTTGGTC","CGTTGGTC","GGTTGGTC","TGTTGGTC","ATTTGGTC","CTTTGGTC","GTTTGGTC","TTTTGGTC",
+ "AAAATGTC","CAAATGTC","GAAATGTC","TAAATGTC","ACAATGTC","CCAATGTC","GCAATGTC","TCAATGTC",
+ "AGAATGTC","CGAATGTC","GGAATGTC","TGAATGTC","ATAATGTC","CTAATGTC","GTAATGTC","TTAATGTC",
+ "AACATGTC","CACATGTC","GACATGTC","TACATGTC","ACCATGTC","CCCATGTC","GCCATGTC","TCCATGTC",
+ "AGCATGTC","CGCATGTC","GGCATGTC","TGCATGTC","ATCATGTC","CTCATGTC","GTCATGTC","TTCATGTC",
+ "AAGATGTC","CAGATGTC","GAGATGTC","TAGATGTC","ACGATGTC","CCGATGTC","GCGATGTC","TCGATGTC",
+ "AGGATGTC","CGGATGTC","GGGATGTC","TGGATGTC","ATGATGTC","CTGATGTC","GTGATGTC","TTGATGTC",
+ "AATATGTC","CATATGTC","GATATGTC","TATATGTC","ACTATGTC","CCTATGTC","GCTATGTC","TCTATGTC",
+ "AGTATGTC","CGTATGTC","GGTATGTC","TGTATGTC","ATTATGTC","CTTATGTC","GTTATGTC","TTTATGTC",
+ "AAACTGTC","CAACTGTC","GAACTGTC","TAACTGTC","ACACTGTC","CCACTGTC","GCACTGTC","TCACTGTC",
+ "AGACTGTC","CGACTGTC","GGACTGTC","TGACTGTC","ATACTGTC","CTACTGTC","GTACTGTC","TTACTGTC",
+ "AACCTGTC","CACCTGTC","GACCTGTC","TACCTGTC","ACCCTGTC","CCCCTGTC","GCCCTGTC","TCCCTGTC",
+ "AGCCTGTC","CGCCTGTC","GGCCTGTC","TGCCTGTC","ATCCTGTC","CTCCTGTC","GTCCTGTC","TTCCTGTC",
+ "AAGCTGTC","CAGCTGTC","GAGCTGTC","TAGCTGTC","ACGCTGTC","CCGCTGTC","GCGCTGTC","TCGCTGTC",
+ "AGGCTGTC","CGGCTGTC","GGGCTGTC","TGGCTGTC","ATGCTGTC","CTGCTGTC","GTGCTGTC","TTGCTGTC",
+ "AATCTGTC","CATCTGTC","GATCTGTC","TATCTGTC","ACTCTGTC","CCTCTGTC","GCTCTGTC","TCTCTGTC",
+ "AGTCTGTC","CGTCTGTC","GGTCTGTC","TGTCTGTC","ATTCTGTC","CTTCTGTC","GTTCTGTC","TTTCTGTC",
+ "AAAGTGTC","CAAGTGTC","GAAGTGTC","TAAGTGTC","ACAGTGTC","CCAGTGTC","GCAGTGTC","TCAGTGTC",
+ "AGAGTGTC","CGAGTGTC","GGAGTGTC","TGAGTGTC","ATAGTGTC","CTAGTGTC","GTAGTGTC","TTAGTGTC",
+ "AACGTGTC","CACGTGTC","GACGTGTC","TACGTGTC","ACCGTGTC","CCCGTGTC","GCCGTGTC","TCCGTGTC",
+ "AGCGTGTC","CGCGTGTC","GGCGTGTC","TGCGTGTC","ATCGTGTC","CTCGTGTC","GTCGTGTC","TTCGTGTC",
+ "AAGGTGTC","CAGGTGTC","GAGGTGTC","TAGGTGTC","ACGGTGTC","CCGGTGTC","GCGGTGTC","TCGGTGTC",
+ "AGGGTGTC","CGGGTGTC","GGGGTGTC","TGGGTGTC","ATGGTGTC","CTGGTGTC","GTGGTGTC","TTGGTGTC",
+ "AATGTGTC","CATGTGTC","GATGTGTC","TATGTGTC","ACTGTGTC","CCTGTGTC","GCTGTGTC","TCTGTGTC",
+ "AGTGTGTC","CGTGTGTC","GGTGTGTC","TGTGTGTC","ATTGTGTC","CTTGTGTC","GTTGTGTC","TTTGTGTC",
+ "AAATTGTC","CAATTGTC","GAATTGTC","TAATTGTC","ACATTGTC","CCATTGTC","GCATTGTC","TCATTGTC",
+ "AGATTGTC","CGATTGTC","GGATTGTC","TGATTGTC","ATATTGTC","CTATTGTC","GTATTGTC","TTATTGTC",
+ "AACTTGTC","CACTTGTC","GACTTGTC","TACTTGTC","ACCTTGTC","CCCTTGTC","GCCTTGTC","TCCTTGTC",
+ "AGCTTGTC","CGCTTGTC","GGCTTGTC","TGCTTGTC","ATCTTGTC","CTCTTGTC","GTCTTGTC","TTCTTGTC",
+ "AAGTTGTC","CAGTTGTC","GAGTTGTC","TAGTTGTC","ACGTTGTC","CCGTTGTC","GCGTTGTC","TCGTTGTC",
+ "AGGTTGTC","CGGTTGTC","GGGTTGTC","TGGTTGTC","ATGTTGTC","CTGTTGTC","GTGTTGTC","TTGTTGTC",
+ "AATTTGTC","CATTTGTC","GATTTGTC","TATTTGTC","ACTTTGTC","CCTTTGTC","GCTTTGTC","TCTTTGTC",
+ "AGTTTGTC","CGTTTGTC","GGTTTGTC","TGTTTGTC","ATTTTGTC","CTTTTGTC","GTTTTGTC","TTTTTGTC",
+ "AAAAATTC","CAAAATTC","GAAAATTC","TAAAATTC","ACAAATTC","CCAAATTC","GCAAATTC","TCAAATTC",
+ "AGAAATTC","CGAAATTC","GGAAATTC","TGAAATTC","ATAAATTC","CTAAATTC","GTAAATTC","TTAAATTC",
+ "AACAATTC","CACAATTC","GACAATTC","TACAATTC","ACCAATTC","CCCAATTC","GCCAATTC","TCCAATTC",
+ "AGCAATTC","CGCAATTC","GGCAATTC","TGCAATTC","ATCAATTC","CTCAATTC","GTCAATTC","TTCAATTC",
+ "AAGAATTC","CAGAATTC","GAGAATTC","TAGAATTC","ACGAATTC","CCGAATTC","GCGAATTC","TCGAATTC",
+ "AGGAATTC","CGGAATTC","GGGAATTC","TGGAATTC","ATGAATTC","CTGAATTC","GTGAATTC","TTGAATTC",
+ "AATAATTC","CATAATTC","GATAATTC","TATAATTC","ACTAATTC","CCTAATTC","GCTAATTC","TCTAATTC",
+ "AGTAATTC","CGTAATTC","GGTAATTC","TGTAATTC","ATTAATTC","CTTAATTC","GTTAATTC","TTTAATTC",
+ "AAACATTC","CAACATTC","GAACATTC","TAACATTC","ACACATTC","CCACATTC","GCACATTC","TCACATTC",
+ "AGACATTC","CGACATTC","GGACATTC","TGACATTC","ATACATTC","CTACATTC","GTACATTC","TTACATTC",
+ "AACCATTC","CACCATTC","GACCATTC","TACCATTC","ACCCATTC","CCCCATTC","GCCCATTC","TCCCATTC",
+ "AGCCATTC","CGCCATTC","GGCCATTC","TGCCATTC","ATCCATTC","CTCCATTC","GTCCATTC","TTCCATTC",
+ "AAGCATTC","CAGCATTC","GAGCATTC","TAGCATTC","ACGCATTC","CCGCATTC","GCGCATTC","TCGCATTC",
+ "AGGCATTC","CGGCATTC","GGGCATTC","TGGCATTC","ATGCATTC","CTGCATTC","GTGCATTC","TTGCATTC",
+ "AATCATTC","CATCATTC","GATCATTC","TATCATTC","ACTCATTC","CCTCATTC","GCTCATTC","TCTCATTC",
+ "AGTCATTC","CGTCATTC","GGTCATTC","TGTCATTC","ATTCATTC","CTTCATTC","GTTCATTC","TTTCATTC",
+ "AAAGATTC","CAAGATTC","GAAGATTC","TAAGATTC","ACAGATTC","CCAGATTC","GCAGATTC","TCAGATTC",
+ "AGAGATTC","CGAGATTC","GGAGATTC","TGAGATTC","ATAGATTC","CTAGATTC","GTAGATTC","TTAGATTC",
+ "AACGATTC","CACGATTC","GACGATTC","TACGATTC","ACCGATTC","CCCGATTC","GCCGATTC","TCCGATTC",
+ "AGCGATTC","CGCGATTC","GGCGATTC","TGCGATTC","ATCGATTC","CTCGATTC","GTCGATTC","TTCGATTC",
+ "AAGGATTC","CAGGATTC","GAGGATTC","TAGGATTC","ACGGATTC","CCGGATTC","GCGGATTC","TCGGATTC",
+ "AGGGATTC","CGGGATTC","GGGGATTC","TGGGATTC","ATGGATTC","CTGGATTC","GTGGATTC","TTGGATTC",
+ "AATGATTC","CATGATTC","GATGATTC","TATGATTC","ACTGATTC","CCTGATTC","GCTGATTC","TCTGATTC",
+ "AGTGATTC","CGTGATTC","GGTGATTC","TGTGATTC","ATTGATTC","CTTGATTC","GTTGATTC","TTTGATTC",
+ "AAATATTC","CAATATTC","GAATATTC","TAATATTC","ACATATTC","CCATATTC","GCATATTC","TCATATTC",
+ "AGATATTC","CGATATTC","GGATATTC","TGATATTC","ATATATTC","CTATATTC","GTATATTC","TTATATTC",
+ "AACTATTC","CACTATTC","GACTATTC","TACTATTC","ACCTATTC","CCCTATTC","GCCTATTC","TCCTATTC",
+ "AGCTATTC","CGCTATTC","GGCTATTC","TGCTATTC","ATCTATTC","CTCTATTC","GTCTATTC","TTCTATTC",
+ "AAGTATTC","CAGTATTC","GAGTATTC","TAGTATTC","ACGTATTC","CCGTATTC","GCGTATTC","TCGTATTC",
+ "AGGTATTC","CGGTATTC","GGGTATTC","TGGTATTC","ATGTATTC","CTGTATTC","GTGTATTC","TTGTATTC",
+ "AATTATTC","CATTATTC","GATTATTC","TATTATTC","ACTTATTC","CCTTATTC","GCTTATTC","TCTTATTC",
+ "AGTTATTC","CGTTATTC","GGTTATTC","TGTTATTC","ATTTATTC","CTTTATTC","GTTTATTC","TTTTATTC",
+ "AAAACTTC","CAAACTTC","GAAACTTC","TAAACTTC","ACAACTTC","CCAACTTC","GCAACTTC","TCAACTTC",
+ "AGAACTTC","CGAACTTC","GGAACTTC","TGAACTTC","ATAACTTC","CTAACTTC","GTAACTTC","TTAACTTC",
+ "AACACTTC","CACACTTC","GACACTTC","TACACTTC","ACCACTTC","CCCACTTC","GCCACTTC","TCCACTTC",
+ "AGCACTTC","CGCACTTC","GGCACTTC","TGCACTTC","ATCACTTC","CTCACTTC","GTCACTTC","TTCACTTC",
+ "AAGACTTC","CAGACTTC","GAGACTTC","TAGACTTC","ACGACTTC","CCGACTTC","GCGACTTC","TCGACTTC",
+ "AGGACTTC","CGGACTTC","GGGACTTC","TGGACTTC","ATGACTTC","CTGACTTC","GTGACTTC","TTGACTTC",
+ "AATACTTC","CATACTTC","GATACTTC","TATACTTC","ACTACTTC","CCTACTTC","GCTACTTC","TCTACTTC",
+ "AGTACTTC","CGTACTTC","GGTACTTC","TGTACTTC","ATTACTTC","CTTACTTC","GTTACTTC","TTTACTTC",
+ "AAACCTTC","CAACCTTC","GAACCTTC","TAACCTTC","ACACCTTC","CCACCTTC","GCACCTTC","TCACCTTC",
+ "AGACCTTC","CGACCTTC","GGACCTTC","TGACCTTC","ATACCTTC","CTACCTTC","GTACCTTC","TTACCTTC",
+ "AACCCTTC","CACCCTTC","GACCCTTC","TACCCTTC","ACCCCTTC","CCCCCTTC","GCCCCTTC","TCCCCTTC",
+ "AGCCCTTC","CGCCCTTC","GGCCCTTC","TGCCCTTC","ATCCCTTC","CTCCCTTC","GTCCCTTC","TTCCCTTC",
+ "AAGCCTTC","CAGCCTTC","GAGCCTTC","TAGCCTTC","ACGCCTTC","CCGCCTTC","GCGCCTTC","TCGCCTTC",
+ "AGGCCTTC","CGGCCTTC","GGGCCTTC","TGGCCTTC","ATGCCTTC","CTGCCTTC","GTGCCTTC","TTGCCTTC",
+ "AATCCTTC","CATCCTTC","GATCCTTC","TATCCTTC","ACTCCTTC","CCTCCTTC","GCTCCTTC","TCTCCTTC",
+ "AGTCCTTC","CGTCCTTC","GGTCCTTC","TGTCCTTC","ATTCCTTC","CTTCCTTC","GTTCCTTC","TTTCCTTC",
+ "AAAGCTTC","CAAGCTTC","GAAGCTTC","TAAGCTTC","ACAGCTTC","CCAGCTTC","GCAGCTTC","TCAGCTTC",
+ "AGAGCTTC","CGAGCTTC","GGAGCTTC","TGAGCTTC","ATAGCTTC","CTAGCTTC","GTAGCTTC","TTAGCTTC",
+ "AACGCTTC","CACGCTTC","GACGCTTC","TACGCTTC","ACCGCTTC","CCCGCTTC","GCCGCTTC","TCCGCTTC",
+ "AGCGCTTC","CGCGCTTC","GGCGCTTC","TGCGCTTC","ATCGCTTC","CTCGCTTC","GTCGCTTC","TTCGCTTC",
+ "AAGGCTTC","CAGGCTTC","GAGGCTTC","TAGGCTTC","ACGGCTTC","CCGGCTTC","GCGGCTTC","TCGGCTTC",
+ "AGGGCTTC","CGGGCTTC","GGGGCTTC","TGGGCTTC","ATGGCTTC","CTGGCTTC","GTGGCTTC","TTGGCTTC",
+ "AATGCTTC","CATGCTTC","GATGCTTC","TATGCTTC","ACTGCTTC","CCTGCTTC","GCTGCTTC","TCTGCTTC",
+ "AGTGCTTC","CGTGCTTC","GGTGCTTC","TGTGCTTC","ATTGCTTC","CTTGCTTC","GTTGCTTC","TTTGCTTC",
+ "AAATCTTC","CAATCTTC","GAATCTTC","TAATCTTC","ACATCTTC","CCATCTTC","GCATCTTC","TCATCTTC",
+ "AGATCTTC","CGATCTTC","GGATCTTC","TGATCTTC","ATATCTTC","CTATCTTC","GTATCTTC","TTATCTTC",
+ "AACTCTTC","CACTCTTC","GACTCTTC","TACTCTTC","ACCTCTTC","CCCTCTTC","GCCTCTTC","TCCTCTTC",
+ "AGCTCTTC","CGCTCTTC","GGCTCTTC","TGCTCTTC","ATCTCTTC","CTCTCTTC","GTCTCTTC","TTCTCTTC",
+ "AAGTCTTC","CAGTCTTC","GAGTCTTC","TAGTCTTC","ACGTCTTC","CCGTCTTC","GCGTCTTC","TCGTCTTC",
+ "AGGTCTTC","CGGTCTTC","GGGTCTTC","TGGTCTTC","ATGTCTTC","CTGTCTTC","GTGTCTTC","TTGTCTTC",
+ "AATTCTTC","CATTCTTC","GATTCTTC","TATTCTTC","ACTTCTTC","CCTTCTTC","GCTTCTTC","TCTTCTTC",
+ "AGTTCTTC","CGTTCTTC","GGTTCTTC","TGTTCTTC","ATTTCTTC","CTTTCTTC","GTTTCTTC","TTTTCTTC",
+ "AAAAGTTC","CAAAGTTC","GAAAGTTC","TAAAGTTC","ACAAGTTC","CCAAGTTC","GCAAGTTC","TCAAGTTC",
+ "AGAAGTTC","CGAAGTTC","GGAAGTTC","TGAAGTTC","ATAAGTTC","CTAAGTTC","GTAAGTTC","TTAAGTTC",
+ "AACAGTTC","CACAGTTC","GACAGTTC","TACAGTTC","ACCAGTTC","CCCAGTTC","GCCAGTTC","TCCAGTTC",
+ "AGCAGTTC","CGCAGTTC","GGCAGTTC","TGCAGTTC","ATCAGTTC","CTCAGTTC","GTCAGTTC","TTCAGTTC",
+ "AAGAGTTC","CAGAGTTC","GAGAGTTC","TAGAGTTC","ACGAGTTC","CCGAGTTC","GCGAGTTC","TCGAGTTC",
+ "AGGAGTTC","CGGAGTTC","GGGAGTTC","TGGAGTTC","ATGAGTTC","CTGAGTTC","GTGAGTTC","TTGAGTTC",
+ "AATAGTTC","CATAGTTC","GATAGTTC","TATAGTTC","ACTAGTTC","CCTAGTTC","GCTAGTTC","TCTAGTTC",
+ "AGTAGTTC","CGTAGTTC","GGTAGTTC","TGTAGTTC","ATTAGTTC","CTTAGTTC","GTTAGTTC","TTTAGTTC",
+ "AAACGTTC","CAACGTTC","GAACGTTC","TAACGTTC","ACACGTTC","CCACGTTC","GCACGTTC","TCACGTTC",
+ "AGACGTTC","CGACGTTC","GGACGTTC","TGACGTTC","ATACGTTC","CTACGTTC","GTACGTTC","TTACGTTC",
+ "AACCGTTC","CACCGTTC","GACCGTTC","TACCGTTC","ACCCGTTC","CCCCGTTC","GCCCGTTC","TCCCGTTC",
+ "AGCCGTTC","CGCCGTTC","GGCCGTTC","TGCCGTTC","ATCCGTTC","CTCCGTTC","GTCCGTTC","TTCCGTTC",
+ "AAGCGTTC","CAGCGTTC","GAGCGTTC","TAGCGTTC","ACGCGTTC","CCGCGTTC","GCGCGTTC","TCGCGTTC",
+ "AGGCGTTC","CGGCGTTC","GGGCGTTC","TGGCGTTC","ATGCGTTC","CTGCGTTC","GTGCGTTC","TTGCGTTC",
+ "AATCGTTC","CATCGTTC","GATCGTTC","TATCGTTC","ACTCGTTC","CCTCGTTC","GCTCGTTC","TCTCGTTC",
+ "AGTCGTTC","CGTCGTTC","GGTCGTTC","TGTCGTTC","ATTCGTTC","CTTCGTTC","GTTCGTTC","TTTCGTTC",
+ "AAAGGTTC","CAAGGTTC","GAAGGTTC","TAAGGTTC","ACAGGTTC","CCAGGTTC","GCAGGTTC","TCAGGTTC",
+ "AGAGGTTC","CGAGGTTC","GGAGGTTC","TGAGGTTC","ATAGGTTC","CTAGGTTC","GTAGGTTC","TTAGGTTC",
+ "AACGGTTC","CACGGTTC","GACGGTTC","TACGGTTC","ACCGGTTC","CCCGGTTC","GCCGGTTC","TCCGGTTC",
+ "AGCGGTTC","CGCGGTTC","GGCGGTTC","TGCGGTTC","ATCGGTTC","CTCGGTTC","GTCGGTTC","TTCGGTTC",
+ "AAGGGTTC","CAGGGTTC","GAGGGTTC","TAGGGTTC","ACGGGTTC","CCGGGTTC","GCGGGTTC","TCGGGTTC",
+ "AGGGGTTC","CGGGGTTC","GGGGGTTC","TGGGGTTC","ATGGGTTC","CTGGGTTC","GTGGGTTC","TTGGGTTC",
+ "AATGGTTC","CATGGTTC","GATGGTTC","TATGGTTC","ACTGGTTC","CCTGGTTC","GCTGGTTC","TCTGGTTC",
+ "AGTGGTTC","CGTGGTTC","GGTGGTTC","TGTGGTTC","ATTGGTTC","CTTGGTTC","GTTGGTTC","TTTGGTTC",
+ "AAATGTTC","CAATGTTC","GAATGTTC","TAATGTTC","ACATGTTC","CCATGTTC","GCATGTTC","TCATGTTC",
+ "AGATGTTC","CGATGTTC","GGATGTTC","TGATGTTC","ATATGTTC","CTATGTTC","GTATGTTC","TTATGTTC",
+ "AACTGTTC","CACTGTTC","GACTGTTC","TACTGTTC","ACCTGTTC","CCCTGTTC","GCCTGTTC","TCCTGTTC",
+ "AGCTGTTC","CGCTGTTC","GGCTGTTC","TGCTGTTC","ATCTGTTC","CTCTGTTC","GTCTGTTC","TTCTGTTC",
+ "AAGTGTTC","CAGTGTTC","GAGTGTTC","TAGTGTTC","ACGTGTTC","CCGTGTTC","GCGTGTTC","TCGTGTTC",
+ "AGGTGTTC","CGGTGTTC","GGGTGTTC","TGGTGTTC","ATGTGTTC","CTGTGTTC","GTGTGTTC","TTGTGTTC",
+ "AATTGTTC","CATTGTTC","GATTGTTC","TATTGTTC","ACTTGTTC","CCTTGTTC","GCTTGTTC","TCTTGTTC",
+ "AGTTGTTC","CGTTGTTC","GGTTGTTC","TGTTGTTC","ATTTGTTC","CTTTGTTC","GTTTGTTC","TTTTGTTC",
+ "AAAATTTC","CAAATTTC","GAAATTTC","TAAATTTC","ACAATTTC","CCAATTTC","GCAATTTC","TCAATTTC",
+ "AGAATTTC","CGAATTTC","GGAATTTC","TGAATTTC","ATAATTTC","CTAATTTC","GTAATTTC","TTAATTTC",
+ "AACATTTC","CACATTTC","GACATTTC","TACATTTC","ACCATTTC","CCCATTTC","GCCATTTC","TCCATTTC",
+ "AGCATTTC","CGCATTTC","GGCATTTC","TGCATTTC","ATCATTTC","CTCATTTC","GTCATTTC","TTCATTTC",
+ "AAGATTTC","CAGATTTC","GAGATTTC","TAGATTTC","ACGATTTC","CCGATTTC","GCGATTTC","TCGATTTC",
+ "AGGATTTC","CGGATTTC","GGGATTTC","TGGATTTC","ATGATTTC","CTGATTTC","GTGATTTC","TTGATTTC",
+ "AATATTTC","CATATTTC","GATATTTC","TATATTTC","ACTATTTC","CCTATTTC","GCTATTTC","TCTATTTC",
+ "AGTATTTC","CGTATTTC","GGTATTTC","TGTATTTC","ATTATTTC","CTTATTTC","GTTATTTC","TTTATTTC",
+ "AAACTTTC","CAACTTTC","GAACTTTC","TAACTTTC","ACACTTTC","CCACTTTC","GCACTTTC","TCACTTTC",
+ "AGACTTTC","CGACTTTC","GGACTTTC","TGACTTTC","ATACTTTC","CTACTTTC","GTACTTTC","TTACTTTC",
+ "AACCTTTC","CACCTTTC","GACCTTTC","TACCTTTC","ACCCTTTC","CCCCTTTC","GCCCTTTC","TCCCTTTC",
+ "AGCCTTTC","CGCCTTTC","GGCCTTTC","TGCCTTTC","ATCCTTTC","CTCCTTTC","GTCCTTTC","TTCCTTTC",
+ "AAGCTTTC","CAGCTTTC","GAGCTTTC","TAGCTTTC","ACGCTTTC","CCGCTTTC","GCGCTTTC","TCGCTTTC",
+ "AGGCTTTC","CGGCTTTC","GGGCTTTC","TGGCTTTC","ATGCTTTC","CTGCTTTC","GTGCTTTC","TTGCTTTC",
+ "AATCTTTC","CATCTTTC","GATCTTTC","TATCTTTC","ACTCTTTC","CCTCTTTC","GCTCTTTC","TCTCTTTC",
+ "AGTCTTTC","CGTCTTTC","GGTCTTTC","TGTCTTTC","ATTCTTTC","CTTCTTTC","GTTCTTTC","TTTCTTTC",
+ "AAAGTTTC","CAAGTTTC","GAAGTTTC","TAAGTTTC","ACAGTTTC","CCAGTTTC","GCAGTTTC","TCAGTTTC",
+ "AGAGTTTC","CGAGTTTC","GGAGTTTC","TGAGTTTC","ATAGTTTC","CTAGTTTC","GTAGTTTC","TTAGTTTC",
+ "AACGTTTC","CACGTTTC","GACGTTTC","TACGTTTC","ACCGTTTC","CCCGTTTC","GCCGTTTC","TCCGTTTC",
+ "AGCGTTTC","CGCGTTTC","GGCGTTTC","TGCGTTTC","ATCGTTTC","CTCGTTTC","GTCGTTTC","TTCGTTTC",
+ "AAGGTTTC","CAGGTTTC","GAGGTTTC","TAGGTTTC","ACGGTTTC","CCGGTTTC","GCGGTTTC","TCGGTTTC",
+ "AGGGTTTC","CGGGTTTC","GGGGTTTC","TGGGTTTC","ATGGTTTC","CTGGTTTC","GTGGTTTC","TTGGTTTC",
+ "AATGTTTC","CATGTTTC","GATGTTTC","TATGTTTC","ACTGTTTC","CCTGTTTC","GCTGTTTC","TCTGTTTC",
+ "AGTGTTTC","CGTGTTTC","GGTGTTTC","TGTGTTTC","ATTGTTTC","CTTGTTTC","GTTGTTTC","TTTGTTTC",
+ "AAATTTTC","CAATTTTC","GAATTTTC","TAATTTTC","ACATTTTC","CCATTTTC","GCATTTTC","TCATTTTC",
+ "AGATTTTC","CGATTTTC","GGATTTTC","TGATTTTC","ATATTTTC","CTATTTTC","GTATTTTC","TTATTTTC",
+ "AACTTTTC","CACTTTTC","GACTTTTC","TACTTTTC","ACCTTTTC","CCCTTTTC","GCCTTTTC","TCCTTTTC",
+ "AGCTTTTC","CGCTTTTC","GGCTTTTC","TGCTTTTC","ATCTTTTC","CTCTTTTC","GTCTTTTC","TTCTTTTC",
+ "AAGTTTTC","CAGTTTTC","GAGTTTTC","TAGTTTTC","ACGTTTTC","CCGTTTTC","GCGTTTTC","TCGTTTTC",
+ "AGGTTTTC","CGGTTTTC","GGGTTTTC","TGGTTTTC","ATGTTTTC","CTGTTTTC","GTGTTTTC","TTGTTTTC",
+ "AATTTTTC","CATTTTTC","GATTTTTC","TATTTTTC","ACTTTTTC","CCTTTTTC","GCTTTTTC","TCTTTTTC",
+ "AGTTTTTC","CGTTTTTC","GGTTTTTC","TGTTTTTC","ATTTTTTC","CTTTTTTC","GTTTTTTC","TTTTTTTC",
+ "AAAAAAAG","CAAAAAAG","GAAAAAAG","TAAAAAAG","ACAAAAAG","CCAAAAAG","GCAAAAAG","TCAAAAAG",
+ "AGAAAAAG","CGAAAAAG","GGAAAAAG","TGAAAAAG","ATAAAAAG","CTAAAAAG","GTAAAAAG","TTAAAAAG",
+ "AACAAAAG","CACAAAAG","GACAAAAG","TACAAAAG","ACCAAAAG","CCCAAAAG","GCCAAAAG","TCCAAAAG",
+ "AGCAAAAG","CGCAAAAG","GGCAAAAG","TGCAAAAG","ATCAAAAG","CTCAAAAG","GTCAAAAG","TTCAAAAG",
+ "AAGAAAAG","CAGAAAAG","GAGAAAAG","TAGAAAAG","ACGAAAAG","CCGAAAAG","GCGAAAAG","TCGAAAAG",
+ "AGGAAAAG","CGGAAAAG","GGGAAAAG","TGGAAAAG","ATGAAAAG","CTGAAAAG","GTGAAAAG","TTGAAAAG",
+ "AATAAAAG","CATAAAAG","GATAAAAG","TATAAAAG","ACTAAAAG","CCTAAAAG","GCTAAAAG","TCTAAAAG",
+ "AGTAAAAG","CGTAAAAG","GGTAAAAG","TGTAAAAG","ATTAAAAG","CTTAAAAG","GTTAAAAG","TTTAAAAG",
+ "AAACAAAG","CAACAAAG","GAACAAAG","TAACAAAG","ACACAAAG","CCACAAAG","GCACAAAG","TCACAAAG",
+ "AGACAAAG","CGACAAAG","GGACAAAG","TGACAAAG","ATACAAAG","CTACAAAG","GTACAAAG","TTACAAAG",
+ "AACCAAAG","CACCAAAG","GACCAAAG","TACCAAAG","ACCCAAAG","CCCCAAAG","GCCCAAAG","TCCCAAAG",
+ "AGCCAAAG","CGCCAAAG","GGCCAAAG","TGCCAAAG","ATCCAAAG","CTCCAAAG","GTCCAAAG","TTCCAAAG",
+ "AAGCAAAG","CAGCAAAG","GAGCAAAG","TAGCAAAG","ACGCAAAG","CCGCAAAG","GCGCAAAG","TCGCAAAG",
+ "AGGCAAAG","CGGCAAAG","GGGCAAAG","TGGCAAAG","ATGCAAAG","CTGCAAAG","GTGCAAAG","TTGCAAAG",
+ "AATCAAAG","CATCAAAG","GATCAAAG","TATCAAAG","ACTCAAAG","CCTCAAAG","GCTCAAAG","TCTCAAAG",
+ "AGTCAAAG","CGTCAAAG","GGTCAAAG","TGTCAAAG","ATTCAAAG","CTTCAAAG","GTTCAAAG","TTTCAAAG",
+ "AAAGAAAG","CAAGAAAG","GAAGAAAG","TAAGAAAG","ACAGAAAG","CCAGAAAG","GCAGAAAG","TCAGAAAG",
+ "AGAGAAAG","CGAGAAAG","GGAGAAAG","TGAGAAAG","ATAGAAAG","CTAGAAAG","GTAGAAAG","TTAGAAAG",
+ "AACGAAAG","CACGAAAG","GACGAAAG","TACGAAAG","ACCGAAAG","CCCGAAAG","GCCGAAAG","TCCGAAAG",
+ "AGCGAAAG","CGCGAAAG","GGCGAAAG","TGCGAAAG","ATCGAAAG","CTCGAAAG","GTCGAAAG","TTCGAAAG",
+ "AAGGAAAG","CAGGAAAG","GAGGAAAG","TAGGAAAG","ACGGAAAG","CCGGAAAG","GCGGAAAG","TCGGAAAG",
+ "AGGGAAAG","CGGGAAAG","GGGGAAAG","TGGGAAAG","ATGGAAAG","CTGGAAAG","GTGGAAAG","TTGGAAAG",
+ "AATGAAAG","CATGAAAG","GATGAAAG","TATGAAAG","ACTGAAAG","CCTGAAAG","GCTGAAAG","TCTGAAAG",
+ "AGTGAAAG","CGTGAAAG","GGTGAAAG","TGTGAAAG","ATTGAAAG","CTTGAAAG","GTTGAAAG","TTTGAAAG",
+ "AAATAAAG","CAATAAAG","GAATAAAG","TAATAAAG","ACATAAAG","CCATAAAG","GCATAAAG","TCATAAAG",
+ "AGATAAAG","CGATAAAG","GGATAAAG","TGATAAAG","ATATAAAG","CTATAAAG","GTATAAAG","TTATAAAG",
+ "AACTAAAG","CACTAAAG","GACTAAAG","TACTAAAG","ACCTAAAG","CCCTAAAG","GCCTAAAG","TCCTAAAG",
+ "AGCTAAAG","CGCTAAAG","GGCTAAAG","TGCTAAAG","ATCTAAAG","CTCTAAAG","GTCTAAAG","TTCTAAAG",
+ "AAGTAAAG","CAGTAAAG","GAGTAAAG","TAGTAAAG","ACGTAAAG","CCGTAAAG","GCGTAAAG","TCGTAAAG",
+ "AGGTAAAG","CGGTAAAG","GGGTAAAG","TGGTAAAG","ATGTAAAG","CTGTAAAG","GTGTAAAG","TTGTAAAG",
+ "AATTAAAG","CATTAAAG","GATTAAAG","TATTAAAG","ACTTAAAG","CCTTAAAG","GCTTAAAG","TCTTAAAG",
+ "AGTTAAAG","CGTTAAAG","GGTTAAAG","TGTTAAAG","ATTTAAAG","CTTTAAAG","GTTTAAAG","TTTTAAAG",
+ "AAAACAAG","CAAACAAG","GAAACAAG","TAAACAAG","ACAACAAG","CCAACAAG","GCAACAAG","TCAACAAG",
+ "AGAACAAG","CGAACAAG","GGAACAAG","TGAACAAG","ATAACAAG","CTAACAAG","GTAACAAG","TTAACAAG",
+ "AACACAAG","CACACAAG","GACACAAG","TACACAAG","ACCACAAG","CCCACAAG","GCCACAAG","TCCACAAG",
+ "AGCACAAG","CGCACAAG","GGCACAAG","TGCACAAG","ATCACAAG","CTCACAAG","GTCACAAG","TTCACAAG",
+ "AAGACAAG","CAGACAAG","GAGACAAG","TAGACAAG","ACGACAAG","CCGACAAG","GCGACAAG","TCGACAAG",
+ "AGGACAAG","CGGACAAG","GGGACAAG","TGGACAAG","ATGACAAG","CTGACAAG","GTGACAAG","TTGACAAG",
+ "AATACAAG","CATACAAG","GATACAAG","TATACAAG","ACTACAAG","CCTACAAG","GCTACAAG","TCTACAAG",
+ "AGTACAAG","CGTACAAG","GGTACAAG","TGTACAAG","ATTACAAG","CTTACAAG","GTTACAAG","TTTACAAG",
+ "AAACCAAG","CAACCAAG","GAACCAAG","TAACCAAG","ACACCAAG","CCACCAAG","GCACCAAG","TCACCAAG",
+ "AGACCAAG","CGACCAAG","GGACCAAG","TGACCAAG","ATACCAAG","CTACCAAG","GTACCAAG","TTACCAAG",
+ "AACCCAAG","CACCCAAG","GACCCAAG","TACCCAAG","ACCCCAAG","CCCCCAAG","GCCCCAAG","TCCCCAAG",
+ "AGCCCAAG","CGCCCAAG","GGCCCAAG","TGCCCAAG","ATCCCAAG","CTCCCAAG","GTCCCAAG","TTCCCAAG",
+ "AAGCCAAG","CAGCCAAG","GAGCCAAG","TAGCCAAG","ACGCCAAG","CCGCCAAG","GCGCCAAG","TCGCCAAG",
+ "AGGCCAAG","CGGCCAAG","GGGCCAAG","TGGCCAAG","ATGCCAAG","CTGCCAAG","GTGCCAAG","TTGCCAAG",
+ "AATCCAAG","CATCCAAG","GATCCAAG","TATCCAAG","ACTCCAAG","CCTCCAAG","GCTCCAAG","TCTCCAAG",
+ "AGTCCAAG","CGTCCAAG","GGTCCAAG","TGTCCAAG","ATTCCAAG","CTTCCAAG","GTTCCAAG","TTTCCAAG",
+ "AAAGCAAG","CAAGCAAG","GAAGCAAG","TAAGCAAG","ACAGCAAG","CCAGCAAG","GCAGCAAG","TCAGCAAG",
+ "AGAGCAAG","CGAGCAAG","GGAGCAAG","TGAGCAAG","ATAGCAAG","CTAGCAAG","GTAGCAAG","TTAGCAAG",
+ "AACGCAAG","CACGCAAG","GACGCAAG","TACGCAAG","ACCGCAAG","CCCGCAAG","GCCGCAAG","TCCGCAAG",
+ "AGCGCAAG","CGCGCAAG","GGCGCAAG","TGCGCAAG","ATCGCAAG","CTCGCAAG","GTCGCAAG","TTCGCAAG",
+ "AAGGCAAG","CAGGCAAG","GAGGCAAG","TAGGCAAG","ACGGCAAG","CCGGCAAG","GCGGCAAG","TCGGCAAG",
+ "AGGGCAAG","CGGGCAAG","GGGGCAAG","TGGGCAAG","ATGGCAAG","CTGGCAAG","GTGGCAAG","TTGGCAAG",
+ "AATGCAAG","CATGCAAG","GATGCAAG","TATGCAAG","ACTGCAAG","CCTGCAAG","GCTGCAAG","TCTGCAAG",
+ "AGTGCAAG","CGTGCAAG","GGTGCAAG","TGTGCAAG","ATTGCAAG","CTTGCAAG","GTTGCAAG","TTTGCAAG",
+ "AAATCAAG","CAATCAAG","GAATCAAG","TAATCAAG","ACATCAAG","CCATCAAG","GCATCAAG","TCATCAAG",
+ "AGATCAAG","CGATCAAG","GGATCAAG","TGATCAAG","ATATCAAG","CTATCAAG","GTATCAAG","TTATCAAG",
+ "AACTCAAG","CACTCAAG","GACTCAAG","TACTCAAG","ACCTCAAG","CCCTCAAG","GCCTCAAG","TCCTCAAG",
+ "AGCTCAAG","CGCTCAAG","GGCTCAAG","TGCTCAAG","ATCTCAAG","CTCTCAAG","GTCTCAAG","TTCTCAAG",
+ "AAGTCAAG","CAGTCAAG","GAGTCAAG","TAGTCAAG","ACGTCAAG","CCGTCAAG","GCGTCAAG","TCGTCAAG",
+ "AGGTCAAG","CGGTCAAG","GGGTCAAG","TGGTCAAG","ATGTCAAG","CTGTCAAG","GTGTCAAG","TTGTCAAG",
+ "AATTCAAG","CATTCAAG","GATTCAAG","TATTCAAG","ACTTCAAG","CCTTCAAG","GCTTCAAG","TCTTCAAG",
+ "AGTTCAAG","CGTTCAAG","GGTTCAAG","TGTTCAAG","ATTTCAAG","CTTTCAAG","GTTTCAAG","TTTTCAAG",
+ "AAAAGAAG","CAAAGAAG","GAAAGAAG","TAAAGAAG","ACAAGAAG","CCAAGAAG","GCAAGAAG","TCAAGAAG",
+ "AGAAGAAG","CGAAGAAG","GGAAGAAG","TGAAGAAG","ATAAGAAG","CTAAGAAG","GTAAGAAG","TTAAGAAG",
+ "AACAGAAG","CACAGAAG","GACAGAAG","TACAGAAG","ACCAGAAG","CCCAGAAG","GCCAGAAG","TCCAGAAG",
+ "AGCAGAAG","CGCAGAAG","GGCAGAAG","TGCAGAAG","ATCAGAAG","CTCAGAAG","GTCAGAAG","TTCAGAAG",
+ "AAGAGAAG","CAGAGAAG","GAGAGAAG","TAGAGAAG","ACGAGAAG","CCGAGAAG","GCGAGAAG","TCGAGAAG",
+ "AGGAGAAG","CGGAGAAG","GGGAGAAG","TGGAGAAG","ATGAGAAG","CTGAGAAG","GTGAGAAG","TTGAGAAG",
+ "AATAGAAG","CATAGAAG","GATAGAAG","TATAGAAG","ACTAGAAG","CCTAGAAG","GCTAGAAG","TCTAGAAG",
+ "AGTAGAAG","CGTAGAAG","GGTAGAAG","TGTAGAAG","ATTAGAAG","CTTAGAAG","GTTAGAAG","TTTAGAAG",
+ "AAACGAAG","CAACGAAG","GAACGAAG","TAACGAAG","ACACGAAG","CCACGAAG","GCACGAAG","TCACGAAG",
+ "AGACGAAG","CGACGAAG","GGACGAAG","TGACGAAG","ATACGAAG","CTACGAAG","GTACGAAG","TTACGAAG",
+ "AACCGAAG","CACCGAAG","GACCGAAG","TACCGAAG","ACCCGAAG","CCCCGAAG","GCCCGAAG","TCCCGAAG",
+ "AGCCGAAG","CGCCGAAG","GGCCGAAG","TGCCGAAG","ATCCGAAG","CTCCGAAG","GTCCGAAG","TTCCGAAG",
+ "AAGCGAAG","CAGCGAAG","GAGCGAAG","TAGCGAAG","ACGCGAAG","CCGCGAAG","GCGCGAAG","TCGCGAAG",
+ "AGGCGAAG","CGGCGAAG","GGGCGAAG","TGGCGAAG","ATGCGAAG","CTGCGAAG","GTGCGAAG","TTGCGAAG",
+ "AATCGAAG","CATCGAAG","GATCGAAG","TATCGAAG","ACTCGAAG","CCTCGAAG","GCTCGAAG","TCTCGAAG",
+ "AGTCGAAG","CGTCGAAG","GGTCGAAG","TGTCGAAG","ATTCGAAG","CTTCGAAG","GTTCGAAG","TTTCGAAG",
+ "AAAGGAAG","CAAGGAAG","GAAGGAAG","TAAGGAAG","ACAGGAAG","CCAGGAAG","GCAGGAAG","TCAGGAAG",
+ "AGAGGAAG","CGAGGAAG","GGAGGAAG","TGAGGAAG","ATAGGAAG","CTAGGAAG","GTAGGAAG","TTAGGAAG",
+ "AACGGAAG","CACGGAAG","GACGGAAG","TACGGAAG","ACCGGAAG","CCCGGAAG","GCCGGAAG","TCCGGAAG",
+ "AGCGGAAG","CGCGGAAG","GGCGGAAG","TGCGGAAG","ATCGGAAG","CTCGGAAG","GTCGGAAG","TTCGGAAG",
+ "AAGGGAAG","CAGGGAAG","GAGGGAAG","TAGGGAAG","ACGGGAAG","CCGGGAAG","GCGGGAAG","TCGGGAAG",
+ "AGGGGAAG","CGGGGAAG","GGGGGAAG","TGGGGAAG","ATGGGAAG","CTGGGAAG","GTGGGAAG","TTGGGAAG",
+ "AATGGAAG","CATGGAAG","GATGGAAG","TATGGAAG","ACTGGAAG","CCTGGAAG","GCTGGAAG","TCTGGAAG",
+ "AGTGGAAG","CGTGGAAG","GGTGGAAG","TGTGGAAG","ATTGGAAG","CTTGGAAG","GTTGGAAG","TTTGGAAG",
+ "AAATGAAG","CAATGAAG","GAATGAAG","TAATGAAG","ACATGAAG","CCATGAAG","GCATGAAG","TCATGAAG",
+ "AGATGAAG","CGATGAAG","GGATGAAG","TGATGAAG","ATATGAAG","CTATGAAG","GTATGAAG","TTATGAAG",
+ "AACTGAAG","CACTGAAG","GACTGAAG","TACTGAAG","ACCTGAAG","CCCTGAAG","GCCTGAAG","TCCTGAAG",
+ "AGCTGAAG","CGCTGAAG","GGCTGAAG","TGCTGAAG","ATCTGAAG","CTCTGAAG","GTCTGAAG","TTCTGAAG",
+ "AAGTGAAG","CAGTGAAG","GAGTGAAG","TAGTGAAG","ACGTGAAG","CCGTGAAG","GCGTGAAG","TCGTGAAG",
+ "AGGTGAAG","CGGTGAAG","GGGTGAAG","TGGTGAAG","ATGTGAAG","CTGTGAAG","GTGTGAAG","TTGTGAAG",
+ "AATTGAAG","CATTGAAG","GATTGAAG","TATTGAAG","ACTTGAAG","CCTTGAAG","GCTTGAAG","TCTTGAAG",
+ "AGTTGAAG","CGTTGAAG","GGTTGAAG","TGTTGAAG","ATTTGAAG","CTTTGAAG","GTTTGAAG","TTTTGAAG",
+ "AAAATAAG","CAAATAAG","GAAATAAG","TAAATAAG","ACAATAAG","CCAATAAG","GCAATAAG","TCAATAAG",
+ "AGAATAAG","CGAATAAG","GGAATAAG","TGAATAAG","ATAATAAG","CTAATAAG","GTAATAAG","TTAATAAG",
+ "AACATAAG","CACATAAG","GACATAAG","TACATAAG","ACCATAAG","CCCATAAG","GCCATAAG","TCCATAAG",
+ "AGCATAAG","CGCATAAG","GGCATAAG","TGCATAAG","ATCATAAG","CTCATAAG","GTCATAAG","TTCATAAG",
+ "AAGATAAG","CAGATAAG","GAGATAAG","TAGATAAG","ACGATAAG","CCGATAAG","GCGATAAG","TCGATAAG",
+ "AGGATAAG","CGGATAAG","GGGATAAG","TGGATAAG","ATGATAAG","CTGATAAG","GTGATAAG","TTGATAAG",
+ "AATATAAG","CATATAAG","GATATAAG","TATATAAG","ACTATAAG","CCTATAAG","GCTATAAG","TCTATAAG",
+ "AGTATAAG","CGTATAAG","GGTATAAG","TGTATAAG","ATTATAAG","CTTATAAG","GTTATAAG","TTTATAAG",
+ "AAACTAAG","CAACTAAG","GAACTAAG","TAACTAAG","ACACTAAG","CCACTAAG","GCACTAAG","TCACTAAG",
+ "AGACTAAG","CGACTAAG","GGACTAAG","TGACTAAG","ATACTAAG","CTACTAAG","GTACTAAG","TTACTAAG",
+ "AACCTAAG","CACCTAAG","GACCTAAG","TACCTAAG","ACCCTAAG","CCCCTAAG","GCCCTAAG","TCCCTAAG",
+ "AGCCTAAG","CGCCTAAG","GGCCTAAG","TGCCTAAG","ATCCTAAG","CTCCTAAG","GTCCTAAG","TTCCTAAG",
+ "AAGCTAAG","CAGCTAAG","GAGCTAAG","TAGCTAAG","ACGCTAAG","CCGCTAAG","GCGCTAAG","TCGCTAAG",
+ "AGGCTAAG","CGGCTAAG","GGGCTAAG","TGGCTAAG","ATGCTAAG","CTGCTAAG","GTGCTAAG","TTGCTAAG",
+ "AATCTAAG","CATCTAAG","GATCTAAG","TATCTAAG","ACTCTAAG","CCTCTAAG","GCTCTAAG","TCTCTAAG",
+ "AGTCTAAG","CGTCTAAG","GGTCTAAG","TGTCTAAG","ATTCTAAG","CTTCTAAG","GTTCTAAG","TTTCTAAG",
+ "AAAGTAAG","CAAGTAAG","GAAGTAAG","TAAGTAAG","ACAGTAAG","CCAGTAAG","GCAGTAAG","TCAGTAAG",
+ "AGAGTAAG","CGAGTAAG","GGAGTAAG","TGAGTAAG","ATAGTAAG","CTAGTAAG","GTAGTAAG","TTAGTAAG",
+ "AACGTAAG","CACGTAAG","GACGTAAG","TACGTAAG","ACCGTAAG","CCCGTAAG","GCCGTAAG","TCCGTAAG",
+ "AGCGTAAG","CGCGTAAG","GGCGTAAG","TGCGTAAG","ATCGTAAG","CTCGTAAG","GTCGTAAG","TTCGTAAG",
+ "AAGGTAAG","CAGGTAAG","GAGGTAAG","TAGGTAAG","ACGGTAAG","CCGGTAAG","GCGGTAAG","TCGGTAAG",
+ "AGGGTAAG","CGGGTAAG","GGGGTAAG","TGGGTAAG","ATGGTAAG","CTGGTAAG","GTGGTAAG","TTGGTAAG",
+ "AATGTAAG","CATGTAAG","GATGTAAG","TATGTAAG","ACTGTAAG","CCTGTAAG","GCTGTAAG","TCTGTAAG",
+ "AGTGTAAG","CGTGTAAG","GGTGTAAG","TGTGTAAG","ATTGTAAG","CTTGTAAG","GTTGTAAG","TTTGTAAG",
+ "AAATTAAG","CAATTAAG","GAATTAAG","TAATTAAG","ACATTAAG","CCATTAAG","GCATTAAG","TCATTAAG",
+ "AGATTAAG","CGATTAAG","GGATTAAG","TGATTAAG","ATATTAAG","CTATTAAG","GTATTAAG","TTATTAAG",
+ "AACTTAAG","CACTTAAG","GACTTAAG","TACTTAAG","ACCTTAAG","CCCTTAAG","GCCTTAAG","TCCTTAAG",
+ "AGCTTAAG","CGCTTAAG","GGCTTAAG","TGCTTAAG","ATCTTAAG","CTCTTAAG","GTCTTAAG","TTCTTAAG",
+ "AAGTTAAG","CAGTTAAG","GAGTTAAG","TAGTTAAG","ACGTTAAG","CCGTTAAG","GCGTTAAG","TCGTTAAG",
+ "AGGTTAAG","CGGTTAAG","GGGTTAAG","TGGTTAAG","ATGTTAAG","CTGTTAAG","GTGTTAAG","TTGTTAAG",
+ "AATTTAAG","CATTTAAG","GATTTAAG","TATTTAAG","ACTTTAAG","CCTTTAAG","GCTTTAAG","TCTTTAAG",
+ "AGTTTAAG","CGTTTAAG","GGTTTAAG","TGTTTAAG","ATTTTAAG","CTTTTAAG","GTTTTAAG","TTTTTAAG",
+ "AAAAACAG","CAAAACAG","GAAAACAG","TAAAACAG","ACAAACAG","CCAAACAG","GCAAACAG","TCAAACAG",
+ "AGAAACAG","CGAAACAG","GGAAACAG","TGAAACAG","ATAAACAG","CTAAACAG","GTAAACAG","TTAAACAG",
+ "AACAACAG","CACAACAG","GACAACAG","TACAACAG","ACCAACAG","CCCAACAG","GCCAACAG","TCCAACAG",
+ "AGCAACAG","CGCAACAG","GGCAACAG","TGCAACAG","ATCAACAG","CTCAACAG","GTCAACAG","TTCAACAG",
+ "AAGAACAG","CAGAACAG","GAGAACAG","TAGAACAG","ACGAACAG","CCGAACAG","GCGAACAG","TCGAACAG",
+ "AGGAACAG","CGGAACAG","GGGAACAG","TGGAACAG","ATGAACAG","CTGAACAG","GTGAACAG","TTGAACAG",
+ "AATAACAG","CATAACAG","GATAACAG","TATAACAG","ACTAACAG","CCTAACAG","GCTAACAG","TCTAACAG",
+ "AGTAACAG","CGTAACAG","GGTAACAG","TGTAACAG","ATTAACAG","CTTAACAG","GTTAACAG","TTTAACAG",
+ "AAACACAG","CAACACAG","GAACACAG","TAACACAG","ACACACAG","CCACACAG","GCACACAG","TCACACAG",
+ "AGACACAG","CGACACAG","GGACACAG","TGACACAG","ATACACAG","CTACACAG","GTACACAG","TTACACAG",
+ "AACCACAG","CACCACAG","GACCACAG","TACCACAG","ACCCACAG","CCCCACAG","GCCCACAG","TCCCACAG",
+ "AGCCACAG","CGCCACAG","GGCCACAG","TGCCACAG","ATCCACAG","CTCCACAG","GTCCACAG","TTCCACAG",
+ "AAGCACAG","CAGCACAG","GAGCACAG","TAGCACAG","ACGCACAG","CCGCACAG","GCGCACAG","TCGCACAG",
+ "AGGCACAG","CGGCACAG","GGGCACAG","TGGCACAG","ATGCACAG","CTGCACAG","GTGCACAG","TTGCACAG",
+ "AATCACAG","CATCACAG","GATCACAG","TATCACAG","ACTCACAG","CCTCACAG","GCTCACAG","TCTCACAG",
+ "AGTCACAG","CGTCACAG","GGTCACAG","TGTCACAG","ATTCACAG","CTTCACAG","GTTCACAG","TTTCACAG",
+ "AAAGACAG","CAAGACAG","GAAGACAG","TAAGACAG","ACAGACAG","CCAGACAG","GCAGACAG","TCAGACAG",
+ "AGAGACAG","CGAGACAG","GGAGACAG","TGAGACAG","ATAGACAG","CTAGACAG","GTAGACAG","TTAGACAG",
+ "AACGACAG","CACGACAG","GACGACAG","TACGACAG","ACCGACAG","CCCGACAG","GCCGACAG","TCCGACAG",
+ "AGCGACAG","CGCGACAG","GGCGACAG","TGCGACAG","ATCGACAG","CTCGACAG","GTCGACAG","TTCGACAG",
+ "AAGGACAG","CAGGACAG","GAGGACAG","TAGGACAG","ACGGACAG","CCGGACAG","GCGGACAG","TCGGACAG",
+ "AGGGACAG","CGGGACAG","GGGGACAG","TGGGACAG","ATGGACAG","CTGGACAG","GTGGACAG","TTGGACAG",
+ "AATGACAG","CATGACAG","GATGACAG","TATGACAG","ACTGACAG","CCTGACAG","GCTGACAG","TCTGACAG",
+ "AGTGACAG","CGTGACAG","GGTGACAG","TGTGACAG","ATTGACAG","CTTGACAG","GTTGACAG","TTTGACAG",
+ "AAATACAG","CAATACAG","GAATACAG","TAATACAG","ACATACAG","CCATACAG","GCATACAG","TCATACAG",
+ "AGATACAG","CGATACAG","GGATACAG","TGATACAG","ATATACAG","CTATACAG","GTATACAG","TTATACAG",
+ "AACTACAG","CACTACAG","GACTACAG","TACTACAG","ACCTACAG","CCCTACAG","GCCTACAG","TCCTACAG",
+ "AGCTACAG","CGCTACAG","GGCTACAG","TGCTACAG","ATCTACAG","CTCTACAG","GTCTACAG","TTCTACAG",
+ "AAGTACAG","CAGTACAG","GAGTACAG","TAGTACAG","ACGTACAG","CCGTACAG","GCGTACAG","TCGTACAG",
+ "AGGTACAG","CGGTACAG","GGGTACAG","TGGTACAG","ATGTACAG","CTGTACAG","GTGTACAG","TTGTACAG",
+ "AATTACAG","CATTACAG","GATTACAG","TATTACAG","ACTTACAG","CCTTACAG","GCTTACAG","TCTTACAG",
+ "AGTTACAG","CGTTACAG","GGTTACAG","TGTTACAG","ATTTACAG","CTTTACAG","GTTTACAG","TTTTACAG",
+ "AAAACCAG","CAAACCAG","GAAACCAG","TAAACCAG","ACAACCAG","CCAACCAG","GCAACCAG","TCAACCAG",
+ "AGAACCAG","CGAACCAG","GGAACCAG","TGAACCAG","ATAACCAG","CTAACCAG","GTAACCAG","TTAACCAG",
+ "AACACCAG","CACACCAG","GACACCAG","TACACCAG","ACCACCAG","CCCACCAG","GCCACCAG","TCCACCAG",
+ "AGCACCAG","CGCACCAG","GGCACCAG","TGCACCAG","ATCACCAG","CTCACCAG","GTCACCAG","TTCACCAG",
+ "AAGACCAG","CAGACCAG","GAGACCAG","TAGACCAG","ACGACCAG","CCGACCAG","GCGACCAG","TCGACCAG",
+ "AGGACCAG","CGGACCAG","GGGACCAG","TGGACCAG","ATGACCAG","CTGACCAG","GTGACCAG","TTGACCAG",
+ "AATACCAG","CATACCAG","GATACCAG","TATACCAG","ACTACCAG","CCTACCAG","GCTACCAG","TCTACCAG",
+ "AGTACCAG","CGTACCAG","GGTACCAG","TGTACCAG","ATTACCAG","CTTACCAG","GTTACCAG","TTTACCAG",
+ "AAACCCAG","CAACCCAG","GAACCCAG","TAACCCAG","ACACCCAG","CCACCCAG","GCACCCAG","TCACCCAG",
+ "AGACCCAG","CGACCCAG","GGACCCAG","TGACCCAG","ATACCCAG","CTACCCAG","GTACCCAG","TTACCCAG",
+ "AACCCCAG","CACCCCAG","GACCCCAG","TACCCCAG","ACCCCCAG","CCCCCCAG","GCCCCCAG","TCCCCCAG",
+ "AGCCCCAG","CGCCCCAG","GGCCCCAG","TGCCCCAG","ATCCCCAG","CTCCCCAG","GTCCCCAG","TTCCCCAG",
+ "AAGCCCAG","CAGCCCAG","GAGCCCAG","TAGCCCAG","ACGCCCAG","CCGCCCAG","GCGCCCAG","TCGCCCAG",
+ "AGGCCCAG","CGGCCCAG","GGGCCCAG","TGGCCCAG","ATGCCCAG","CTGCCCAG","GTGCCCAG","TTGCCCAG",
+ "AATCCCAG","CATCCCAG","GATCCCAG","TATCCCAG","ACTCCCAG","CCTCCCAG","GCTCCCAG","TCTCCCAG",
+ "AGTCCCAG","CGTCCCAG","GGTCCCAG","TGTCCCAG","ATTCCCAG","CTTCCCAG","GTTCCCAG","TTTCCCAG",
+ "AAAGCCAG","CAAGCCAG","GAAGCCAG","TAAGCCAG","ACAGCCAG","CCAGCCAG","GCAGCCAG","TCAGCCAG",
+ "AGAGCCAG","CGAGCCAG","GGAGCCAG","TGAGCCAG","ATAGCCAG","CTAGCCAG","GTAGCCAG","TTAGCCAG",
+ "AACGCCAG","CACGCCAG","GACGCCAG","TACGCCAG","ACCGCCAG","CCCGCCAG","GCCGCCAG","TCCGCCAG",
+ "AGCGCCAG","CGCGCCAG","GGCGCCAG","TGCGCCAG","ATCGCCAG","CTCGCCAG","GTCGCCAG","TTCGCCAG",
+ "AAGGCCAG","CAGGCCAG","GAGGCCAG","TAGGCCAG","ACGGCCAG","CCGGCCAG","GCGGCCAG","TCGGCCAG",
+ "AGGGCCAG","CGGGCCAG","GGGGCCAG","TGGGCCAG","ATGGCCAG","CTGGCCAG","GTGGCCAG","TTGGCCAG",
+ "AATGCCAG","CATGCCAG","GATGCCAG","TATGCCAG","ACTGCCAG","CCTGCCAG","GCTGCCAG","TCTGCCAG",
+ "AGTGCCAG","CGTGCCAG","GGTGCCAG","TGTGCCAG","ATTGCCAG","CTTGCCAG","GTTGCCAG","TTTGCCAG",
+ "AAATCCAG","CAATCCAG","GAATCCAG","TAATCCAG","ACATCCAG","CCATCCAG","GCATCCAG","TCATCCAG",
+ "AGATCCAG","CGATCCAG","GGATCCAG","TGATCCAG","ATATCCAG","CTATCCAG","GTATCCAG","TTATCCAG",
+ "AACTCCAG","CACTCCAG","GACTCCAG","TACTCCAG","ACCTCCAG","CCCTCCAG","GCCTCCAG","TCCTCCAG",
+ "AGCTCCAG","CGCTCCAG","GGCTCCAG","TGCTCCAG","ATCTCCAG","CTCTCCAG","GTCTCCAG","TTCTCCAG",
+ "AAGTCCAG","CAGTCCAG","GAGTCCAG","TAGTCCAG","ACGTCCAG","CCGTCCAG","GCGTCCAG","TCGTCCAG",
+ "AGGTCCAG","CGGTCCAG","GGGTCCAG","TGGTCCAG","ATGTCCAG","CTGTCCAG","GTGTCCAG","TTGTCCAG",
+ "AATTCCAG","CATTCCAG","GATTCCAG","TATTCCAG","ACTTCCAG","CCTTCCAG","GCTTCCAG","TCTTCCAG",
+ "AGTTCCAG","CGTTCCAG","GGTTCCAG","TGTTCCAG","ATTTCCAG","CTTTCCAG","GTTTCCAG","TTTTCCAG",
+ "AAAAGCAG","CAAAGCAG","GAAAGCAG","TAAAGCAG","ACAAGCAG","CCAAGCAG","GCAAGCAG","TCAAGCAG",
+ "AGAAGCAG","CGAAGCAG","GGAAGCAG","TGAAGCAG","ATAAGCAG","CTAAGCAG","GTAAGCAG","TTAAGCAG",
+ "AACAGCAG","CACAGCAG","GACAGCAG","TACAGCAG","ACCAGCAG","CCCAGCAG","GCCAGCAG","TCCAGCAG",
+ "AGCAGCAG","CGCAGCAG","GGCAGCAG","TGCAGCAG","ATCAGCAG","CTCAGCAG","GTCAGCAG","TTCAGCAG",
+ "AAGAGCAG","CAGAGCAG","GAGAGCAG","TAGAGCAG","ACGAGCAG","CCGAGCAG","GCGAGCAG","TCGAGCAG",
+ "AGGAGCAG","CGGAGCAG","GGGAGCAG","TGGAGCAG","ATGAGCAG","CTGAGCAG","GTGAGCAG","TTGAGCAG",
+ "AATAGCAG","CATAGCAG","GATAGCAG","TATAGCAG","ACTAGCAG","CCTAGCAG","GCTAGCAG","TCTAGCAG",
+ "AGTAGCAG","CGTAGCAG","GGTAGCAG","TGTAGCAG","ATTAGCAG","CTTAGCAG","GTTAGCAG","TTTAGCAG",
+ "AAACGCAG","CAACGCAG","GAACGCAG","TAACGCAG","ACACGCAG","CCACGCAG","GCACGCAG","TCACGCAG",
+ "AGACGCAG","CGACGCAG","GGACGCAG","TGACGCAG","ATACGCAG","CTACGCAG","GTACGCAG","TTACGCAG",
+ "AACCGCAG","CACCGCAG","GACCGCAG","TACCGCAG","ACCCGCAG","CCCCGCAG","GCCCGCAG","TCCCGCAG",
+ "AGCCGCAG","CGCCGCAG","GGCCGCAG","TGCCGCAG","ATCCGCAG","CTCCGCAG","GTCCGCAG","TTCCGCAG",
+ "AAGCGCAG","CAGCGCAG","GAGCGCAG","TAGCGCAG","ACGCGCAG","CCGCGCAG","GCGCGCAG","TCGCGCAG",
+ "AGGCGCAG","CGGCGCAG","GGGCGCAG","TGGCGCAG","ATGCGCAG","CTGCGCAG","GTGCGCAG","TTGCGCAG",
+ "AATCGCAG","CATCGCAG","GATCGCAG","TATCGCAG","ACTCGCAG","CCTCGCAG","GCTCGCAG","TCTCGCAG",
+ "AGTCGCAG","CGTCGCAG","GGTCGCAG","TGTCGCAG","ATTCGCAG","CTTCGCAG","GTTCGCAG","TTTCGCAG",
+ "AAAGGCAG","CAAGGCAG","GAAGGCAG","TAAGGCAG","ACAGGCAG","CCAGGCAG","GCAGGCAG","TCAGGCAG",
+ "AGAGGCAG","CGAGGCAG","GGAGGCAG","TGAGGCAG","ATAGGCAG","CTAGGCAG","GTAGGCAG","TTAGGCAG",
+ "AACGGCAG","CACGGCAG","GACGGCAG","TACGGCAG","ACCGGCAG","CCCGGCAG","GCCGGCAG","TCCGGCAG",
+ "AGCGGCAG","CGCGGCAG","GGCGGCAG","TGCGGCAG","ATCGGCAG","CTCGGCAG","GTCGGCAG","TTCGGCAG",
+ "AAGGGCAG","CAGGGCAG","GAGGGCAG","TAGGGCAG","ACGGGCAG","CCGGGCAG","GCGGGCAG","TCGGGCAG",
+ "AGGGGCAG","CGGGGCAG","GGGGGCAG","TGGGGCAG","ATGGGCAG","CTGGGCAG","GTGGGCAG","TTGGGCAG",
+ "AATGGCAG","CATGGCAG","GATGGCAG","TATGGCAG","ACTGGCAG","CCTGGCAG","GCTGGCAG","TCTGGCAG",
+ "AGTGGCAG","CGTGGCAG","GGTGGCAG","TGTGGCAG","ATTGGCAG","CTTGGCAG","GTTGGCAG","TTTGGCAG",
+ "AAATGCAG","CAATGCAG","GAATGCAG","TAATGCAG","ACATGCAG","CCATGCAG","GCATGCAG","TCATGCAG",
+ "AGATGCAG","CGATGCAG","GGATGCAG","TGATGCAG","ATATGCAG","CTATGCAG","GTATGCAG","TTATGCAG",
+ "AACTGCAG","CACTGCAG","GACTGCAG","TACTGCAG","ACCTGCAG","CCCTGCAG","GCCTGCAG","TCCTGCAG",
+ "AGCTGCAG","CGCTGCAG","GGCTGCAG","TGCTGCAG","ATCTGCAG","CTCTGCAG","GTCTGCAG","TTCTGCAG",
+ "AAGTGCAG","CAGTGCAG","GAGTGCAG","TAGTGCAG","ACGTGCAG","CCGTGCAG","GCGTGCAG","TCGTGCAG",
+ "AGGTGCAG","CGGTGCAG","GGGTGCAG","TGGTGCAG","ATGTGCAG","CTGTGCAG","GTGTGCAG","TTGTGCAG",
+ "AATTGCAG","CATTGCAG","GATTGCAG","TATTGCAG","ACTTGCAG","CCTTGCAG","GCTTGCAG","TCTTGCAG",
+ "AGTTGCAG","CGTTGCAG","GGTTGCAG","TGTTGCAG","ATTTGCAG","CTTTGCAG","GTTTGCAG","TTTTGCAG",
+ "AAAATCAG","CAAATCAG","GAAATCAG","TAAATCAG","ACAATCAG","CCAATCAG","GCAATCAG","TCAATCAG",
+ "AGAATCAG","CGAATCAG","GGAATCAG","TGAATCAG","ATAATCAG","CTAATCAG","GTAATCAG","TTAATCAG",
+ "AACATCAG","CACATCAG","GACATCAG","TACATCAG","ACCATCAG","CCCATCAG","GCCATCAG","TCCATCAG",
+ "AGCATCAG","CGCATCAG","GGCATCAG","TGCATCAG","ATCATCAG","CTCATCAG","GTCATCAG","TTCATCAG",
+ "AAGATCAG","CAGATCAG","GAGATCAG","TAGATCAG","ACGATCAG","CCGATCAG","GCGATCAG","TCGATCAG",
+ "AGGATCAG","CGGATCAG","GGGATCAG","TGGATCAG","ATGATCAG","CTGATCAG","GTGATCAG","TTGATCAG",
+ "AATATCAG","CATATCAG","GATATCAG","TATATCAG","ACTATCAG","CCTATCAG","GCTATCAG","TCTATCAG",
+ "AGTATCAG","CGTATCAG","GGTATCAG","TGTATCAG","ATTATCAG","CTTATCAG","GTTATCAG","TTTATCAG",
+ "AAACTCAG","CAACTCAG","GAACTCAG","TAACTCAG","ACACTCAG","CCACTCAG","GCACTCAG","TCACTCAG",
+ "AGACTCAG","CGACTCAG","GGACTCAG","TGACTCAG","ATACTCAG","CTACTCAG","GTACTCAG","TTACTCAG",
+ "AACCTCAG","CACCTCAG","GACCTCAG","TACCTCAG","ACCCTCAG","CCCCTCAG","GCCCTCAG","TCCCTCAG",
+ "AGCCTCAG","CGCCTCAG","GGCCTCAG","TGCCTCAG","ATCCTCAG","CTCCTCAG","GTCCTCAG","TTCCTCAG",
+ "AAGCTCAG","CAGCTCAG","GAGCTCAG","TAGCTCAG","ACGCTCAG","CCGCTCAG","GCGCTCAG","TCGCTCAG",
+ "AGGCTCAG","CGGCTCAG","GGGCTCAG","TGGCTCAG","ATGCTCAG","CTGCTCAG","GTGCTCAG","TTGCTCAG",
+ "AATCTCAG","CATCTCAG","GATCTCAG","TATCTCAG","ACTCTCAG","CCTCTCAG","GCTCTCAG","TCTCTCAG",
+ "AGTCTCAG","CGTCTCAG","GGTCTCAG","TGTCTCAG","ATTCTCAG","CTTCTCAG","GTTCTCAG","TTTCTCAG",
+ "AAAGTCAG","CAAGTCAG","GAAGTCAG","TAAGTCAG","ACAGTCAG","CCAGTCAG","GCAGTCAG","TCAGTCAG",
+ "AGAGTCAG","CGAGTCAG","GGAGTCAG","TGAGTCAG","ATAGTCAG","CTAGTCAG","GTAGTCAG","TTAGTCAG",
+ "AACGTCAG","CACGTCAG","GACGTCAG","TACGTCAG","ACCGTCAG","CCCGTCAG","GCCGTCAG","TCCGTCAG",
+ "AGCGTCAG","CGCGTCAG","GGCGTCAG","TGCGTCAG","ATCGTCAG","CTCGTCAG","GTCGTCAG","TTCGTCAG",
+ "AAGGTCAG","CAGGTCAG","GAGGTCAG","TAGGTCAG","ACGGTCAG","CCGGTCAG","GCGGTCAG","TCGGTCAG",
+ "AGGGTCAG","CGGGTCAG","GGGGTCAG","TGGGTCAG","ATGGTCAG","CTGGTCAG","GTGGTCAG","TTGGTCAG",
+ "AATGTCAG","CATGTCAG","GATGTCAG","TATGTCAG","ACTGTCAG","CCTGTCAG","GCTGTCAG","TCTGTCAG",
+ "AGTGTCAG","CGTGTCAG","GGTGTCAG","TGTGTCAG","ATTGTCAG","CTTGTCAG","GTTGTCAG","TTTGTCAG",
+ "AAATTCAG","CAATTCAG","GAATTCAG","TAATTCAG","ACATTCAG","CCATTCAG","GCATTCAG","TCATTCAG",
+ "AGATTCAG","CGATTCAG","GGATTCAG","TGATTCAG","ATATTCAG","CTATTCAG","GTATTCAG","TTATTCAG",
+ "AACTTCAG","CACTTCAG","GACTTCAG","TACTTCAG","ACCTTCAG","CCCTTCAG","GCCTTCAG","TCCTTCAG",
+ "AGCTTCAG","CGCTTCAG","GGCTTCAG","TGCTTCAG","ATCTTCAG","CTCTTCAG","GTCTTCAG","TTCTTCAG",
+ "AAGTTCAG","CAGTTCAG","GAGTTCAG","TAGTTCAG","ACGTTCAG","CCGTTCAG","GCGTTCAG","TCGTTCAG",
+ "AGGTTCAG","CGGTTCAG","GGGTTCAG","TGGTTCAG","ATGTTCAG","CTGTTCAG","GTGTTCAG","TTGTTCAG",
+ "AATTTCAG","CATTTCAG","GATTTCAG","TATTTCAG","ACTTTCAG","CCTTTCAG","GCTTTCAG","TCTTTCAG",
+ "AGTTTCAG","CGTTTCAG","GGTTTCAG","TGTTTCAG","ATTTTCAG","CTTTTCAG","GTTTTCAG","TTTTTCAG",
+ "AAAAAGAG","CAAAAGAG","GAAAAGAG","TAAAAGAG","ACAAAGAG","CCAAAGAG","GCAAAGAG","TCAAAGAG",
+ "AGAAAGAG","CGAAAGAG","GGAAAGAG","TGAAAGAG","ATAAAGAG","CTAAAGAG","GTAAAGAG","TTAAAGAG",
+ "AACAAGAG","CACAAGAG","GACAAGAG","TACAAGAG","ACCAAGAG","CCCAAGAG","GCCAAGAG","TCCAAGAG",
+ "AGCAAGAG","CGCAAGAG","GGCAAGAG","TGCAAGAG","ATCAAGAG","CTCAAGAG","GTCAAGAG","TTCAAGAG",
+ "AAGAAGAG","CAGAAGAG","GAGAAGAG","TAGAAGAG","ACGAAGAG","CCGAAGAG","GCGAAGAG","TCGAAGAG",
+ "AGGAAGAG","CGGAAGAG","GGGAAGAG","TGGAAGAG","ATGAAGAG","CTGAAGAG","GTGAAGAG","TTGAAGAG",
+ "AATAAGAG","CATAAGAG","GATAAGAG","TATAAGAG","ACTAAGAG","CCTAAGAG","GCTAAGAG","TCTAAGAG",
+ "AGTAAGAG","CGTAAGAG","GGTAAGAG","TGTAAGAG","ATTAAGAG","CTTAAGAG","GTTAAGAG","TTTAAGAG",
+ "AAACAGAG","CAACAGAG","GAACAGAG","TAACAGAG","ACACAGAG","CCACAGAG","GCACAGAG","TCACAGAG",
+ "AGACAGAG","CGACAGAG","GGACAGAG","TGACAGAG","ATACAGAG","CTACAGAG","GTACAGAG","TTACAGAG",
+ "AACCAGAG","CACCAGAG","GACCAGAG","TACCAGAG","ACCCAGAG","CCCCAGAG","GCCCAGAG","TCCCAGAG",
+ "AGCCAGAG","CGCCAGAG","GGCCAGAG","TGCCAGAG","ATCCAGAG","CTCCAGAG","GTCCAGAG","TTCCAGAG",
+ "AAGCAGAG","CAGCAGAG","GAGCAGAG","TAGCAGAG","ACGCAGAG","CCGCAGAG","GCGCAGAG","TCGCAGAG",
+ "AGGCAGAG","CGGCAGAG","GGGCAGAG","TGGCAGAG","ATGCAGAG","CTGCAGAG","GTGCAGAG","TTGCAGAG",
+ "AATCAGAG","CATCAGAG","GATCAGAG","TATCAGAG","ACTCAGAG","CCTCAGAG","GCTCAGAG","TCTCAGAG",
+ "AGTCAGAG","CGTCAGAG","GGTCAGAG","TGTCAGAG","ATTCAGAG","CTTCAGAG","GTTCAGAG","TTTCAGAG",
+ "AAAGAGAG","CAAGAGAG","GAAGAGAG","TAAGAGAG","ACAGAGAG","CCAGAGAG","GCAGAGAG","TCAGAGAG",
+ "AGAGAGAG","CGAGAGAG","GGAGAGAG","TGAGAGAG","ATAGAGAG","CTAGAGAG","GTAGAGAG","TTAGAGAG",
+ "AACGAGAG","CACGAGAG","GACGAGAG","TACGAGAG","ACCGAGAG","CCCGAGAG","GCCGAGAG","TCCGAGAG",
+ "AGCGAGAG","CGCGAGAG","GGCGAGAG","TGCGAGAG","ATCGAGAG","CTCGAGAG","GTCGAGAG","TTCGAGAG",
+ "AAGGAGAG","CAGGAGAG","GAGGAGAG","TAGGAGAG","ACGGAGAG","CCGGAGAG","GCGGAGAG","TCGGAGAG",
+ "AGGGAGAG","CGGGAGAG","GGGGAGAG","TGGGAGAG","ATGGAGAG","CTGGAGAG","GTGGAGAG","TTGGAGAG",
+ "AATGAGAG","CATGAGAG","GATGAGAG","TATGAGAG","ACTGAGAG","CCTGAGAG","GCTGAGAG","TCTGAGAG",
+ "AGTGAGAG","CGTGAGAG","GGTGAGAG","TGTGAGAG","ATTGAGAG","CTTGAGAG","GTTGAGAG","TTTGAGAG",
+ "AAATAGAG","CAATAGAG","GAATAGAG","TAATAGAG","ACATAGAG","CCATAGAG","GCATAGAG","TCATAGAG",
+ "AGATAGAG","CGATAGAG","GGATAGAG","TGATAGAG","ATATAGAG","CTATAGAG","GTATAGAG","TTATAGAG",
+ "AACTAGAG","CACTAGAG","GACTAGAG","TACTAGAG","ACCTAGAG","CCCTAGAG","GCCTAGAG","TCCTAGAG",
+ "AGCTAGAG","CGCTAGAG","GGCTAGAG","TGCTAGAG","ATCTAGAG","CTCTAGAG","GTCTAGAG","TTCTAGAG",
+ "AAGTAGAG","CAGTAGAG","GAGTAGAG","TAGTAGAG","ACGTAGAG","CCGTAGAG","GCGTAGAG","TCGTAGAG",
+ "AGGTAGAG","CGGTAGAG","GGGTAGAG","TGGTAGAG","ATGTAGAG","CTGTAGAG","GTGTAGAG","TTGTAGAG",
+ "AATTAGAG","CATTAGAG","GATTAGAG","TATTAGAG","ACTTAGAG","CCTTAGAG","GCTTAGAG","TCTTAGAG",
+ "AGTTAGAG","CGTTAGAG","GGTTAGAG","TGTTAGAG","ATTTAGAG","CTTTAGAG","GTTTAGAG","TTTTAGAG",
+ "AAAACGAG","CAAACGAG","GAAACGAG","TAAACGAG","ACAACGAG","CCAACGAG","GCAACGAG","TCAACGAG",
+ "AGAACGAG","CGAACGAG","GGAACGAG","TGAACGAG","ATAACGAG","CTAACGAG","GTAACGAG","TTAACGAG",
+ "AACACGAG","CACACGAG","GACACGAG","TACACGAG","ACCACGAG","CCCACGAG","GCCACGAG","TCCACGAG",
+ "AGCACGAG","CGCACGAG","GGCACGAG","TGCACGAG","ATCACGAG","CTCACGAG","GTCACGAG","TTCACGAG",
+ "AAGACGAG","CAGACGAG","GAGACGAG","TAGACGAG","ACGACGAG","CCGACGAG","GCGACGAG","TCGACGAG",
+ "AGGACGAG","CGGACGAG","GGGACGAG","TGGACGAG","ATGACGAG","CTGACGAG","GTGACGAG","TTGACGAG",
+ "AATACGAG","CATACGAG","GATACGAG","TATACGAG","ACTACGAG","CCTACGAG","GCTACGAG","TCTACGAG",
+ "AGTACGAG","CGTACGAG","GGTACGAG","TGTACGAG","ATTACGAG","CTTACGAG","GTTACGAG","TTTACGAG",
+ "AAACCGAG","CAACCGAG","GAACCGAG","TAACCGAG","ACACCGAG","CCACCGAG","GCACCGAG","TCACCGAG",
+ "AGACCGAG","CGACCGAG","GGACCGAG","TGACCGAG","ATACCGAG","CTACCGAG","GTACCGAG","TTACCGAG",
+ "AACCCGAG","CACCCGAG","GACCCGAG","TACCCGAG","ACCCCGAG","CCCCCGAG","GCCCCGAG","TCCCCGAG",
+ "AGCCCGAG","CGCCCGAG","GGCCCGAG","TGCCCGAG","ATCCCGAG","CTCCCGAG","GTCCCGAG","TTCCCGAG",
+ "AAGCCGAG","CAGCCGAG","GAGCCGAG","TAGCCGAG","ACGCCGAG","CCGCCGAG","GCGCCGAG","TCGCCGAG",
+ "AGGCCGAG","CGGCCGAG","GGGCCGAG","TGGCCGAG","ATGCCGAG","CTGCCGAG","GTGCCGAG","TTGCCGAG",
+ "AATCCGAG","CATCCGAG","GATCCGAG","TATCCGAG","ACTCCGAG","CCTCCGAG","GCTCCGAG","TCTCCGAG",
+ "AGTCCGAG","CGTCCGAG","GGTCCGAG","TGTCCGAG","ATTCCGAG","CTTCCGAG","GTTCCGAG","TTTCCGAG",
+ "AAAGCGAG","CAAGCGAG","GAAGCGAG","TAAGCGAG","ACAGCGAG","CCAGCGAG","GCAGCGAG","TCAGCGAG",
+ "AGAGCGAG","CGAGCGAG","GGAGCGAG","TGAGCGAG","ATAGCGAG","CTAGCGAG","GTAGCGAG","TTAGCGAG",
+ "AACGCGAG","CACGCGAG","GACGCGAG","TACGCGAG","ACCGCGAG","CCCGCGAG","GCCGCGAG","TCCGCGAG",
+ "AGCGCGAG","CGCGCGAG","GGCGCGAG","TGCGCGAG","ATCGCGAG","CTCGCGAG","GTCGCGAG","TTCGCGAG",
+ "AAGGCGAG","CAGGCGAG","GAGGCGAG","TAGGCGAG","ACGGCGAG","CCGGCGAG","GCGGCGAG","TCGGCGAG",
+ "AGGGCGAG","CGGGCGAG","GGGGCGAG","TGGGCGAG","ATGGCGAG","CTGGCGAG","GTGGCGAG","TTGGCGAG",
+ "AATGCGAG","CATGCGAG","GATGCGAG","TATGCGAG","ACTGCGAG","CCTGCGAG","GCTGCGAG","TCTGCGAG",
+ "AGTGCGAG","CGTGCGAG","GGTGCGAG","TGTGCGAG","ATTGCGAG","CTTGCGAG","GTTGCGAG","TTTGCGAG",
+ "AAATCGAG","CAATCGAG","GAATCGAG","TAATCGAG","ACATCGAG","CCATCGAG","GCATCGAG","TCATCGAG",
+ "AGATCGAG","CGATCGAG","GGATCGAG","TGATCGAG","ATATCGAG","CTATCGAG","GTATCGAG","TTATCGAG",
+ "AACTCGAG","CACTCGAG","GACTCGAG","TACTCGAG","ACCTCGAG","CCCTCGAG","GCCTCGAG","TCCTCGAG",
+ "AGCTCGAG","CGCTCGAG","GGCTCGAG","TGCTCGAG","ATCTCGAG","CTCTCGAG","GTCTCGAG","TTCTCGAG",
+ "AAGTCGAG","CAGTCGAG","GAGTCGAG","TAGTCGAG","ACGTCGAG","CCGTCGAG","GCGTCGAG","TCGTCGAG",
+ "AGGTCGAG","CGGTCGAG","GGGTCGAG","TGGTCGAG","ATGTCGAG","CTGTCGAG","GTGTCGAG","TTGTCGAG",
+ "AATTCGAG","CATTCGAG","GATTCGAG","TATTCGAG","ACTTCGAG","CCTTCGAG","GCTTCGAG","TCTTCGAG",
+ "AGTTCGAG","CGTTCGAG","GGTTCGAG","TGTTCGAG","ATTTCGAG","CTTTCGAG","GTTTCGAG","TTTTCGAG",
+ "AAAAGGAG","CAAAGGAG","GAAAGGAG","TAAAGGAG","ACAAGGAG","CCAAGGAG","GCAAGGAG","TCAAGGAG",
+ "AGAAGGAG","CGAAGGAG","GGAAGGAG","TGAAGGAG","ATAAGGAG","CTAAGGAG","GTAAGGAG","TTAAGGAG",
+ "AACAGGAG","CACAGGAG","GACAGGAG","TACAGGAG","ACCAGGAG","CCCAGGAG","GCCAGGAG","TCCAGGAG",
+ "AGCAGGAG","CGCAGGAG","GGCAGGAG","TGCAGGAG","ATCAGGAG","CTCAGGAG","GTCAGGAG","TTCAGGAG",
+ "AAGAGGAG","CAGAGGAG","GAGAGGAG","TAGAGGAG","ACGAGGAG","CCGAGGAG","GCGAGGAG","TCGAGGAG",
+ "AGGAGGAG","CGGAGGAG","GGGAGGAG","TGGAGGAG","ATGAGGAG","CTGAGGAG","GTGAGGAG","TTGAGGAG",
+ "AATAGGAG","CATAGGAG","GATAGGAG","TATAGGAG","ACTAGGAG","CCTAGGAG","GCTAGGAG","TCTAGGAG",
+ "AGTAGGAG","CGTAGGAG","GGTAGGAG","TGTAGGAG","ATTAGGAG","CTTAGGAG","GTTAGGAG","TTTAGGAG",
+ "AAACGGAG","CAACGGAG","GAACGGAG","TAACGGAG","ACACGGAG","CCACGGAG","GCACGGAG","TCACGGAG",
+ "AGACGGAG","CGACGGAG","GGACGGAG","TGACGGAG","ATACGGAG","CTACGGAG","GTACGGAG","TTACGGAG",
+ "AACCGGAG","CACCGGAG","GACCGGAG","TACCGGAG","ACCCGGAG","CCCCGGAG","GCCCGGAG","TCCCGGAG",
+ "AGCCGGAG","CGCCGGAG","GGCCGGAG","TGCCGGAG","ATCCGGAG","CTCCGGAG","GTCCGGAG","TTCCGGAG",
+ "AAGCGGAG","CAGCGGAG","GAGCGGAG","TAGCGGAG","ACGCGGAG","CCGCGGAG","GCGCGGAG","TCGCGGAG",
+ "AGGCGGAG","CGGCGGAG","GGGCGGAG","TGGCGGAG","ATGCGGAG","CTGCGGAG","GTGCGGAG","TTGCGGAG",
+ "AATCGGAG","CATCGGAG","GATCGGAG","TATCGGAG","ACTCGGAG","CCTCGGAG","GCTCGGAG","TCTCGGAG",
+ "AGTCGGAG","CGTCGGAG","GGTCGGAG","TGTCGGAG","ATTCGGAG","CTTCGGAG","GTTCGGAG","TTTCGGAG",
+ "AAAGGGAG","CAAGGGAG","GAAGGGAG","TAAGGGAG","ACAGGGAG","CCAGGGAG","GCAGGGAG","TCAGGGAG",
+ "AGAGGGAG","CGAGGGAG","GGAGGGAG","TGAGGGAG","ATAGGGAG","CTAGGGAG","GTAGGGAG","TTAGGGAG",
+ "AACGGGAG","CACGGGAG","GACGGGAG","TACGGGAG","ACCGGGAG","CCCGGGAG","GCCGGGAG","TCCGGGAG",
+ "AGCGGGAG","CGCGGGAG","GGCGGGAG","TGCGGGAG","ATCGGGAG","CTCGGGAG","GTCGGGAG","TTCGGGAG",
+ "AAGGGGAG","CAGGGGAG","GAGGGGAG","TAGGGGAG","ACGGGGAG","CCGGGGAG","GCGGGGAG","TCGGGGAG",
+ "AGGGGGAG","CGGGGGAG","GGGGGGAG","TGGGGGAG","ATGGGGAG","CTGGGGAG","GTGGGGAG","TTGGGGAG",
+ "AATGGGAG","CATGGGAG","GATGGGAG","TATGGGAG","ACTGGGAG","CCTGGGAG","GCTGGGAG","TCTGGGAG",
+ "AGTGGGAG","CGTGGGAG","GGTGGGAG","TGTGGGAG","ATTGGGAG","CTTGGGAG","GTTGGGAG","TTTGGGAG",
+ "AAATGGAG","CAATGGAG","GAATGGAG","TAATGGAG","ACATGGAG","CCATGGAG","GCATGGAG","TCATGGAG",
+ "AGATGGAG","CGATGGAG","GGATGGAG","TGATGGAG","ATATGGAG","CTATGGAG","GTATGGAG","TTATGGAG",
+ "AACTGGAG","CACTGGAG","GACTGGAG","TACTGGAG","ACCTGGAG","CCCTGGAG","GCCTGGAG","TCCTGGAG",
+ "AGCTGGAG","CGCTGGAG","GGCTGGAG","TGCTGGAG","ATCTGGAG","CTCTGGAG","GTCTGGAG","TTCTGGAG",
+ "AAGTGGAG","CAGTGGAG","GAGTGGAG","TAGTGGAG","ACGTGGAG","CCGTGGAG","GCGTGGAG","TCGTGGAG",
+ "AGGTGGAG","CGGTGGAG","GGGTGGAG","TGGTGGAG","ATGTGGAG","CTGTGGAG","GTGTGGAG","TTGTGGAG",
+ "AATTGGAG","CATTGGAG","GATTGGAG","TATTGGAG","ACTTGGAG","CCTTGGAG","GCTTGGAG","TCTTGGAG",
+ "AGTTGGAG","CGTTGGAG","GGTTGGAG","TGTTGGAG","ATTTGGAG","CTTTGGAG","GTTTGGAG","TTTTGGAG",
+ "AAAATGAG","CAAATGAG","GAAATGAG","TAAATGAG","ACAATGAG","CCAATGAG","GCAATGAG","TCAATGAG",
+ "AGAATGAG","CGAATGAG","GGAATGAG","TGAATGAG","ATAATGAG","CTAATGAG","GTAATGAG","TTAATGAG",
+ "AACATGAG","CACATGAG","GACATGAG","TACATGAG","ACCATGAG","CCCATGAG","GCCATGAG","TCCATGAG",
+ "AGCATGAG","CGCATGAG","GGCATGAG","TGCATGAG","ATCATGAG","CTCATGAG","GTCATGAG","TTCATGAG",
+ "AAGATGAG","CAGATGAG","GAGATGAG","TAGATGAG","ACGATGAG","CCGATGAG","GCGATGAG","TCGATGAG",
+ "AGGATGAG","CGGATGAG","GGGATGAG","TGGATGAG","ATGATGAG","CTGATGAG","GTGATGAG","TTGATGAG",
+ "AATATGAG","CATATGAG","GATATGAG","TATATGAG","ACTATGAG","CCTATGAG","GCTATGAG","TCTATGAG",
+ "AGTATGAG","CGTATGAG","GGTATGAG","TGTATGAG","ATTATGAG","CTTATGAG","GTTATGAG","TTTATGAG",
+ "AAACTGAG","CAACTGAG","GAACTGAG","TAACTGAG","ACACTGAG","CCACTGAG","GCACTGAG","TCACTGAG",
+ "AGACTGAG","CGACTGAG","GGACTGAG","TGACTGAG","ATACTGAG","CTACTGAG","GTACTGAG","TTACTGAG",
+ "AACCTGAG","CACCTGAG","GACCTGAG","TACCTGAG","ACCCTGAG","CCCCTGAG","GCCCTGAG","TCCCTGAG",
+ "AGCCTGAG","CGCCTGAG","GGCCTGAG","TGCCTGAG","ATCCTGAG","CTCCTGAG","GTCCTGAG","TTCCTGAG",
+ "AAGCTGAG","CAGCTGAG","GAGCTGAG","TAGCTGAG","ACGCTGAG","CCGCTGAG","GCGCTGAG","TCGCTGAG",
+ "AGGCTGAG","CGGCTGAG","GGGCTGAG","TGGCTGAG","ATGCTGAG","CTGCTGAG","GTGCTGAG","TTGCTGAG",
+ "AATCTGAG","CATCTGAG","GATCTGAG","TATCTGAG","ACTCTGAG","CCTCTGAG","GCTCTGAG","TCTCTGAG",
+ "AGTCTGAG","CGTCTGAG","GGTCTGAG","TGTCTGAG","ATTCTGAG","CTTCTGAG","GTTCTGAG","TTTCTGAG",
+ "AAAGTGAG","CAAGTGAG","GAAGTGAG","TAAGTGAG","ACAGTGAG","CCAGTGAG","GCAGTGAG","TCAGTGAG",
+ "AGAGTGAG","CGAGTGAG","GGAGTGAG","TGAGTGAG","ATAGTGAG","CTAGTGAG","GTAGTGAG","TTAGTGAG",
+ "AACGTGAG","CACGTGAG","GACGTGAG","TACGTGAG","ACCGTGAG","CCCGTGAG","GCCGTGAG","TCCGTGAG",
+ "AGCGTGAG","CGCGTGAG","GGCGTGAG","TGCGTGAG","ATCGTGAG","CTCGTGAG","GTCGTGAG","TTCGTGAG",
+ "AAGGTGAG","CAGGTGAG","GAGGTGAG","TAGGTGAG","ACGGTGAG","CCGGTGAG","GCGGTGAG","TCGGTGAG",
+ "AGGGTGAG","CGGGTGAG","GGGGTGAG","TGGGTGAG","ATGGTGAG","CTGGTGAG","GTGGTGAG","TTGGTGAG",
+ "AATGTGAG","CATGTGAG","GATGTGAG","TATGTGAG","ACTGTGAG","CCTGTGAG","GCTGTGAG","TCTGTGAG",
+ "AGTGTGAG","CGTGTGAG","GGTGTGAG","TGTGTGAG","ATTGTGAG","CTTGTGAG","GTTGTGAG","TTTGTGAG",
+ "AAATTGAG","CAATTGAG","GAATTGAG","TAATTGAG","ACATTGAG","CCATTGAG","GCATTGAG","TCATTGAG",
+ "AGATTGAG","CGATTGAG","GGATTGAG","TGATTGAG","ATATTGAG","CTATTGAG","GTATTGAG","TTATTGAG",
+ "AACTTGAG","CACTTGAG","GACTTGAG","TACTTGAG","ACCTTGAG","CCCTTGAG","GCCTTGAG","TCCTTGAG",
+ "AGCTTGAG","CGCTTGAG","GGCTTGAG","TGCTTGAG","ATCTTGAG","CTCTTGAG","GTCTTGAG","TTCTTGAG",
+ "AAGTTGAG","CAGTTGAG","GAGTTGAG","TAGTTGAG","ACGTTGAG","CCGTTGAG","GCGTTGAG","TCGTTGAG",
+ "AGGTTGAG","CGGTTGAG","GGGTTGAG","TGGTTGAG","ATGTTGAG","CTGTTGAG","GTGTTGAG","TTGTTGAG",
+ "AATTTGAG","CATTTGAG","GATTTGAG","TATTTGAG","ACTTTGAG","CCTTTGAG","GCTTTGAG","TCTTTGAG",
+ "AGTTTGAG","CGTTTGAG","GGTTTGAG","TGTTTGAG","ATTTTGAG","CTTTTGAG","GTTTTGAG","TTTTTGAG",
+ "AAAAATAG","CAAAATAG","GAAAATAG","TAAAATAG","ACAAATAG","CCAAATAG","GCAAATAG","TCAAATAG",
+ "AGAAATAG","CGAAATAG","GGAAATAG","TGAAATAG","ATAAATAG","CTAAATAG","GTAAATAG","TTAAATAG",
+ "AACAATAG","CACAATAG","GACAATAG","TACAATAG","ACCAATAG","CCCAATAG","GCCAATAG","TCCAATAG",
+ "AGCAATAG","CGCAATAG","GGCAATAG","TGCAATAG","ATCAATAG","CTCAATAG","GTCAATAG","TTCAATAG",
+ "AAGAATAG","CAGAATAG","GAGAATAG","TAGAATAG","ACGAATAG","CCGAATAG","GCGAATAG","TCGAATAG",
+ "AGGAATAG","CGGAATAG","GGGAATAG","TGGAATAG","ATGAATAG","CTGAATAG","GTGAATAG","TTGAATAG",
+ "AATAATAG","CATAATAG","GATAATAG","TATAATAG","ACTAATAG","CCTAATAG","GCTAATAG","TCTAATAG",
+ "AGTAATAG","CGTAATAG","GGTAATAG","TGTAATAG","ATTAATAG","CTTAATAG","GTTAATAG","TTTAATAG",
+ "AAACATAG","CAACATAG","GAACATAG","TAACATAG","ACACATAG","CCACATAG","GCACATAG","TCACATAG",
+ "AGACATAG","CGACATAG","GGACATAG","TGACATAG","ATACATAG","CTACATAG","GTACATAG","TTACATAG",
+ "AACCATAG","CACCATAG","GACCATAG","TACCATAG","ACCCATAG","CCCCATAG","GCCCATAG","TCCCATAG",
+ "AGCCATAG","CGCCATAG","GGCCATAG","TGCCATAG","ATCCATAG","CTCCATAG","GTCCATAG","TTCCATAG",
+ "AAGCATAG","CAGCATAG","GAGCATAG","TAGCATAG","ACGCATAG","CCGCATAG","GCGCATAG","TCGCATAG",
+ "AGGCATAG","CGGCATAG","GGGCATAG","TGGCATAG","ATGCATAG","CTGCATAG","GTGCATAG","TTGCATAG",
+ "AATCATAG","CATCATAG","GATCATAG","TATCATAG","ACTCATAG","CCTCATAG","GCTCATAG","TCTCATAG",
+ "AGTCATAG","CGTCATAG","GGTCATAG","TGTCATAG","ATTCATAG","CTTCATAG","GTTCATAG","TTTCATAG",
+ "AAAGATAG","CAAGATAG","GAAGATAG","TAAGATAG","ACAGATAG","CCAGATAG","GCAGATAG","TCAGATAG",
+ "AGAGATAG","CGAGATAG","GGAGATAG","TGAGATAG","ATAGATAG","CTAGATAG","GTAGATAG","TTAGATAG",
+ "AACGATAG","CACGATAG","GACGATAG","TACGATAG","ACCGATAG","CCCGATAG","GCCGATAG","TCCGATAG",
+ "AGCGATAG","CGCGATAG","GGCGATAG","TGCGATAG","ATCGATAG","CTCGATAG","GTCGATAG","TTCGATAG",
+ "AAGGATAG","CAGGATAG","GAGGATAG","TAGGATAG","ACGGATAG","CCGGATAG","GCGGATAG","TCGGATAG",
+ "AGGGATAG","CGGGATAG","GGGGATAG","TGGGATAG","ATGGATAG","CTGGATAG","GTGGATAG","TTGGATAG",
+ "AATGATAG","CATGATAG","GATGATAG","TATGATAG","ACTGATAG","CCTGATAG","GCTGATAG","TCTGATAG",
+ "AGTGATAG","CGTGATAG","GGTGATAG","TGTGATAG","ATTGATAG","CTTGATAG","GTTGATAG","TTTGATAG",
+ "AAATATAG","CAATATAG","GAATATAG","TAATATAG","ACATATAG","CCATATAG","GCATATAG","TCATATAG",
+ "AGATATAG","CGATATAG","GGATATAG","TGATATAG","ATATATAG","CTATATAG","GTATATAG","TTATATAG",
+ "AACTATAG","CACTATAG","GACTATAG","TACTATAG","ACCTATAG","CCCTATAG","GCCTATAG","TCCTATAG",
+ "AGCTATAG","CGCTATAG","GGCTATAG","TGCTATAG","ATCTATAG","CTCTATAG","GTCTATAG","TTCTATAG",
+ "AAGTATAG","CAGTATAG","GAGTATAG","TAGTATAG","ACGTATAG","CCGTATAG","GCGTATAG","TCGTATAG",
+ "AGGTATAG","CGGTATAG","GGGTATAG","TGGTATAG","ATGTATAG","CTGTATAG","GTGTATAG","TTGTATAG",
+ "AATTATAG","CATTATAG","GATTATAG","TATTATAG","ACTTATAG","CCTTATAG","GCTTATAG","TCTTATAG",
+ "AGTTATAG","CGTTATAG","GGTTATAG","TGTTATAG","ATTTATAG","CTTTATAG","GTTTATAG","TTTTATAG",
+ "AAAACTAG","CAAACTAG","GAAACTAG","TAAACTAG","ACAACTAG","CCAACTAG","GCAACTAG","TCAACTAG",
+ "AGAACTAG","CGAACTAG","GGAACTAG","TGAACTAG","ATAACTAG","CTAACTAG","GTAACTAG","TTAACTAG",
+ "AACACTAG","CACACTAG","GACACTAG","TACACTAG","ACCACTAG","CCCACTAG","GCCACTAG","TCCACTAG",
+ "AGCACTAG","CGCACTAG","GGCACTAG","TGCACTAG","ATCACTAG","CTCACTAG","GTCACTAG","TTCACTAG",
+ "AAGACTAG","CAGACTAG","GAGACTAG","TAGACTAG","ACGACTAG","CCGACTAG","GCGACTAG","TCGACTAG",
+ "AGGACTAG","CGGACTAG","GGGACTAG","TGGACTAG","ATGACTAG","CTGACTAG","GTGACTAG","TTGACTAG",
+ "AATACTAG","CATACTAG","GATACTAG","TATACTAG","ACTACTAG","CCTACTAG","GCTACTAG","TCTACTAG",
+ "AGTACTAG","CGTACTAG","GGTACTAG","TGTACTAG","ATTACTAG","CTTACTAG","GTTACTAG","TTTACTAG",
+ "AAACCTAG","CAACCTAG","GAACCTAG","TAACCTAG","ACACCTAG","CCACCTAG","GCACCTAG","TCACCTAG",
+ "AGACCTAG","CGACCTAG","GGACCTAG","TGACCTAG","ATACCTAG","CTACCTAG","GTACCTAG","TTACCTAG",
+ "AACCCTAG","CACCCTAG","GACCCTAG","TACCCTAG","ACCCCTAG","CCCCCTAG","GCCCCTAG","TCCCCTAG",
+ "AGCCCTAG","CGCCCTAG","GGCCCTAG","TGCCCTAG","ATCCCTAG","CTCCCTAG","GTCCCTAG","TTCCCTAG",
+ "AAGCCTAG","CAGCCTAG","GAGCCTAG","TAGCCTAG","ACGCCTAG","CCGCCTAG","GCGCCTAG","TCGCCTAG",
+ "AGGCCTAG","CGGCCTAG","GGGCCTAG","TGGCCTAG","ATGCCTAG","CTGCCTAG","GTGCCTAG","TTGCCTAG",
+ "AATCCTAG","CATCCTAG","GATCCTAG","TATCCTAG","ACTCCTAG","CCTCCTAG","GCTCCTAG","TCTCCTAG",
+ "AGTCCTAG","CGTCCTAG","GGTCCTAG","TGTCCTAG","ATTCCTAG","CTTCCTAG","GTTCCTAG","TTTCCTAG",
+ "AAAGCTAG","CAAGCTAG","GAAGCTAG","TAAGCTAG","ACAGCTAG","CCAGCTAG","GCAGCTAG","TCAGCTAG",
+ "AGAGCTAG","CGAGCTAG","GGAGCTAG","TGAGCTAG","ATAGCTAG","CTAGCTAG","GTAGCTAG","TTAGCTAG",
+ "AACGCTAG","CACGCTAG","GACGCTAG","TACGCTAG","ACCGCTAG","CCCGCTAG","GCCGCTAG","TCCGCTAG",
+ "AGCGCTAG","CGCGCTAG","GGCGCTAG","TGCGCTAG","ATCGCTAG","CTCGCTAG","GTCGCTAG","TTCGCTAG",
+ "AAGGCTAG","CAGGCTAG","GAGGCTAG","TAGGCTAG","ACGGCTAG","CCGGCTAG","GCGGCTAG","TCGGCTAG",
+ "AGGGCTAG","CGGGCTAG","GGGGCTAG","TGGGCTAG","ATGGCTAG","CTGGCTAG","GTGGCTAG","TTGGCTAG",
+ "AATGCTAG","CATGCTAG","GATGCTAG","TATGCTAG","ACTGCTAG","CCTGCTAG","GCTGCTAG","TCTGCTAG",
+ "AGTGCTAG","CGTGCTAG","GGTGCTAG","TGTGCTAG","ATTGCTAG","CTTGCTAG","GTTGCTAG","TTTGCTAG",
+ "AAATCTAG","CAATCTAG","GAATCTAG","TAATCTAG","ACATCTAG","CCATCTAG","GCATCTAG","TCATCTAG",
+ "AGATCTAG","CGATCTAG","GGATCTAG","TGATCTAG","ATATCTAG","CTATCTAG","GTATCTAG","TTATCTAG",
+ "AACTCTAG","CACTCTAG","GACTCTAG","TACTCTAG","ACCTCTAG","CCCTCTAG","GCCTCTAG","TCCTCTAG",
+ "AGCTCTAG","CGCTCTAG","GGCTCTAG","TGCTCTAG","ATCTCTAG","CTCTCTAG","GTCTCTAG","TTCTCTAG",
+ "AAGTCTAG","CAGTCTAG","GAGTCTAG","TAGTCTAG","ACGTCTAG","CCGTCTAG","GCGTCTAG","TCGTCTAG",
+ "AGGTCTAG","CGGTCTAG","GGGTCTAG","TGGTCTAG","ATGTCTAG","CTGTCTAG","GTGTCTAG","TTGTCTAG",
+ "AATTCTAG","CATTCTAG","GATTCTAG","TATTCTAG","ACTTCTAG","CCTTCTAG","GCTTCTAG","TCTTCTAG",
+ "AGTTCTAG","CGTTCTAG","GGTTCTAG","TGTTCTAG","ATTTCTAG","CTTTCTAG","GTTTCTAG","TTTTCTAG",
+ "AAAAGTAG","CAAAGTAG","GAAAGTAG","TAAAGTAG","ACAAGTAG","CCAAGTAG","GCAAGTAG","TCAAGTAG",
+ "AGAAGTAG","CGAAGTAG","GGAAGTAG","TGAAGTAG","ATAAGTAG","CTAAGTAG","GTAAGTAG","TTAAGTAG",
+ "AACAGTAG","CACAGTAG","GACAGTAG","TACAGTAG","ACCAGTAG","CCCAGTAG","GCCAGTAG","TCCAGTAG",
+ "AGCAGTAG","CGCAGTAG","GGCAGTAG","TGCAGTAG","ATCAGTAG","CTCAGTAG","GTCAGTAG","TTCAGTAG",
+ "AAGAGTAG","CAGAGTAG","GAGAGTAG","TAGAGTAG","ACGAGTAG","CCGAGTAG","GCGAGTAG","TCGAGTAG",
+ "AGGAGTAG","CGGAGTAG","GGGAGTAG","TGGAGTAG","ATGAGTAG","CTGAGTAG","GTGAGTAG","TTGAGTAG",
+ "AATAGTAG","CATAGTAG","GATAGTAG","TATAGTAG","ACTAGTAG","CCTAGTAG","GCTAGTAG","TCTAGTAG",
+ "AGTAGTAG","CGTAGTAG","GGTAGTAG","TGTAGTAG","ATTAGTAG","CTTAGTAG","GTTAGTAG","TTTAGTAG",
+ "AAACGTAG","CAACGTAG","GAACGTAG","TAACGTAG","ACACGTAG","CCACGTAG","GCACGTAG","TCACGTAG",
+ "AGACGTAG","CGACGTAG","GGACGTAG","TGACGTAG","ATACGTAG","CTACGTAG","GTACGTAG","TTACGTAG",
+ "AACCGTAG","CACCGTAG","GACCGTAG","TACCGTAG","ACCCGTAG","CCCCGTAG","GCCCGTAG","TCCCGTAG",
+ "AGCCGTAG","CGCCGTAG","GGCCGTAG","TGCCGTAG","ATCCGTAG","CTCCGTAG","GTCCGTAG","TTCCGTAG",
+ "AAGCGTAG","CAGCGTAG","GAGCGTAG","TAGCGTAG","ACGCGTAG","CCGCGTAG","GCGCGTAG","TCGCGTAG",
+ "AGGCGTAG","CGGCGTAG","GGGCGTAG","TGGCGTAG","ATGCGTAG","CTGCGTAG","GTGCGTAG","TTGCGTAG",
+ "AATCGTAG","CATCGTAG","GATCGTAG","TATCGTAG","ACTCGTAG","CCTCGTAG","GCTCGTAG","TCTCGTAG",
+ "AGTCGTAG","CGTCGTAG","GGTCGTAG","TGTCGTAG","ATTCGTAG","CTTCGTAG","GTTCGTAG","TTTCGTAG",
+ "AAAGGTAG","CAAGGTAG","GAAGGTAG","TAAGGTAG","ACAGGTAG","CCAGGTAG","GCAGGTAG","TCAGGTAG",
+ "AGAGGTAG","CGAGGTAG","GGAGGTAG","TGAGGTAG","ATAGGTAG","CTAGGTAG","GTAGGTAG","TTAGGTAG",
+ "AACGGTAG","CACGGTAG","GACGGTAG","TACGGTAG","ACCGGTAG","CCCGGTAG","GCCGGTAG","TCCGGTAG",
+ "AGCGGTAG","CGCGGTAG","GGCGGTAG","TGCGGTAG","ATCGGTAG","CTCGGTAG","GTCGGTAG","TTCGGTAG",
+ "AAGGGTAG","CAGGGTAG","GAGGGTAG","TAGGGTAG","ACGGGTAG","CCGGGTAG","GCGGGTAG","TCGGGTAG",
+ "AGGGGTAG","CGGGGTAG","GGGGGTAG","TGGGGTAG","ATGGGTAG","CTGGGTAG","GTGGGTAG","TTGGGTAG",
+ "AATGGTAG","CATGGTAG","GATGGTAG","TATGGTAG","ACTGGTAG","CCTGGTAG","GCTGGTAG","TCTGGTAG",
+ "AGTGGTAG","CGTGGTAG","GGTGGTAG","TGTGGTAG","ATTGGTAG","CTTGGTAG","GTTGGTAG","TTTGGTAG",
+ "AAATGTAG","CAATGTAG","GAATGTAG","TAATGTAG","ACATGTAG","CCATGTAG","GCATGTAG","TCATGTAG",
+ "AGATGTAG","CGATGTAG","GGATGTAG","TGATGTAG","ATATGTAG","CTATGTAG","GTATGTAG","TTATGTAG",
+ "AACTGTAG","CACTGTAG","GACTGTAG","TACTGTAG","ACCTGTAG","CCCTGTAG","GCCTGTAG","TCCTGTAG",
+ "AGCTGTAG","CGCTGTAG","GGCTGTAG","TGCTGTAG","ATCTGTAG","CTCTGTAG","GTCTGTAG","TTCTGTAG",
+ "AAGTGTAG","CAGTGTAG","GAGTGTAG","TAGTGTAG","ACGTGTAG","CCGTGTAG","GCGTGTAG","TCGTGTAG",
+ "AGGTGTAG","CGGTGTAG","GGGTGTAG","TGGTGTAG","ATGTGTAG","CTGTGTAG","GTGTGTAG","TTGTGTAG",
+ "AATTGTAG","CATTGTAG","GATTGTAG","TATTGTAG","ACTTGTAG","CCTTGTAG","GCTTGTAG","TCTTGTAG",
+ "AGTTGTAG","CGTTGTAG","GGTTGTAG","TGTTGTAG","ATTTGTAG","CTTTGTAG","GTTTGTAG","TTTTGTAG",
+ "AAAATTAG","CAAATTAG","GAAATTAG","TAAATTAG","ACAATTAG","CCAATTAG","GCAATTAG","TCAATTAG",
+ "AGAATTAG","CGAATTAG","GGAATTAG","TGAATTAG","ATAATTAG","CTAATTAG","GTAATTAG","TTAATTAG",
+ "AACATTAG","CACATTAG","GACATTAG","TACATTAG","ACCATTAG","CCCATTAG","GCCATTAG","TCCATTAG",
+ "AGCATTAG","CGCATTAG","GGCATTAG","TGCATTAG","ATCATTAG","CTCATTAG","GTCATTAG","TTCATTAG",
+ "AAGATTAG","CAGATTAG","GAGATTAG","TAGATTAG","ACGATTAG","CCGATTAG","GCGATTAG","TCGATTAG",
+ "AGGATTAG","CGGATTAG","GGGATTAG","TGGATTAG","ATGATTAG","CTGATTAG","GTGATTAG","TTGATTAG",
+ "AATATTAG","CATATTAG","GATATTAG","TATATTAG","ACTATTAG","CCTATTAG","GCTATTAG","TCTATTAG",
+ "AGTATTAG","CGTATTAG","GGTATTAG","TGTATTAG","ATTATTAG","CTTATTAG","GTTATTAG","TTTATTAG",
+ "AAACTTAG","CAACTTAG","GAACTTAG","TAACTTAG","ACACTTAG","CCACTTAG","GCACTTAG","TCACTTAG",
+ "AGACTTAG","CGACTTAG","GGACTTAG","TGACTTAG","ATACTTAG","CTACTTAG","GTACTTAG","TTACTTAG",
+ "AACCTTAG","CACCTTAG","GACCTTAG","TACCTTAG","ACCCTTAG","CCCCTTAG","GCCCTTAG","TCCCTTAG",
+ "AGCCTTAG","CGCCTTAG","GGCCTTAG","TGCCTTAG","ATCCTTAG","CTCCTTAG","GTCCTTAG","TTCCTTAG",
+ "AAGCTTAG","CAGCTTAG","GAGCTTAG","TAGCTTAG","ACGCTTAG","CCGCTTAG","GCGCTTAG","TCGCTTAG",
+ "AGGCTTAG","CGGCTTAG","GGGCTTAG","TGGCTTAG","ATGCTTAG","CTGCTTAG","GTGCTTAG","TTGCTTAG",
+ "AATCTTAG","CATCTTAG","GATCTTAG","TATCTTAG","ACTCTTAG","CCTCTTAG","GCTCTTAG","TCTCTTAG",
+ "AGTCTTAG","CGTCTTAG","GGTCTTAG","TGTCTTAG","ATTCTTAG","CTTCTTAG","GTTCTTAG","TTTCTTAG",
+ "AAAGTTAG","CAAGTTAG","GAAGTTAG","TAAGTTAG","ACAGTTAG","CCAGTTAG","GCAGTTAG","TCAGTTAG",
+ "AGAGTTAG","CGAGTTAG","GGAGTTAG","TGAGTTAG","ATAGTTAG","CTAGTTAG","GTAGTTAG","TTAGTTAG",
+ "AACGTTAG","CACGTTAG","GACGTTAG","TACGTTAG","ACCGTTAG","CCCGTTAG","GCCGTTAG","TCCGTTAG",
+ "AGCGTTAG","CGCGTTAG","GGCGTTAG","TGCGTTAG","ATCGTTAG","CTCGTTAG","GTCGTTAG","TTCGTTAG",
+ "AAGGTTAG","CAGGTTAG","GAGGTTAG","TAGGTTAG","ACGGTTAG","CCGGTTAG","GCGGTTAG","TCGGTTAG",
+ "AGGGTTAG","CGGGTTAG","GGGGTTAG","TGGGTTAG","ATGGTTAG","CTGGTTAG","GTGGTTAG","TTGGTTAG",
+ "AATGTTAG","CATGTTAG","GATGTTAG","TATGTTAG","ACTGTTAG","CCTGTTAG","GCTGTTAG","TCTGTTAG",
+ "AGTGTTAG","CGTGTTAG","GGTGTTAG","TGTGTTAG","ATTGTTAG","CTTGTTAG","GTTGTTAG","TTTGTTAG",
+ "AAATTTAG","CAATTTAG","GAATTTAG","TAATTTAG","ACATTTAG","CCATTTAG","GCATTTAG","TCATTTAG",
+ "AGATTTAG","CGATTTAG","GGATTTAG","TGATTTAG","ATATTTAG","CTATTTAG","GTATTTAG","TTATTTAG",
+ "AACTTTAG","CACTTTAG","GACTTTAG","TACTTTAG","ACCTTTAG","CCCTTTAG","GCCTTTAG","TCCTTTAG",
+ "AGCTTTAG","CGCTTTAG","GGCTTTAG","TGCTTTAG","ATCTTTAG","CTCTTTAG","GTCTTTAG","TTCTTTAG",
+ "AAGTTTAG","CAGTTTAG","GAGTTTAG","TAGTTTAG","ACGTTTAG","CCGTTTAG","GCGTTTAG","TCGTTTAG",
+ "AGGTTTAG","CGGTTTAG","GGGTTTAG","TGGTTTAG","ATGTTTAG","CTGTTTAG","GTGTTTAG","TTGTTTAG",
+ "AATTTTAG","CATTTTAG","GATTTTAG","TATTTTAG","ACTTTTAG","CCTTTTAG","GCTTTTAG","TCTTTTAG",
+ "AGTTTTAG","CGTTTTAG","GGTTTTAG","TGTTTTAG","ATTTTTAG","CTTTTTAG","GTTTTTAG","TTTTTTAG",
+ "AAAAAACG","CAAAAACG","GAAAAACG","TAAAAACG","ACAAAACG","CCAAAACG","GCAAAACG","TCAAAACG",
+ "AGAAAACG","CGAAAACG","GGAAAACG","TGAAAACG","ATAAAACG","CTAAAACG","GTAAAACG","TTAAAACG",
+ "AACAAACG","CACAAACG","GACAAACG","TACAAACG","ACCAAACG","CCCAAACG","GCCAAACG","TCCAAACG",
+ "AGCAAACG","CGCAAACG","GGCAAACG","TGCAAACG","ATCAAACG","CTCAAACG","GTCAAACG","TTCAAACG",
+ "AAGAAACG","CAGAAACG","GAGAAACG","TAGAAACG","ACGAAACG","CCGAAACG","GCGAAACG","TCGAAACG",
+ "AGGAAACG","CGGAAACG","GGGAAACG","TGGAAACG","ATGAAACG","CTGAAACG","GTGAAACG","TTGAAACG",
+ "AATAAACG","CATAAACG","GATAAACG","TATAAACG","ACTAAACG","CCTAAACG","GCTAAACG","TCTAAACG",
+ "AGTAAACG","CGTAAACG","GGTAAACG","TGTAAACG","ATTAAACG","CTTAAACG","GTTAAACG","TTTAAACG",
+ "AAACAACG","CAACAACG","GAACAACG","TAACAACG","ACACAACG","CCACAACG","GCACAACG","TCACAACG",
+ "AGACAACG","CGACAACG","GGACAACG","TGACAACG","ATACAACG","CTACAACG","GTACAACG","TTACAACG",
+ "AACCAACG","CACCAACG","GACCAACG","TACCAACG","ACCCAACG","CCCCAACG","GCCCAACG","TCCCAACG",
+ "AGCCAACG","CGCCAACG","GGCCAACG","TGCCAACG","ATCCAACG","CTCCAACG","GTCCAACG","TTCCAACG",
+ "AAGCAACG","CAGCAACG","GAGCAACG","TAGCAACG","ACGCAACG","CCGCAACG","GCGCAACG","TCGCAACG",
+ "AGGCAACG","CGGCAACG","GGGCAACG","TGGCAACG","ATGCAACG","CTGCAACG","GTGCAACG","TTGCAACG",
+ "AATCAACG","CATCAACG","GATCAACG","TATCAACG","ACTCAACG","CCTCAACG","GCTCAACG","TCTCAACG",
+ "AGTCAACG","CGTCAACG","GGTCAACG","TGTCAACG","ATTCAACG","CTTCAACG","GTTCAACG","TTTCAACG",
+ "AAAGAACG","CAAGAACG","GAAGAACG","TAAGAACG","ACAGAACG","CCAGAACG","GCAGAACG","TCAGAACG",
+ "AGAGAACG","CGAGAACG","GGAGAACG","TGAGAACG","ATAGAACG","CTAGAACG","GTAGAACG","TTAGAACG",
+ "AACGAACG","CACGAACG","GACGAACG","TACGAACG","ACCGAACG","CCCGAACG","GCCGAACG","TCCGAACG",
+ "AGCGAACG","CGCGAACG","GGCGAACG","TGCGAACG","ATCGAACG","CTCGAACG","GTCGAACG","TTCGAACG",
+ "AAGGAACG","CAGGAACG","GAGGAACG","TAGGAACG","ACGGAACG","CCGGAACG","GCGGAACG","TCGGAACG",
+ "AGGGAACG","CGGGAACG","GGGGAACG","TGGGAACG","ATGGAACG","CTGGAACG","GTGGAACG","TTGGAACG",
+ "AATGAACG","CATGAACG","GATGAACG","TATGAACG","ACTGAACG","CCTGAACG","GCTGAACG","TCTGAACG",
+ "AGTGAACG","CGTGAACG","GGTGAACG","TGTGAACG","ATTGAACG","CTTGAACG","GTTGAACG","TTTGAACG",
+ "AAATAACG","CAATAACG","GAATAACG","TAATAACG","ACATAACG","CCATAACG","GCATAACG","TCATAACG",
+ "AGATAACG","CGATAACG","GGATAACG","TGATAACG","ATATAACG","CTATAACG","GTATAACG","TTATAACG",
+ "AACTAACG","CACTAACG","GACTAACG","TACTAACG","ACCTAACG","CCCTAACG","GCCTAACG","TCCTAACG",
+ "AGCTAACG","CGCTAACG","GGCTAACG","TGCTAACG","ATCTAACG","CTCTAACG","GTCTAACG","TTCTAACG",
+ "AAGTAACG","CAGTAACG","GAGTAACG","TAGTAACG","ACGTAACG","CCGTAACG","GCGTAACG","TCGTAACG",
+ "AGGTAACG","CGGTAACG","GGGTAACG","TGGTAACG","ATGTAACG","CTGTAACG","GTGTAACG","TTGTAACG",
+ "AATTAACG","CATTAACG","GATTAACG","TATTAACG","ACTTAACG","CCTTAACG","GCTTAACG","TCTTAACG",
+ "AGTTAACG","CGTTAACG","GGTTAACG","TGTTAACG","ATTTAACG","CTTTAACG","GTTTAACG","TTTTAACG",
+ "AAAACACG","CAAACACG","GAAACACG","TAAACACG","ACAACACG","CCAACACG","GCAACACG","TCAACACG",
+ "AGAACACG","CGAACACG","GGAACACG","TGAACACG","ATAACACG","CTAACACG","GTAACACG","TTAACACG",
+ "AACACACG","CACACACG","GACACACG","TACACACG","ACCACACG","CCCACACG","GCCACACG","TCCACACG",
+ "AGCACACG","CGCACACG","GGCACACG","TGCACACG","ATCACACG","CTCACACG","GTCACACG","TTCACACG",
+ "AAGACACG","CAGACACG","GAGACACG","TAGACACG","ACGACACG","CCGACACG","GCGACACG","TCGACACG",
+ "AGGACACG","CGGACACG","GGGACACG","TGGACACG","ATGACACG","CTGACACG","GTGACACG","TTGACACG",
+ "AATACACG","CATACACG","GATACACG","TATACACG","ACTACACG","CCTACACG","GCTACACG","TCTACACG",
+ "AGTACACG","CGTACACG","GGTACACG","TGTACACG","ATTACACG","CTTACACG","GTTACACG","TTTACACG",
+ "AAACCACG","CAACCACG","GAACCACG","TAACCACG","ACACCACG","CCACCACG","GCACCACG","TCACCACG",
+ "AGACCACG","CGACCACG","GGACCACG","TGACCACG","ATACCACG","CTACCACG","GTACCACG","TTACCACG",
+ "AACCCACG","CACCCACG","GACCCACG","TACCCACG","ACCCCACG","CCCCCACG","GCCCCACG","TCCCCACG",
+ "AGCCCACG","CGCCCACG","GGCCCACG","TGCCCACG","ATCCCACG","CTCCCACG","GTCCCACG","TTCCCACG",
+ "AAGCCACG","CAGCCACG","GAGCCACG","TAGCCACG","ACGCCACG","CCGCCACG","GCGCCACG","TCGCCACG",
+ "AGGCCACG","CGGCCACG","GGGCCACG","TGGCCACG","ATGCCACG","CTGCCACG","GTGCCACG","TTGCCACG",
+ "AATCCACG","CATCCACG","GATCCACG","TATCCACG","ACTCCACG","CCTCCACG","GCTCCACG","TCTCCACG",
+ "AGTCCACG","CGTCCACG","GGTCCACG","TGTCCACG","ATTCCACG","CTTCCACG","GTTCCACG","TTTCCACG",
+ "AAAGCACG","CAAGCACG","GAAGCACG","TAAGCACG","ACAGCACG","CCAGCACG","GCAGCACG","TCAGCACG",
+ "AGAGCACG","CGAGCACG","GGAGCACG","TGAGCACG","ATAGCACG","CTAGCACG","GTAGCACG","TTAGCACG",
+ "AACGCACG","CACGCACG","GACGCACG","TACGCACG","ACCGCACG","CCCGCACG","GCCGCACG","TCCGCACG",
+ "AGCGCACG","CGCGCACG","GGCGCACG","TGCGCACG","ATCGCACG","CTCGCACG","GTCGCACG","TTCGCACG",
+ "AAGGCACG","CAGGCACG","GAGGCACG","TAGGCACG","ACGGCACG","CCGGCACG","GCGGCACG","TCGGCACG",
+ "AGGGCACG","CGGGCACG","GGGGCACG","TGGGCACG","ATGGCACG","CTGGCACG","GTGGCACG","TTGGCACG",
+ "AATGCACG","CATGCACG","GATGCACG","TATGCACG","ACTGCACG","CCTGCACG","GCTGCACG","TCTGCACG",
+ "AGTGCACG","CGTGCACG","GGTGCACG","TGTGCACG","ATTGCACG","CTTGCACG","GTTGCACG","TTTGCACG",
+ "AAATCACG","CAATCACG","GAATCACG","TAATCACG","ACATCACG","CCATCACG","GCATCACG","TCATCACG",
+ "AGATCACG","CGATCACG","GGATCACG","TGATCACG","ATATCACG","CTATCACG","GTATCACG","TTATCACG",
+ "AACTCACG","CACTCACG","GACTCACG","TACTCACG","ACCTCACG","CCCTCACG","GCCTCACG","TCCTCACG",
+ "AGCTCACG","CGCTCACG","GGCTCACG","TGCTCACG","ATCTCACG","CTCTCACG","GTCTCACG","TTCTCACG",
+ "AAGTCACG","CAGTCACG","GAGTCACG","TAGTCACG","ACGTCACG","CCGTCACG","GCGTCACG","TCGTCACG",
+ "AGGTCACG","CGGTCACG","GGGTCACG","TGGTCACG","ATGTCACG","CTGTCACG","GTGTCACG","TTGTCACG",
+ "AATTCACG","CATTCACG","GATTCACG","TATTCACG","ACTTCACG","CCTTCACG","GCTTCACG","TCTTCACG",
+ "AGTTCACG","CGTTCACG","GGTTCACG","TGTTCACG","ATTTCACG","CTTTCACG","GTTTCACG","TTTTCACG",
+ "AAAAGACG","CAAAGACG","GAAAGACG","TAAAGACG","ACAAGACG","CCAAGACG","GCAAGACG","TCAAGACG",
+ "AGAAGACG","CGAAGACG","GGAAGACG","TGAAGACG","ATAAGACG","CTAAGACG","GTAAGACG","TTAAGACG",
+ "AACAGACG","CACAGACG","GACAGACG","TACAGACG","ACCAGACG","CCCAGACG","GCCAGACG","TCCAGACG",
+ "AGCAGACG","CGCAGACG","GGCAGACG","TGCAGACG","ATCAGACG","CTCAGACG","GTCAGACG","TTCAGACG",
+ "AAGAGACG","CAGAGACG","GAGAGACG","TAGAGACG","ACGAGACG","CCGAGACG","GCGAGACG","TCGAGACG",
+ "AGGAGACG","CGGAGACG","GGGAGACG","TGGAGACG","ATGAGACG","CTGAGACG","GTGAGACG","TTGAGACG",
+ "AATAGACG","CATAGACG","GATAGACG","TATAGACG","ACTAGACG","CCTAGACG","GCTAGACG","TCTAGACG",
+ "AGTAGACG","CGTAGACG","GGTAGACG","TGTAGACG","ATTAGACG","CTTAGACG","GTTAGACG","TTTAGACG",
+ "AAACGACG","CAACGACG","GAACGACG","TAACGACG","ACACGACG","CCACGACG","GCACGACG","TCACGACG",
+ "AGACGACG","CGACGACG","GGACGACG","TGACGACG","ATACGACG","CTACGACG","GTACGACG","TTACGACG",
+ "AACCGACG","CACCGACG","GACCGACG","TACCGACG","ACCCGACG","CCCCGACG","GCCCGACG","TCCCGACG",
+ "AGCCGACG","CGCCGACG","GGCCGACG","TGCCGACG","ATCCGACG","CTCCGACG","GTCCGACG","TTCCGACG",
+ "AAGCGACG","CAGCGACG","GAGCGACG","TAGCGACG","ACGCGACG","CCGCGACG","GCGCGACG","TCGCGACG",
+ "AGGCGACG","CGGCGACG","GGGCGACG","TGGCGACG","ATGCGACG","CTGCGACG","GTGCGACG","TTGCGACG",
+ "AATCGACG","CATCGACG","GATCGACG","TATCGACG","ACTCGACG","CCTCGACG","GCTCGACG","TCTCGACG",
+ "AGTCGACG","CGTCGACG","GGTCGACG","TGTCGACG","ATTCGACG","CTTCGACG","GTTCGACG","TTTCGACG",
+ "AAAGGACG","CAAGGACG","GAAGGACG","TAAGGACG","ACAGGACG","CCAGGACG","GCAGGACG","TCAGGACG",
+ "AGAGGACG","CGAGGACG","GGAGGACG","TGAGGACG","ATAGGACG","CTAGGACG","GTAGGACG","TTAGGACG",
+ "AACGGACG","CACGGACG","GACGGACG","TACGGACG","ACCGGACG","CCCGGACG","GCCGGACG","TCCGGACG",
+ "AGCGGACG","CGCGGACG","GGCGGACG","TGCGGACG","ATCGGACG","CTCGGACG","GTCGGACG","TTCGGACG",
+ "AAGGGACG","CAGGGACG","GAGGGACG","TAGGGACG","ACGGGACG","CCGGGACG","GCGGGACG","TCGGGACG",
+ "AGGGGACG","CGGGGACG","GGGGGACG","TGGGGACG","ATGGGACG","CTGGGACG","GTGGGACG","TTGGGACG",
+ "AATGGACG","CATGGACG","GATGGACG","TATGGACG","ACTGGACG","CCTGGACG","GCTGGACG","TCTGGACG",
+ "AGTGGACG","CGTGGACG","GGTGGACG","TGTGGACG","ATTGGACG","CTTGGACG","GTTGGACG","TTTGGACG",
+ "AAATGACG","CAATGACG","GAATGACG","TAATGACG","ACATGACG","CCATGACG","GCATGACG","TCATGACG",
+ "AGATGACG","CGATGACG","GGATGACG","TGATGACG","ATATGACG","CTATGACG","GTATGACG","TTATGACG",
+ "AACTGACG","CACTGACG","GACTGACG","TACTGACG","ACCTGACG","CCCTGACG","GCCTGACG","TCCTGACG",
+ "AGCTGACG","CGCTGACG","GGCTGACG","TGCTGACG","ATCTGACG","CTCTGACG","GTCTGACG","TTCTGACG",
+ "AAGTGACG","CAGTGACG","GAGTGACG","TAGTGACG","ACGTGACG","CCGTGACG","GCGTGACG","TCGTGACG",
+ "AGGTGACG","CGGTGACG","GGGTGACG","TGGTGACG","ATGTGACG","CTGTGACG","GTGTGACG","TTGTGACG",
+ "AATTGACG","CATTGACG","GATTGACG","TATTGACG","ACTTGACG","CCTTGACG","GCTTGACG","TCTTGACG",
+ "AGTTGACG","CGTTGACG","GGTTGACG","TGTTGACG","ATTTGACG","CTTTGACG","GTTTGACG","TTTTGACG",
+ "AAAATACG","CAAATACG","GAAATACG","TAAATACG","ACAATACG","CCAATACG","GCAATACG","TCAATACG",
+ "AGAATACG","CGAATACG","GGAATACG","TGAATACG","ATAATACG","CTAATACG","GTAATACG","TTAATACG",
+ "AACATACG","CACATACG","GACATACG","TACATACG","ACCATACG","CCCATACG","GCCATACG","TCCATACG",
+ "AGCATACG","CGCATACG","GGCATACG","TGCATACG","ATCATACG","CTCATACG","GTCATACG","TTCATACG",
+ "AAGATACG","CAGATACG","GAGATACG","TAGATACG","ACGATACG","CCGATACG","GCGATACG","TCGATACG",
+ "AGGATACG","CGGATACG","GGGATACG","TGGATACG","ATGATACG","CTGATACG","GTGATACG","TTGATACG",
+ "AATATACG","CATATACG","GATATACG","TATATACG","ACTATACG","CCTATACG","GCTATACG","TCTATACG",
+ "AGTATACG","CGTATACG","GGTATACG","TGTATACG","ATTATACG","CTTATACG","GTTATACG","TTTATACG",
+ "AAACTACG","CAACTACG","GAACTACG","TAACTACG","ACACTACG","CCACTACG","GCACTACG","TCACTACG",
+ "AGACTACG","CGACTACG","GGACTACG","TGACTACG","ATACTACG","CTACTACG","GTACTACG","TTACTACG",
+ "AACCTACG","CACCTACG","GACCTACG","TACCTACG","ACCCTACG","CCCCTACG","GCCCTACG","TCCCTACG",
+ "AGCCTACG","CGCCTACG","GGCCTACG","TGCCTACG","ATCCTACG","CTCCTACG","GTCCTACG","TTCCTACG",
+ "AAGCTACG","CAGCTACG","GAGCTACG","TAGCTACG","ACGCTACG","CCGCTACG","GCGCTACG","TCGCTACG",
+ "AGGCTACG","CGGCTACG","GGGCTACG","TGGCTACG","ATGCTACG","CTGCTACG","GTGCTACG","TTGCTACG",
+ "AATCTACG","CATCTACG","GATCTACG","TATCTACG","ACTCTACG","CCTCTACG","GCTCTACG","TCTCTACG",
+ "AGTCTACG","CGTCTACG","GGTCTACG","TGTCTACG","ATTCTACG","CTTCTACG","GTTCTACG","TTTCTACG",
+ "AAAGTACG","CAAGTACG","GAAGTACG","TAAGTACG","ACAGTACG","CCAGTACG","GCAGTACG","TCAGTACG",
+ "AGAGTACG","CGAGTACG","GGAGTACG","TGAGTACG","ATAGTACG","CTAGTACG","GTAGTACG","TTAGTACG",
+ "AACGTACG","CACGTACG","GACGTACG","TACGTACG","ACCGTACG","CCCGTACG","GCCGTACG","TCCGTACG",
+ "AGCGTACG","CGCGTACG","GGCGTACG","TGCGTACG","ATCGTACG","CTCGTACG","GTCGTACG","TTCGTACG",
+ "AAGGTACG","CAGGTACG","GAGGTACG","TAGGTACG","ACGGTACG","CCGGTACG","GCGGTACG","TCGGTACG",
+ "AGGGTACG","CGGGTACG","GGGGTACG","TGGGTACG","ATGGTACG","CTGGTACG","GTGGTACG","TTGGTACG",
+ "AATGTACG","CATGTACG","GATGTACG","TATGTACG","ACTGTACG","CCTGTACG","GCTGTACG","TCTGTACG",
+ "AGTGTACG","CGTGTACG","GGTGTACG","TGTGTACG","ATTGTACG","CTTGTACG","GTTGTACG","TTTGTACG",
+ "AAATTACG","CAATTACG","GAATTACG","TAATTACG","ACATTACG","CCATTACG","GCATTACG","TCATTACG",
+ "AGATTACG","CGATTACG","GGATTACG","TGATTACG","ATATTACG","CTATTACG","GTATTACG","TTATTACG",
+ "AACTTACG","CACTTACG","GACTTACG","TACTTACG","ACCTTACG","CCCTTACG","GCCTTACG","TCCTTACG",
+ "AGCTTACG","CGCTTACG","GGCTTACG","TGCTTACG","ATCTTACG","CTCTTACG","GTCTTACG","TTCTTACG",
+ "AAGTTACG","CAGTTACG","GAGTTACG","TAGTTACG","ACGTTACG","CCGTTACG","GCGTTACG","TCGTTACG",
+ "AGGTTACG","CGGTTACG","GGGTTACG","TGGTTACG","ATGTTACG","CTGTTACG","GTGTTACG","TTGTTACG",
+ "AATTTACG","CATTTACG","GATTTACG","TATTTACG","ACTTTACG","CCTTTACG","GCTTTACG","TCTTTACG",
+ "AGTTTACG","CGTTTACG","GGTTTACG","TGTTTACG","ATTTTACG","CTTTTACG","GTTTTACG","TTTTTACG",
+ "AAAAACCG","CAAAACCG","GAAAACCG","TAAAACCG","ACAAACCG","CCAAACCG","GCAAACCG","TCAAACCG",
+ "AGAAACCG","CGAAACCG","GGAAACCG","TGAAACCG","ATAAACCG","CTAAACCG","GTAAACCG","TTAAACCG",
+ "AACAACCG","CACAACCG","GACAACCG","TACAACCG","ACCAACCG","CCCAACCG","GCCAACCG","TCCAACCG",
+ "AGCAACCG","CGCAACCG","GGCAACCG","TGCAACCG","ATCAACCG","CTCAACCG","GTCAACCG","TTCAACCG",
+ "AAGAACCG","CAGAACCG","GAGAACCG","TAGAACCG","ACGAACCG","CCGAACCG","GCGAACCG","TCGAACCG",
+ "AGGAACCG","CGGAACCG","GGGAACCG","TGGAACCG","ATGAACCG","CTGAACCG","GTGAACCG","TTGAACCG",
+ "AATAACCG","CATAACCG","GATAACCG","TATAACCG","ACTAACCG","CCTAACCG","GCTAACCG","TCTAACCG",
+ "AGTAACCG","CGTAACCG","GGTAACCG","TGTAACCG","ATTAACCG","CTTAACCG","GTTAACCG","TTTAACCG",
+ "AAACACCG","CAACACCG","GAACACCG","TAACACCG","ACACACCG","CCACACCG","GCACACCG","TCACACCG",
+ "AGACACCG","CGACACCG","GGACACCG","TGACACCG","ATACACCG","CTACACCG","GTACACCG","TTACACCG",
+ "AACCACCG","CACCACCG","GACCACCG","TACCACCG","ACCCACCG","CCCCACCG","GCCCACCG","TCCCACCG",
+ "AGCCACCG","CGCCACCG","GGCCACCG","TGCCACCG","ATCCACCG","CTCCACCG","GTCCACCG","TTCCACCG",
+ "AAGCACCG","CAGCACCG","GAGCACCG","TAGCACCG","ACGCACCG","CCGCACCG","GCGCACCG","TCGCACCG",
+ "AGGCACCG","CGGCACCG","GGGCACCG","TGGCACCG","ATGCACCG","CTGCACCG","GTGCACCG","TTGCACCG",
+ "AATCACCG","CATCACCG","GATCACCG","TATCACCG","ACTCACCG","CCTCACCG","GCTCACCG","TCTCACCG",
+ "AGTCACCG","CGTCACCG","GGTCACCG","TGTCACCG","ATTCACCG","CTTCACCG","GTTCACCG","TTTCACCG",
+ "AAAGACCG","CAAGACCG","GAAGACCG","TAAGACCG","ACAGACCG","CCAGACCG","GCAGACCG","TCAGACCG",
+ "AGAGACCG","CGAGACCG","GGAGACCG","TGAGACCG","ATAGACCG","CTAGACCG","GTAGACCG","TTAGACCG",
+ "AACGACCG","CACGACCG","GACGACCG","TACGACCG","ACCGACCG","CCCGACCG","GCCGACCG","TCCGACCG",
+ "AGCGACCG","CGCGACCG","GGCGACCG","TGCGACCG","ATCGACCG","CTCGACCG","GTCGACCG","TTCGACCG",
+ "AAGGACCG","CAGGACCG","GAGGACCG","TAGGACCG","ACGGACCG","CCGGACCG","GCGGACCG","TCGGACCG",
+ "AGGGACCG","CGGGACCG","GGGGACCG","TGGGACCG","ATGGACCG","CTGGACCG","GTGGACCG","TTGGACCG",
+ "AATGACCG","CATGACCG","GATGACCG","TATGACCG","ACTGACCG","CCTGACCG","GCTGACCG","TCTGACCG",
+ "AGTGACCG","CGTGACCG","GGTGACCG","TGTGACCG","ATTGACCG","CTTGACCG","GTTGACCG","TTTGACCG",
+ "AAATACCG","CAATACCG","GAATACCG","TAATACCG","ACATACCG","CCATACCG","GCATACCG","TCATACCG",
+ "AGATACCG","CGATACCG","GGATACCG","TGATACCG","ATATACCG","CTATACCG","GTATACCG","TTATACCG",
+ "AACTACCG","CACTACCG","GACTACCG","TACTACCG","ACCTACCG","CCCTACCG","GCCTACCG","TCCTACCG",
+ "AGCTACCG","CGCTACCG","GGCTACCG","TGCTACCG","ATCTACCG","CTCTACCG","GTCTACCG","TTCTACCG",
+ "AAGTACCG","CAGTACCG","GAGTACCG","TAGTACCG","ACGTACCG","CCGTACCG","GCGTACCG","TCGTACCG",
+ "AGGTACCG","CGGTACCG","GGGTACCG","TGGTACCG","ATGTACCG","CTGTACCG","GTGTACCG","TTGTACCG",
+ "AATTACCG","CATTACCG","GATTACCG","TATTACCG","ACTTACCG","CCTTACCG","GCTTACCG","TCTTACCG",
+ "AGTTACCG","CGTTACCG","GGTTACCG","TGTTACCG","ATTTACCG","CTTTACCG","GTTTACCG","TTTTACCG",
+ "AAAACCCG","CAAACCCG","GAAACCCG","TAAACCCG","ACAACCCG","CCAACCCG","GCAACCCG","TCAACCCG",
+ "AGAACCCG","CGAACCCG","GGAACCCG","TGAACCCG","ATAACCCG","CTAACCCG","GTAACCCG","TTAACCCG",
+ "AACACCCG","CACACCCG","GACACCCG","TACACCCG","ACCACCCG","CCCACCCG","GCCACCCG","TCCACCCG",
+ "AGCACCCG","CGCACCCG","GGCACCCG","TGCACCCG","ATCACCCG","CTCACCCG","GTCACCCG","TTCACCCG",
+ "AAGACCCG","CAGACCCG","GAGACCCG","TAGACCCG","ACGACCCG","CCGACCCG","GCGACCCG","TCGACCCG",
+ "AGGACCCG","CGGACCCG","GGGACCCG","TGGACCCG","ATGACCCG","CTGACCCG","GTGACCCG","TTGACCCG",
+ "AATACCCG","CATACCCG","GATACCCG","TATACCCG","ACTACCCG","CCTACCCG","GCTACCCG","TCTACCCG",
+ "AGTACCCG","CGTACCCG","GGTACCCG","TGTACCCG","ATTACCCG","CTTACCCG","GTTACCCG","TTTACCCG",
+ "AAACCCCG","CAACCCCG","GAACCCCG","TAACCCCG","ACACCCCG","CCACCCCG","GCACCCCG","TCACCCCG",
+ "AGACCCCG","CGACCCCG","GGACCCCG","TGACCCCG","ATACCCCG","CTACCCCG","GTACCCCG","TTACCCCG",
+ "AACCCCCG","CACCCCCG","GACCCCCG","TACCCCCG","ACCCCCCG","CCCCCCCG","GCCCCCCG","TCCCCCCG",
+ "AGCCCCCG","CGCCCCCG","GGCCCCCG","TGCCCCCG","ATCCCCCG","CTCCCCCG","GTCCCCCG","TTCCCCCG",
+ "AAGCCCCG","CAGCCCCG","GAGCCCCG","TAGCCCCG","ACGCCCCG","CCGCCCCG","GCGCCCCG","TCGCCCCG",
+ "AGGCCCCG","CGGCCCCG","GGGCCCCG","TGGCCCCG","ATGCCCCG","CTGCCCCG","GTGCCCCG","TTGCCCCG",
+ "AATCCCCG","CATCCCCG","GATCCCCG","TATCCCCG","ACTCCCCG","CCTCCCCG","GCTCCCCG","TCTCCCCG",
+ "AGTCCCCG","CGTCCCCG","GGTCCCCG","TGTCCCCG","ATTCCCCG","CTTCCCCG","GTTCCCCG","TTTCCCCG",
+ "AAAGCCCG","CAAGCCCG","GAAGCCCG","TAAGCCCG","ACAGCCCG","CCAGCCCG","GCAGCCCG","TCAGCCCG",
+ "AGAGCCCG","CGAGCCCG","GGAGCCCG","TGAGCCCG","ATAGCCCG","CTAGCCCG","GTAGCCCG","TTAGCCCG",
+ "AACGCCCG","CACGCCCG","GACGCCCG","TACGCCCG","ACCGCCCG","CCCGCCCG","GCCGCCCG","TCCGCCCG",
+ "AGCGCCCG","CGCGCCCG","GGCGCCCG","TGCGCCCG","ATCGCCCG","CTCGCCCG","GTCGCCCG","TTCGCCCG",
+ "AAGGCCCG","CAGGCCCG","GAGGCCCG","TAGGCCCG","ACGGCCCG","CCGGCCCG","GCGGCCCG","TCGGCCCG",
+ "AGGGCCCG","CGGGCCCG","GGGGCCCG","TGGGCCCG","ATGGCCCG","CTGGCCCG","GTGGCCCG","TTGGCCCG",
+ "AATGCCCG","CATGCCCG","GATGCCCG","TATGCCCG","ACTGCCCG","CCTGCCCG","GCTGCCCG","TCTGCCCG",
+ "AGTGCCCG","CGTGCCCG","GGTGCCCG","TGTGCCCG","ATTGCCCG","CTTGCCCG","GTTGCCCG","TTTGCCCG",
+ "AAATCCCG","CAATCCCG","GAATCCCG","TAATCCCG","ACATCCCG","CCATCCCG","GCATCCCG","TCATCCCG",
+ "AGATCCCG","CGATCCCG","GGATCCCG","TGATCCCG","ATATCCCG","CTATCCCG","GTATCCCG","TTATCCCG",
+ "AACTCCCG","CACTCCCG","GACTCCCG","TACTCCCG","ACCTCCCG","CCCTCCCG","GCCTCCCG","TCCTCCCG",
+ "AGCTCCCG","CGCTCCCG","GGCTCCCG","TGCTCCCG","ATCTCCCG","CTCTCCCG","GTCTCCCG","TTCTCCCG",
+ "AAGTCCCG","CAGTCCCG","GAGTCCCG","TAGTCCCG","ACGTCCCG","CCGTCCCG","GCGTCCCG","TCGTCCCG",
+ "AGGTCCCG","CGGTCCCG","GGGTCCCG","TGGTCCCG","ATGTCCCG","CTGTCCCG","GTGTCCCG","TTGTCCCG",
+ "AATTCCCG","CATTCCCG","GATTCCCG","TATTCCCG","ACTTCCCG","CCTTCCCG","GCTTCCCG","TCTTCCCG",
+ "AGTTCCCG","CGTTCCCG","GGTTCCCG","TGTTCCCG","ATTTCCCG","CTTTCCCG","GTTTCCCG","TTTTCCCG",
+ "AAAAGCCG","CAAAGCCG","GAAAGCCG","TAAAGCCG","ACAAGCCG","CCAAGCCG","GCAAGCCG","TCAAGCCG",
+ "AGAAGCCG","CGAAGCCG","GGAAGCCG","TGAAGCCG","ATAAGCCG","CTAAGCCG","GTAAGCCG","TTAAGCCG",
+ "AACAGCCG","CACAGCCG","GACAGCCG","TACAGCCG","ACCAGCCG","CCCAGCCG","GCCAGCCG","TCCAGCCG",
+ "AGCAGCCG","CGCAGCCG","GGCAGCCG","TGCAGCCG","ATCAGCCG","CTCAGCCG","GTCAGCCG","TTCAGCCG",
+ "AAGAGCCG","CAGAGCCG","GAGAGCCG","TAGAGCCG","ACGAGCCG","CCGAGCCG","GCGAGCCG","TCGAGCCG",
+ "AGGAGCCG","CGGAGCCG","GGGAGCCG","TGGAGCCG","ATGAGCCG","CTGAGCCG","GTGAGCCG","TTGAGCCG",
+ "AATAGCCG","CATAGCCG","GATAGCCG","TATAGCCG","ACTAGCCG","CCTAGCCG","GCTAGCCG","TCTAGCCG",
+ "AGTAGCCG","CGTAGCCG","GGTAGCCG","TGTAGCCG","ATTAGCCG","CTTAGCCG","GTTAGCCG","TTTAGCCG",
+ "AAACGCCG","CAACGCCG","GAACGCCG","TAACGCCG","ACACGCCG","CCACGCCG","GCACGCCG","TCACGCCG",
+ "AGACGCCG","CGACGCCG","GGACGCCG","TGACGCCG","ATACGCCG","CTACGCCG","GTACGCCG","TTACGCCG",
+ "AACCGCCG","CACCGCCG","GACCGCCG","TACCGCCG","ACCCGCCG","CCCCGCCG","GCCCGCCG","TCCCGCCG",
+ "AGCCGCCG","CGCCGCCG","GGCCGCCG","TGCCGCCG","ATCCGCCG","CTCCGCCG","GTCCGCCG","TTCCGCCG",
+ "AAGCGCCG","CAGCGCCG","GAGCGCCG","TAGCGCCG","ACGCGCCG","CCGCGCCG","GCGCGCCG","TCGCGCCG",
+ "AGGCGCCG","CGGCGCCG","GGGCGCCG","TGGCGCCG","ATGCGCCG","CTGCGCCG","GTGCGCCG","TTGCGCCG",
+ "AATCGCCG","CATCGCCG","GATCGCCG","TATCGCCG","ACTCGCCG","CCTCGCCG","GCTCGCCG","TCTCGCCG",
+ "AGTCGCCG","CGTCGCCG","GGTCGCCG","TGTCGCCG","ATTCGCCG","CTTCGCCG","GTTCGCCG","TTTCGCCG",
+ "AAAGGCCG","CAAGGCCG","GAAGGCCG","TAAGGCCG","ACAGGCCG","CCAGGCCG","GCAGGCCG","TCAGGCCG",
+ "AGAGGCCG","CGAGGCCG","GGAGGCCG","TGAGGCCG","ATAGGCCG","CTAGGCCG","GTAGGCCG","TTAGGCCG",
+ "AACGGCCG","CACGGCCG","GACGGCCG","TACGGCCG","ACCGGCCG","CCCGGCCG","GCCGGCCG","TCCGGCCG",
+ "AGCGGCCG","CGCGGCCG","GGCGGCCG","TGCGGCCG","ATCGGCCG","CTCGGCCG","GTCGGCCG","TTCGGCCG",
+ "AAGGGCCG","CAGGGCCG","GAGGGCCG","TAGGGCCG","ACGGGCCG","CCGGGCCG","GCGGGCCG","TCGGGCCG",
+ "AGGGGCCG","CGGGGCCG","GGGGGCCG","TGGGGCCG","ATGGGCCG","CTGGGCCG","GTGGGCCG","TTGGGCCG",
+ "AATGGCCG","CATGGCCG","GATGGCCG","TATGGCCG","ACTGGCCG","CCTGGCCG","GCTGGCCG","TCTGGCCG",
+ "AGTGGCCG","CGTGGCCG","GGTGGCCG","TGTGGCCG","ATTGGCCG","CTTGGCCG","GTTGGCCG","TTTGGCCG",
+ "AAATGCCG","CAATGCCG","GAATGCCG","TAATGCCG","ACATGCCG","CCATGCCG","GCATGCCG","TCATGCCG",
+ "AGATGCCG","CGATGCCG","GGATGCCG","TGATGCCG","ATATGCCG","CTATGCCG","GTATGCCG","TTATGCCG",
+ "AACTGCCG","CACTGCCG","GACTGCCG","TACTGCCG","ACCTGCCG","CCCTGCCG","GCCTGCCG","TCCTGCCG",
+ "AGCTGCCG","CGCTGCCG","GGCTGCCG","TGCTGCCG","ATCTGCCG","CTCTGCCG","GTCTGCCG","TTCTGCCG",
+ "AAGTGCCG","CAGTGCCG","GAGTGCCG","TAGTGCCG","ACGTGCCG","CCGTGCCG","GCGTGCCG","TCGTGCCG",
+ "AGGTGCCG","CGGTGCCG","GGGTGCCG","TGGTGCCG","ATGTGCCG","CTGTGCCG","GTGTGCCG","TTGTGCCG",
+ "AATTGCCG","CATTGCCG","GATTGCCG","TATTGCCG","ACTTGCCG","CCTTGCCG","GCTTGCCG","TCTTGCCG",
+ "AGTTGCCG","CGTTGCCG","GGTTGCCG","TGTTGCCG","ATTTGCCG","CTTTGCCG","GTTTGCCG","TTTTGCCG",
+ "AAAATCCG","CAAATCCG","GAAATCCG","TAAATCCG","ACAATCCG","CCAATCCG","GCAATCCG","TCAATCCG",
+ "AGAATCCG","CGAATCCG","GGAATCCG","TGAATCCG","ATAATCCG","CTAATCCG","GTAATCCG","TTAATCCG",
+ "AACATCCG","CACATCCG","GACATCCG","TACATCCG","ACCATCCG","CCCATCCG","GCCATCCG","TCCATCCG",
+ "AGCATCCG","CGCATCCG","GGCATCCG","TGCATCCG","ATCATCCG","CTCATCCG","GTCATCCG","TTCATCCG",
+ "AAGATCCG","CAGATCCG","GAGATCCG","TAGATCCG","ACGATCCG","CCGATCCG","GCGATCCG","TCGATCCG",
+ "AGGATCCG","CGGATCCG","GGGATCCG","TGGATCCG","ATGATCCG","CTGATCCG","GTGATCCG","TTGATCCG",
+ "AATATCCG","CATATCCG","GATATCCG","TATATCCG","ACTATCCG","CCTATCCG","GCTATCCG","TCTATCCG",
+ "AGTATCCG","CGTATCCG","GGTATCCG","TGTATCCG","ATTATCCG","CTTATCCG","GTTATCCG","TTTATCCG",
+ "AAACTCCG","CAACTCCG","GAACTCCG","TAACTCCG","ACACTCCG","CCACTCCG","GCACTCCG","TCACTCCG",
+ "AGACTCCG","CGACTCCG","GGACTCCG","TGACTCCG","ATACTCCG","CTACTCCG","GTACTCCG","TTACTCCG",
+ "AACCTCCG","CACCTCCG","GACCTCCG","TACCTCCG","ACCCTCCG","CCCCTCCG","GCCCTCCG","TCCCTCCG",
+ "AGCCTCCG","CGCCTCCG","GGCCTCCG","TGCCTCCG","ATCCTCCG","CTCCTCCG","GTCCTCCG","TTCCTCCG",
+ "AAGCTCCG","CAGCTCCG","GAGCTCCG","TAGCTCCG","ACGCTCCG","CCGCTCCG","GCGCTCCG","TCGCTCCG",
+ "AGGCTCCG","CGGCTCCG","GGGCTCCG","TGGCTCCG","ATGCTCCG","CTGCTCCG","GTGCTCCG","TTGCTCCG",
+ "AATCTCCG","CATCTCCG","GATCTCCG","TATCTCCG","ACTCTCCG","CCTCTCCG","GCTCTCCG","TCTCTCCG",
+ "AGTCTCCG","CGTCTCCG","GGTCTCCG","TGTCTCCG","ATTCTCCG","CTTCTCCG","GTTCTCCG","TTTCTCCG",
+ "AAAGTCCG","CAAGTCCG","GAAGTCCG","TAAGTCCG","ACAGTCCG","CCAGTCCG","GCAGTCCG","TCAGTCCG",
+ "AGAGTCCG","CGAGTCCG","GGAGTCCG","TGAGTCCG","ATAGTCCG","CTAGTCCG","GTAGTCCG","TTAGTCCG",
+ "AACGTCCG","CACGTCCG","GACGTCCG","TACGTCCG","ACCGTCCG","CCCGTCCG","GCCGTCCG","TCCGTCCG",
+ "AGCGTCCG","CGCGTCCG","GGCGTCCG","TGCGTCCG","ATCGTCCG","CTCGTCCG","GTCGTCCG","TTCGTCCG",
+ "AAGGTCCG","CAGGTCCG","GAGGTCCG","TAGGTCCG","ACGGTCCG","CCGGTCCG","GCGGTCCG","TCGGTCCG",
+ "AGGGTCCG","CGGGTCCG","GGGGTCCG","TGGGTCCG","ATGGTCCG","CTGGTCCG","GTGGTCCG","TTGGTCCG",
+ "AATGTCCG","CATGTCCG","GATGTCCG","TATGTCCG","ACTGTCCG","CCTGTCCG","GCTGTCCG","TCTGTCCG",
+ "AGTGTCCG","CGTGTCCG","GGTGTCCG","TGTGTCCG","ATTGTCCG","CTTGTCCG","GTTGTCCG","TTTGTCCG",
+ "AAATTCCG","CAATTCCG","GAATTCCG","TAATTCCG","ACATTCCG","CCATTCCG","GCATTCCG","TCATTCCG",
+ "AGATTCCG","CGATTCCG","GGATTCCG","TGATTCCG","ATATTCCG","CTATTCCG","GTATTCCG","TTATTCCG",
+ "AACTTCCG","CACTTCCG","GACTTCCG","TACTTCCG","ACCTTCCG","CCCTTCCG","GCCTTCCG","TCCTTCCG",
+ "AGCTTCCG","CGCTTCCG","GGCTTCCG","TGCTTCCG","ATCTTCCG","CTCTTCCG","GTCTTCCG","TTCTTCCG",
+ "AAGTTCCG","CAGTTCCG","GAGTTCCG","TAGTTCCG","ACGTTCCG","CCGTTCCG","GCGTTCCG","TCGTTCCG",
+ "AGGTTCCG","CGGTTCCG","GGGTTCCG","TGGTTCCG","ATGTTCCG","CTGTTCCG","GTGTTCCG","TTGTTCCG",
+ "AATTTCCG","CATTTCCG","GATTTCCG","TATTTCCG","ACTTTCCG","CCTTTCCG","GCTTTCCG","TCTTTCCG",
+ "AGTTTCCG","CGTTTCCG","GGTTTCCG","TGTTTCCG","ATTTTCCG","CTTTTCCG","GTTTTCCG","TTTTTCCG",
+ "AAAAAGCG","CAAAAGCG","GAAAAGCG","TAAAAGCG","ACAAAGCG","CCAAAGCG","GCAAAGCG","TCAAAGCG",
+ "AGAAAGCG","CGAAAGCG","GGAAAGCG","TGAAAGCG","ATAAAGCG","CTAAAGCG","GTAAAGCG","TTAAAGCG",
+ "AACAAGCG","CACAAGCG","GACAAGCG","TACAAGCG","ACCAAGCG","CCCAAGCG","GCCAAGCG","TCCAAGCG",
+ "AGCAAGCG","CGCAAGCG","GGCAAGCG","TGCAAGCG","ATCAAGCG","CTCAAGCG","GTCAAGCG","TTCAAGCG",
+ "AAGAAGCG","CAGAAGCG","GAGAAGCG","TAGAAGCG","ACGAAGCG","CCGAAGCG","GCGAAGCG","TCGAAGCG",
+ "AGGAAGCG","CGGAAGCG","GGGAAGCG","TGGAAGCG","ATGAAGCG","CTGAAGCG","GTGAAGCG","TTGAAGCG",
+ "AATAAGCG","CATAAGCG","GATAAGCG","TATAAGCG","ACTAAGCG","CCTAAGCG","GCTAAGCG","TCTAAGCG",
+ "AGTAAGCG","CGTAAGCG","GGTAAGCG","TGTAAGCG","ATTAAGCG","CTTAAGCG","GTTAAGCG","TTTAAGCG",
+ "AAACAGCG","CAACAGCG","GAACAGCG","TAACAGCG","ACACAGCG","CCACAGCG","GCACAGCG","TCACAGCG",
+ "AGACAGCG","CGACAGCG","GGACAGCG","TGACAGCG","ATACAGCG","CTACAGCG","GTACAGCG","TTACAGCG",
+ "AACCAGCG","CACCAGCG","GACCAGCG","TACCAGCG","ACCCAGCG","CCCCAGCG","GCCCAGCG","TCCCAGCG",
+ "AGCCAGCG","CGCCAGCG","GGCCAGCG","TGCCAGCG","ATCCAGCG","CTCCAGCG","GTCCAGCG","TTCCAGCG",
+ "AAGCAGCG","CAGCAGCG","GAGCAGCG","TAGCAGCG","ACGCAGCG","CCGCAGCG","GCGCAGCG","TCGCAGCG",
+ "AGGCAGCG","CGGCAGCG","GGGCAGCG","TGGCAGCG","ATGCAGCG","CTGCAGCG","GTGCAGCG","TTGCAGCG",
+ "AATCAGCG","CATCAGCG","GATCAGCG","TATCAGCG","ACTCAGCG","CCTCAGCG","GCTCAGCG","TCTCAGCG",
+ "AGTCAGCG","CGTCAGCG","GGTCAGCG","TGTCAGCG","ATTCAGCG","CTTCAGCG","GTTCAGCG","TTTCAGCG",
+ "AAAGAGCG","CAAGAGCG","GAAGAGCG","TAAGAGCG","ACAGAGCG","CCAGAGCG","GCAGAGCG","TCAGAGCG",
+ "AGAGAGCG","CGAGAGCG","GGAGAGCG","TGAGAGCG","ATAGAGCG","CTAGAGCG","GTAGAGCG","TTAGAGCG",
+ "AACGAGCG","CACGAGCG","GACGAGCG","TACGAGCG","ACCGAGCG","CCCGAGCG","GCCGAGCG","TCCGAGCG",
+ "AGCGAGCG","CGCGAGCG","GGCGAGCG","TGCGAGCG","ATCGAGCG","CTCGAGCG","GTCGAGCG","TTCGAGCG",
+ "AAGGAGCG","CAGGAGCG","GAGGAGCG","TAGGAGCG","ACGGAGCG","CCGGAGCG","GCGGAGCG","TCGGAGCG",
+ "AGGGAGCG","CGGGAGCG","GGGGAGCG","TGGGAGCG","ATGGAGCG","CTGGAGCG","GTGGAGCG","TTGGAGCG",
+ "AATGAGCG","CATGAGCG","GATGAGCG","TATGAGCG","ACTGAGCG","CCTGAGCG","GCTGAGCG","TCTGAGCG",
+ "AGTGAGCG","CGTGAGCG","GGTGAGCG","TGTGAGCG","ATTGAGCG","CTTGAGCG","GTTGAGCG","TTTGAGCG",
+ "AAATAGCG","CAATAGCG","GAATAGCG","TAATAGCG","ACATAGCG","CCATAGCG","GCATAGCG","TCATAGCG",
+ "AGATAGCG","CGATAGCG","GGATAGCG","TGATAGCG","ATATAGCG","CTATAGCG","GTATAGCG","TTATAGCG",
+ "AACTAGCG","CACTAGCG","GACTAGCG","TACTAGCG","ACCTAGCG","CCCTAGCG","GCCTAGCG","TCCTAGCG",
+ "AGCTAGCG","CGCTAGCG","GGCTAGCG","TGCTAGCG","ATCTAGCG","CTCTAGCG","GTCTAGCG","TTCTAGCG",
+ "AAGTAGCG","CAGTAGCG","GAGTAGCG","TAGTAGCG","ACGTAGCG","CCGTAGCG","GCGTAGCG","TCGTAGCG",
+ "AGGTAGCG","CGGTAGCG","GGGTAGCG","TGGTAGCG","ATGTAGCG","CTGTAGCG","GTGTAGCG","TTGTAGCG",
+ "AATTAGCG","CATTAGCG","GATTAGCG","TATTAGCG","ACTTAGCG","CCTTAGCG","GCTTAGCG","TCTTAGCG",
+ "AGTTAGCG","CGTTAGCG","GGTTAGCG","TGTTAGCG","ATTTAGCG","CTTTAGCG","GTTTAGCG","TTTTAGCG",
+ "AAAACGCG","CAAACGCG","GAAACGCG","TAAACGCG","ACAACGCG","CCAACGCG","GCAACGCG","TCAACGCG",
+ "AGAACGCG","CGAACGCG","GGAACGCG","TGAACGCG","ATAACGCG","CTAACGCG","GTAACGCG","TTAACGCG",
+ "AACACGCG","CACACGCG","GACACGCG","TACACGCG","ACCACGCG","CCCACGCG","GCCACGCG","TCCACGCG",
+ "AGCACGCG","CGCACGCG","GGCACGCG","TGCACGCG","ATCACGCG","CTCACGCG","GTCACGCG","TTCACGCG",
+ "AAGACGCG","CAGACGCG","GAGACGCG","TAGACGCG","ACGACGCG","CCGACGCG","GCGACGCG","TCGACGCG",
+ "AGGACGCG","CGGACGCG","GGGACGCG","TGGACGCG","ATGACGCG","CTGACGCG","GTGACGCG","TTGACGCG",
+ "AATACGCG","CATACGCG","GATACGCG","TATACGCG","ACTACGCG","CCTACGCG","GCTACGCG","TCTACGCG",
+ "AGTACGCG","CGTACGCG","GGTACGCG","TGTACGCG","ATTACGCG","CTTACGCG","GTTACGCG","TTTACGCG",
+ "AAACCGCG","CAACCGCG","GAACCGCG","TAACCGCG","ACACCGCG","CCACCGCG","GCACCGCG","TCACCGCG",
+ "AGACCGCG","CGACCGCG","GGACCGCG","TGACCGCG","ATACCGCG","CTACCGCG","GTACCGCG","TTACCGCG",
+ "AACCCGCG","CACCCGCG","GACCCGCG","TACCCGCG","ACCCCGCG","CCCCCGCG","GCCCCGCG","TCCCCGCG",
+ "AGCCCGCG","CGCCCGCG","GGCCCGCG","TGCCCGCG","ATCCCGCG","CTCCCGCG","GTCCCGCG","TTCCCGCG",
+ "AAGCCGCG","CAGCCGCG","GAGCCGCG","TAGCCGCG","ACGCCGCG","CCGCCGCG","GCGCCGCG","TCGCCGCG",
+ "AGGCCGCG","CGGCCGCG","GGGCCGCG","TGGCCGCG","ATGCCGCG","CTGCCGCG","GTGCCGCG","TTGCCGCG",
+ "AATCCGCG","CATCCGCG","GATCCGCG","TATCCGCG","ACTCCGCG","CCTCCGCG","GCTCCGCG","TCTCCGCG",
+ "AGTCCGCG","CGTCCGCG","GGTCCGCG","TGTCCGCG","ATTCCGCG","CTTCCGCG","GTTCCGCG","TTTCCGCG",
+ "AAAGCGCG","CAAGCGCG","GAAGCGCG","TAAGCGCG","ACAGCGCG","CCAGCGCG","GCAGCGCG","TCAGCGCG",
+ "AGAGCGCG","CGAGCGCG","GGAGCGCG","TGAGCGCG","ATAGCGCG","CTAGCGCG","GTAGCGCG","TTAGCGCG",
+ "AACGCGCG","CACGCGCG","GACGCGCG","TACGCGCG","ACCGCGCG","CCCGCGCG","GCCGCGCG","TCCGCGCG",
+ "AGCGCGCG","CGCGCGCG","GGCGCGCG","TGCGCGCG","ATCGCGCG","CTCGCGCG","GTCGCGCG","TTCGCGCG",
+ "AAGGCGCG","CAGGCGCG","GAGGCGCG","TAGGCGCG","ACGGCGCG","CCGGCGCG","GCGGCGCG","TCGGCGCG",
+ "AGGGCGCG","CGGGCGCG","GGGGCGCG","TGGGCGCG","ATGGCGCG","CTGGCGCG","GTGGCGCG","TTGGCGCG",
+ "AATGCGCG","CATGCGCG","GATGCGCG","TATGCGCG","ACTGCGCG","CCTGCGCG","GCTGCGCG","TCTGCGCG",
+ "AGTGCGCG","CGTGCGCG","GGTGCGCG","TGTGCGCG","ATTGCGCG","CTTGCGCG","GTTGCGCG","TTTGCGCG",
+ "AAATCGCG","CAATCGCG","GAATCGCG","TAATCGCG","ACATCGCG","CCATCGCG","GCATCGCG","TCATCGCG",
+ "AGATCGCG","CGATCGCG","GGATCGCG","TGATCGCG","ATATCGCG","CTATCGCG","GTATCGCG","TTATCGCG",
+ "AACTCGCG","CACTCGCG","GACTCGCG","TACTCGCG","ACCTCGCG","CCCTCGCG","GCCTCGCG","TCCTCGCG",
+ "AGCTCGCG","CGCTCGCG","GGCTCGCG","TGCTCGCG","ATCTCGCG","CTCTCGCG","GTCTCGCG","TTCTCGCG",
+ "AAGTCGCG","CAGTCGCG","GAGTCGCG","TAGTCGCG","ACGTCGCG","CCGTCGCG","GCGTCGCG","TCGTCGCG",
+ "AGGTCGCG","CGGTCGCG","GGGTCGCG","TGGTCGCG","ATGTCGCG","CTGTCGCG","GTGTCGCG","TTGTCGCG",
+ "AATTCGCG","CATTCGCG","GATTCGCG","TATTCGCG","ACTTCGCG","CCTTCGCG","GCTTCGCG","TCTTCGCG",
+ "AGTTCGCG","CGTTCGCG","GGTTCGCG","TGTTCGCG","ATTTCGCG","CTTTCGCG","GTTTCGCG","TTTTCGCG",
+ "AAAAGGCG","CAAAGGCG","GAAAGGCG","TAAAGGCG","ACAAGGCG","CCAAGGCG","GCAAGGCG","TCAAGGCG",
+ "AGAAGGCG","CGAAGGCG","GGAAGGCG","TGAAGGCG","ATAAGGCG","CTAAGGCG","GTAAGGCG","TTAAGGCG",
+ "AACAGGCG","CACAGGCG","GACAGGCG","TACAGGCG","ACCAGGCG","CCCAGGCG","GCCAGGCG","TCCAGGCG",
+ "AGCAGGCG","CGCAGGCG","GGCAGGCG","TGCAGGCG","ATCAGGCG","CTCAGGCG","GTCAGGCG","TTCAGGCG",
+ "AAGAGGCG","CAGAGGCG","GAGAGGCG","TAGAGGCG","ACGAGGCG","CCGAGGCG","GCGAGGCG","TCGAGGCG",
+ "AGGAGGCG","CGGAGGCG","GGGAGGCG","TGGAGGCG","ATGAGGCG","CTGAGGCG","GTGAGGCG","TTGAGGCG",
+ "AATAGGCG","CATAGGCG","GATAGGCG","TATAGGCG","ACTAGGCG","CCTAGGCG","GCTAGGCG","TCTAGGCG",
+ "AGTAGGCG","CGTAGGCG","GGTAGGCG","TGTAGGCG","ATTAGGCG","CTTAGGCG","GTTAGGCG","TTTAGGCG",
+ "AAACGGCG","CAACGGCG","GAACGGCG","TAACGGCG","ACACGGCG","CCACGGCG","GCACGGCG","TCACGGCG",
+ "AGACGGCG","CGACGGCG","GGACGGCG","TGACGGCG","ATACGGCG","CTACGGCG","GTACGGCG","TTACGGCG",
+ "AACCGGCG","CACCGGCG","GACCGGCG","TACCGGCG","ACCCGGCG","CCCCGGCG","GCCCGGCG","TCCCGGCG",
+ "AGCCGGCG","CGCCGGCG","GGCCGGCG","TGCCGGCG","ATCCGGCG","CTCCGGCG","GTCCGGCG","TTCCGGCG",
+ "AAGCGGCG","CAGCGGCG","GAGCGGCG","TAGCGGCG","ACGCGGCG","CCGCGGCG","GCGCGGCG","TCGCGGCG",
+ "AGGCGGCG","CGGCGGCG","GGGCGGCG","TGGCGGCG","ATGCGGCG","CTGCGGCG","GTGCGGCG","TTGCGGCG",
+ "AATCGGCG","CATCGGCG","GATCGGCG","TATCGGCG","ACTCGGCG","CCTCGGCG","GCTCGGCG","TCTCGGCG",
+ "AGTCGGCG","CGTCGGCG","GGTCGGCG","TGTCGGCG","ATTCGGCG","CTTCGGCG","GTTCGGCG","TTTCGGCG",
+ "AAAGGGCG","CAAGGGCG","GAAGGGCG","TAAGGGCG","ACAGGGCG","CCAGGGCG","GCAGGGCG","TCAGGGCG",
+ "AGAGGGCG","CGAGGGCG","GGAGGGCG","TGAGGGCG","ATAGGGCG","CTAGGGCG","GTAGGGCG","TTAGGGCG",
+ "AACGGGCG","CACGGGCG","GACGGGCG","TACGGGCG","ACCGGGCG","CCCGGGCG","GCCGGGCG","TCCGGGCG",
+ "AGCGGGCG","CGCGGGCG","GGCGGGCG","TGCGGGCG","ATCGGGCG","CTCGGGCG","GTCGGGCG","TTCGGGCG",
+ "AAGGGGCG","CAGGGGCG","GAGGGGCG","TAGGGGCG","ACGGGGCG","CCGGGGCG","GCGGGGCG","TCGGGGCG",
+ "AGGGGGCG","CGGGGGCG","GGGGGGCG","TGGGGGCG","ATGGGGCG","CTGGGGCG","GTGGGGCG","TTGGGGCG",
+ "AATGGGCG","CATGGGCG","GATGGGCG","TATGGGCG","ACTGGGCG","CCTGGGCG","GCTGGGCG","TCTGGGCG",
+ "AGTGGGCG","CGTGGGCG","GGTGGGCG","TGTGGGCG","ATTGGGCG","CTTGGGCG","GTTGGGCG","TTTGGGCG",
+ "AAATGGCG","CAATGGCG","GAATGGCG","TAATGGCG","ACATGGCG","CCATGGCG","GCATGGCG","TCATGGCG",
+ "AGATGGCG","CGATGGCG","GGATGGCG","TGATGGCG","ATATGGCG","CTATGGCG","GTATGGCG","TTATGGCG",
+ "AACTGGCG","CACTGGCG","GACTGGCG","TACTGGCG","ACCTGGCG","CCCTGGCG","GCCTGGCG","TCCTGGCG",
+ "AGCTGGCG","CGCTGGCG","GGCTGGCG","TGCTGGCG","ATCTGGCG","CTCTGGCG","GTCTGGCG","TTCTGGCG",
+ "AAGTGGCG","CAGTGGCG","GAGTGGCG","TAGTGGCG","ACGTGGCG","CCGTGGCG","GCGTGGCG","TCGTGGCG",
+ "AGGTGGCG","CGGTGGCG","GGGTGGCG","TGGTGGCG","ATGTGGCG","CTGTGGCG","GTGTGGCG","TTGTGGCG",
+ "AATTGGCG","CATTGGCG","GATTGGCG","TATTGGCG","ACTTGGCG","CCTTGGCG","GCTTGGCG","TCTTGGCG",
+ "AGTTGGCG","CGTTGGCG","GGTTGGCG","TGTTGGCG","ATTTGGCG","CTTTGGCG","GTTTGGCG","TTTTGGCG",
+ "AAAATGCG","CAAATGCG","GAAATGCG","TAAATGCG","ACAATGCG","CCAATGCG","GCAATGCG","TCAATGCG",
+ "AGAATGCG","CGAATGCG","GGAATGCG","TGAATGCG","ATAATGCG","CTAATGCG","GTAATGCG","TTAATGCG",
+ "AACATGCG","CACATGCG","GACATGCG","TACATGCG","ACCATGCG","CCCATGCG","GCCATGCG","TCCATGCG",
+ "AGCATGCG","CGCATGCG","GGCATGCG","TGCATGCG","ATCATGCG","CTCATGCG","GTCATGCG","TTCATGCG",
+ "AAGATGCG","CAGATGCG","GAGATGCG","TAGATGCG","ACGATGCG","CCGATGCG","GCGATGCG","TCGATGCG",
+ "AGGATGCG","CGGATGCG","GGGATGCG","TGGATGCG","ATGATGCG","CTGATGCG","GTGATGCG","TTGATGCG",
+ "AATATGCG","CATATGCG","GATATGCG","TATATGCG","ACTATGCG","CCTATGCG","GCTATGCG","TCTATGCG",
+ "AGTATGCG","CGTATGCG","GGTATGCG","TGTATGCG","ATTATGCG","CTTATGCG","GTTATGCG","TTTATGCG",
+ "AAACTGCG","CAACTGCG","GAACTGCG","TAACTGCG","ACACTGCG","CCACTGCG","GCACTGCG","TCACTGCG",
+ "AGACTGCG","CGACTGCG","GGACTGCG","TGACTGCG","ATACTGCG","CTACTGCG","GTACTGCG","TTACTGCG",
+ "AACCTGCG","CACCTGCG","GACCTGCG","TACCTGCG","ACCCTGCG","CCCCTGCG","GCCCTGCG","TCCCTGCG",
+ "AGCCTGCG","CGCCTGCG","GGCCTGCG","TGCCTGCG","ATCCTGCG","CTCCTGCG","GTCCTGCG","TTCCTGCG",
+ "AAGCTGCG","CAGCTGCG","GAGCTGCG","TAGCTGCG","ACGCTGCG","CCGCTGCG","GCGCTGCG","TCGCTGCG",
+ "AGGCTGCG","CGGCTGCG","GGGCTGCG","TGGCTGCG","ATGCTGCG","CTGCTGCG","GTGCTGCG","TTGCTGCG",
+ "AATCTGCG","CATCTGCG","GATCTGCG","TATCTGCG","ACTCTGCG","CCTCTGCG","GCTCTGCG","TCTCTGCG",
+ "AGTCTGCG","CGTCTGCG","GGTCTGCG","TGTCTGCG","ATTCTGCG","CTTCTGCG","GTTCTGCG","TTTCTGCG",
+ "AAAGTGCG","CAAGTGCG","GAAGTGCG","TAAGTGCG","ACAGTGCG","CCAGTGCG","GCAGTGCG","TCAGTGCG",
+ "AGAGTGCG","CGAGTGCG","GGAGTGCG","TGAGTGCG","ATAGTGCG","CTAGTGCG","GTAGTGCG","TTAGTGCG",
+ "AACGTGCG","CACGTGCG","GACGTGCG","TACGTGCG","ACCGTGCG","CCCGTGCG","GCCGTGCG","TCCGTGCG",
+ "AGCGTGCG","CGCGTGCG","GGCGTGCG","TGCGTGCG","ATCGTGCG","CTCGTGCG","GTCGTGCG","TTCGTGCG",
+ "AAGGTGCG","CAGGTGCG","GAGGTGCG","TAGGTGCG","ACGGTGCG","CCGGTGCG","GCGGTGCG","TCGGTGCG",
+ "AGGGTGCG","CGGGTGCG","GGGGTGCG","TGGGTGCG","ATGGTGCG","CTGGTGCG","GTGGTGCG","TTGGTGCG",
+ "AATGTGCG","CATGTGCG","GATGTGCG","TATGTGCG","ACTGTGCG","CCTGTGCG","GCTGTGCG","TCTGTGCG",
+ "AGTGTGCG","CGTGTGCG","GGTGTGCG","TGTGTGCG","ATTGTGCG","CTTGTGCG","GTTGTGCG","TTTGTGCG",
+ "AAATTGCG","CAATTGCG","GAATTGCG","TAATTGCG","ACATTGCG","CCATTGCG","GCATTGCG","TCATTGCG",
+ "AGATTGCG","CGATTGCG","GGATTGCG","TGATTGCG","ATATTGCG","CTATTGCG","GTATTGCG","TTATTGCG",
+ "AACTTGCG","CACTTGCG","GACTTGCG","TACTTGCG","ACCTTGCG","CCCTTGCG","GCCTTGCG","TCCTTGCG",
+ "AGCTTGCG","CGCTTGCG","GGCTTGCG","TGCTTGCG","ATCTTGCG","CTCTTGCG","GTCTTGCG","TTCTTGCG",
+ "AAGTTGCG","CAGTTGCG","GAGTTGCG","TAGTTGCG","ACGTTGCG","CCGTTGCG","GCGTTGCG","TCGTTGCG",
+ "AGGTTGCG","CGGTTGCG","GGGTTGCG","TGGTTGCG","ATGTTGCG","CTGTTGCG","GTGTTGCG","TTGTTGCG",
+ "AATTTGCG","CATTTGCG","GATTTGCG","TATTTGCG","ACTTTGCG","CCTTTGCG","GCTTTGCG","TCTTTGCG",
+ "AGTTTGCG","CGTTTGCG","GGTTTGCG","TGTTTGCG","ATTTTGCG","CTTTTGCG","GTTTTGCG","TTTTTGCG",
+ "AAAAATCG","CAAAATCG","GAAAATCG","TAAAATCG","ACAAATCG","CCAAATCG","GCAAATCG","TCAAATCG",
+ "AGAAATCG","CGAAATCG","GGAAATCG","TGAAATCG","ATAAATCG","CTAAATCG","GTAAATCG","TTAAATCG",
+ "AACAATCG","CACAATCG","GACAATCG","TACAATCG","ACCAATCG","CCCAATCG","GCCAATCG","TCCAATCG",
+ "AGCAATCG","CGCAATCG","GGCAATCG","TGCAATCG","ATCAATCG","CTCAATCG","GTCAATCG","TTCAATCG",
+ "AAGAATCG","CAGAATCG","GAGAATCG","TAGAATCG","ACGAATCG","CCGAATCG","GCGAATCG","TCGAATCG",
+ "AGGAATCG","CGGAATCG","GGGAATCG","TGGAATCG","ATGAATCG","CTGAATCG","GTGAATCG","TTGAATCG",
+ "AATAATCG","CATAATCG","GATAATCG","TATAATCG","ACTAATCG","CCTAATCG","GCTAATCG","TCTAATCG",
+ "AGTAATCG","CGTAATCG","GGTAATCG","TGTAATCG","ATTAATCG","CTTAATCG","GTTAATCG","TTTAATCG",
+ "AAACATCG","CAACATCG","GAACATCG","TAACATCG","ACACATCG","CCACATCG","GCACATCG","TCACATCG",
+ "AGACATCG","CGACATCG","GGACATCG","TGACATCG","ATACATCG","CTACATCG","GTACATCG","TTACATCG",
+ "AACCATCG","CACCATCG","GACCATCG","TACCATCG","ACCCATCG","CCCCATCG","GCCCATCG","TCCCATCG",
+ "AGCCATCG","CGCCATCG","GGCCATCG","TGCCATCG","ATCCATCG","CTCCATCG","GTCCATCG","TTCCATCG",
+ "AAGCATCG","CAGCATCG","GAGCATCG","TAGCATCG","ACGCATCG","CCGCATCG","GCGCATCG","TCGCATCG",
+ "AGGCATCG","CGGCATCG","GGGCATCG","TGGCATCG","ATGCATCG","CTGCATCG","GTGCATCG","TTGCATCG",
+ "AATCATCG","CATCATCG","GATCATCG","TATCATCG","ACTCATCG","CCTCATCG","GCTCATCG","TCTCATCG",
+ "AGTCATCG","CGTCATCG","GGTCATCG","TGTCATCG","ATTCATCG","CTTCATCG","GTTCATCG","TTTCATCG",
+ "AAAGATCG","CAAGATCG","GAAGATCG","TAAGATCG","ACAGATCG","CCAGATCG","GCAGATCG","TCAGATCG",
+ "AGAGATCG","CGAGATCG","GGAGATCG","TGAGATCG","ATAGATCG","CTAGATCG","GTAGATCG","TTAGATCG",
+ "AACGATCG","CACGATCG","GACGATCG","TACGATCG","ACCGATCG","CCCGATCG","GCCGATCG","TCCGATCG",
+ "AGCGATCG","CGCGATCG","GGCGATCG","TGCGATCG","ATCGATCG","CTCGATCG","GTCGATCG","TTCGATCG",
+ "AAGGATCG","CAGGATCG","GAGGATCG","TAGGATCG","ACGGATCG","CCGGATCG","GCGGATCG","TCGGATCG",
+ "AGGGATCG","CGGGATCG","GGGGATCG","TGGGATCG","ATGGATCG","CTGGATCG","GTGGATCG","TTGGATCG",
+ "AATGATCG","CATGATCG","GATGATCG","TATGATCG","ACTGATCG","CCTGATCG","GCTGATCG","TCTGATCG",
+ "AGTGATCG","CGTGATCG","GGTGATCG","TGTGATCG","ATTGATCG","CTTGATCG","GTTGATCG","TTTGATCG",
+ "AAATATCG","CAATATCG","GAATATCG","TAATATCG","ACATATCG","CCATATCG","GCATATCG","TCATATCG",
+ "AGATATCG","CGATATCG","GGATATCG","TGATATCG","ATATATCG","CTATATCG","GTATATCG","TTATATCG",
+ "AACTATCG","CACTATCG","GACTATCG","TACTATCG","ACCTATCG","CCCTATCG","GCCTATCG","TCCTATCG",
+ "AGCTATCG","CGCTATCG","GGCTATCG","TGCTATCG","ATCTATCG","CTCTATCG","GTCTATCG","TTCTATCG",
+ "AAGTATCG","CAGTATCG","GAGTATCG","TAGTATCG","ACGTATCG","CCGTATCG","GCGTATCG","TCGTATCG",
+ "AGGTATCG","CGGTATCG","GGGTATCG","TGGTATCG","ATGTATCG","CTGTATCG","GTGTATCG","TTGTATCG",
+ "AATTATCG","CATTATCG","GATTATCG","TATTATCG","ACTTATCG","CCTTATCG","GCTTATCG","TCTTATCG",
+ "AGTTATCG","CGTTATCG","GGTTATCG","TGTTATCG","ATTTATCG","CTTTATCG","GTTTATCG","TTTTATCG",
+ "AAAACTCG","CAAACTCG","GAAACTCG","TAAACTCG","ACAACTCG","CCAACTCG","GCAACTCG","TCAACTCG",
+ "AGAACTCG","CGAACTCG","GGAACTCG","TGAACTCG","ATAACTCG","CTAACTCG","GTAACTCG","TTAACTCG",
+ "AACACTCG","CACACTCG","GACACTCG","TACACTCG","ACCACTCG","CCCACTCG","GCCACTCG","TCCACTCG",
+ "AGCACTCG","CGCACTCG","GGCACTCG","TGCACTCG","ATCACTCG","CTCACTCG","GTCACTCG","TTCACTCG",
+ "AAGACTCG","CAGACTCG","GAGACTCG","TAGACTCG","ACGACTCG","CCGACTCG","GCGACTCG","TCGACTCG",
+ "AGGACTCG","CGGACTCG","GGGACTCG","TGGACTCG","ATGACTCG","CTGACTCG","GTGACTCG","TTGACTCG",
+ "AATACTCG","CATACTCG","GATACTCG","TATACTCG","ACTACTCG","CCTACTCG","GCTACTCG","TCTACTCG",
+ "AGTACTCG","CGTACTCG","GGTACTCG","TGTACTCG","ATTACTCG","CTTACTCG","GTTACTCG","TTTACTCG",
+ "AAACCTCG","CAACCTCG","GAACCTCG","TAACCTCG","ACACCTCG","CCACCTCG","GCACCTCG","TCACCTCG",
+ "AGACCTCG","CGACCTCG","GGACCTCG","TGACCTCG","ATACCTCG","CTACCTCG","GTACCTCG","TTACCTCG",
+ "AACCCTCG","CACCCTCG","GACCCTCG","TACCCTCG","ACCCCTCG","CCCCCTCG","GCCCCTCG","TCCCCTCG",
+ "AGCCCTCG","CGCCCTCG","GGCCCTCG","TGCCCTCG","ATCCCTCG","CTCCCTCG","GTCCCTCG","TTCCCTCG",
+ "AAGCCTCG","CAGCCTCG","GAGCCTCG","TAGCCTCG","ACGCCTCG","CCGCCTCG","GCGCCTCG","TCGCCTCG",
+ "AGGCCTCG","CGGCCTCG","GGGCCTCG","TGGCCTCG","ATGCCTCG","CTGCCTCG","GTGCCTCG","TTGCCTCG",
+ "AATCCTCG","CATCCTCG","GATCCTCG","TATCCTCG","ACTCCTCG","CCTCCTCG","GCTCCTCG","TCTCCTCG",
+ "AGTCCTCG","CGTCCTCG","GGTCCTCG","TGTCCTCG","ATTCCTCG","CTTCCTCG","GTTCCTCG","TTTCCTCG",
+ "AAAGCTCG","CAAGCTCG","GAAGCTCG","TAAGCTCG","ACAGCTCG","CCAGCTCG","GCAGCTCG","TCAGCTCG",
+ "AGAGCTCG","CGAGCTCG","GGAGCTCG","TGAGCTCG","ATAGCTCG","CTAGCTCG","GTAGCTCG","TTAGCTCG",
+ "AACGCTCG","CACGCTCG","GACGCTCG","TACGCTCG","ACCGCTCG","CCCGCTCG","GCCGCTCG","TCCGCTCG",
+ "AGCGCTCG","CGCGCTCG","GGCGCTCG","TGCGCTCG","ATCGCTCG","CTCGCTCG","GTCGCTCG","TTCGCTCG",
+ "AAGGCTCG","CAGGCTCG","GAGGCTCG","TAGGCTCG","ACGGCTCG","CCGGCTCG","GCGGCTCG","TCGGCTCG",
+ "AGGGCTCG","CGGGCTCG","GGGGCTCG","TGGGCTCG","ATGGCTCG","CTGGCTCG","GTGGCTCG","TTGGCTCG",
+ "AATGCTCG","CATGCTCG","GATGCTCG","TATGCTCG","ACTGCTCG","CCTGCTCG","GCTGCTCG","TCTGCTCG",
+ "AGTGCTCG","CGTGCTCG","GGTGCTCG","TGTGCTCG","ATTGCTCG","CTTGCTCG","GTTGCTCG","TTTGCTCG",
+ "AAATCTCG","CAATCTCG","GAATCTCG","TAATCTCG","ACATCTCG","CCATCTCG","GCATCTCG","TCATCTCG",
+ "AGATCTCG","CGATCTCG","GGATCTCG","TGATCTCG","ATATCTCG","CTATCTCG","GTATCTCG","TTATCTCG",
+ "AACTCTCG","CACTCTCG","GACTCTCG","TACTCTCG","ACCTCTCG","CCCTCTCG","GCCTCTCG","TCCTCTCG",
+ "AGCTCTCG","CGCTCTCG","GGCTCTCG","TGCTCTCG","ATCTCTCG","CTCTCTCG","GTCTCTCG","TTCTCTCG",
+ "AAGTCTCG","CAGTCTCG","GAGTCTCG","TAGTCTCG","ACGTCTCG","CCGTCTCG","GCGTCTCG","TCGTCTCG",
+ "AGGTCTCG","CGGTCTCG","GGGTCTCG","TGGTCTCG","ATGTCTCG","CTGTCTCG","GTGTCTCG","TTGTCTCG",
+ "AATTCTCG","CATTCTCG","GATTCTCG","TATTCTCG","ACTTCTCG","CCTTCTCG","GCTTCTCG","TCTTCTCG",
+ "AGTTCTCG","CGTTCTCG","GGTTCTCG","TGTTCTCG","ATTTCTCG","CTTTCTCG","GTTTCTCG","TTTTCTCG",
+ "AAAAGTCG","CAAAGTCG","GAAAGTCG","TAAAGTCG","ACAAGTCG","CCAAGTCG","GCAAGTCG","TCAAGTCG",
+ "AGAAGTCG","CGAAGTCG","GGAAGTCG","TGAAGTCG","ATAAGTCG","CTAAGTCG","GTAAGTCG","TTAAGTCG",
+ "AACAGTCG","CACAGTCG","GACAGTCG","TACAGTCG","ACCAGTCG","CCCAGTCG","GCCAGTCG","TCCAGTCG",
+ "AGCAGTCG","CGCAGTCG","GGCAGTCG","TGCAGTCG","ATCAGTCG","CTCAGTCG","GTCAGTCG","TTCAGTCG",
+ "AAGAGTCG","CAGAGTCG","GAGAGTCG","TAGAGTCG","ACGAGTCG","CCGAGTCG","GCGAGTCG","TCGAGTCG",
+ "AGGAGTCG","CGGAGTCG","GGGAGTCG","TGGAGTCG","ATGAGTCG","CTGAGTCG","GTGAGTCG","TTGAGTCG",
+ "AATAGTCG","CATAGTCG","GATAGTCG","TATAGTCG","ACTAGTCG","CCTAGTCG","GCTAGTCG","TCTAGTCG",
+ "AGTAGTCG","CGTAGTCG","GGTAGTCG","TGTAGTCG","ATTAGTCG","CTTAGTCG","GTTAGTCG","TTTAGTCG",
+ "AAACGTCG","CAACGTCG","GAACGTCG","TAACGTCG","ACACGTCG","CCACGTCG","GCACGTCG","TCACGTCG",
+ "AGACGTCG","CGACGTCG","GGACGTCG","TGACGTCG","ATACGTCG","CTACGTCG","GTACGTCG","TTACGTCG",
+ "AACCGTCG","CACCGTCG","GACCGTCG","TACCGTCG","ACCCGTCG","CCCCGTCG","GCCCGTCG","TCCCGTCG",
+ "AGCCGTCG","CGCCGTCG","GGCCGTCG","TGCCGTCG","ATCCGTCG","CTCCGTCG","GTCCGTCG","TTCCGTCG",
+ "AAGCGTCG","CAGCGTCG","GAGCGTCG","TAGCGTCG","ACGCGTCG","CCGCGTCG","GCGCGTCG","TCGCGTCG",
+ "AGGCGTCG","CGGCGTCG","GGGCGTCG","TGGCGTCG","ATGCGTCG","CTGCGTCG","GTGCGTCG","TTGCGTCG",
+ "AATCGTCG","CATCGTCG","GATCGTCG","TATCGTCG","ACTCGTCG","CCTCGTCG","GCTCGTCG","TCTCGTCG",
+ "AGTCGTCG","CGTCGTCG","GGTCGTCG","TGTCGTCG","ATTCGTCG","CTTCGTCG","GTTCGTCG","TTTCGTCG",
+ "AAAGGTCG","CAAGGTCG","GAAGGTCG","TAAGGTCG","ACAGGTCG","CCAGGTCG","GCAGGTCG","TCAGGTCG",
+ "AGAGGTCG","CGAGGTCG","GGAGGTCG","TGAGGTCG","ATAGGTCG","CTAGGTCG","GTAGGTCG","TTAGGTCG",
+ "AACGGTCG","CACGGTCG","GACGGTCG","TACGGTCG","ACCGGTCG","CCCGGTCG","GCCGGTCG","TCCGGTCG",
+ "AGCGGTCG","CGCGGTCG","GGCGGTCG","TGCGGTCG","ATCGGTCG","CTCGGTCG","GTCGGTCG","TTCGGTCG",
+ "AAGGGTCG","CAGGGTCG","GAGGGTCG","TAGGGTCG","ACGGGTCG","CCGGGTCG","GCGGGTCG","TCGGGTCG",
+ "AGGGGTCG","CGGGGTCG","GGGGGTCG","TGGGGTCG","ATGGGTCG","CTGGGTCG","GTGGGTCG","TTGGGTCG",
+ "AATGGTCG","CATGGTCG","GATGGTCG","TATGGTCG","ACTGGTCG","CCTGGTCG","GCTGGTCG","TCTGGTCG",
+ "AGTGGTCG","CGTGGTCG","GGTGGTCG","TGTGGTCG","ATTGGTCG","CTTGGTCG","GTTGGTCG","TTTGGTCG",
+ "AAATGTCG","CAATGTCG","GAATGTCG","TAATGTCG","ACATGTCG","CCATGTCG","GCATGTCG","TCATGTCG",
+ "AGATGTCG","CGATGTCG","GGATGTCG","TGATGTCG","ATATGTCG","CTATGTCG","GTATGTCG","TTATGTCG",
+ "AACTGTCG","CACTGTCG","GACTGTCG","TACTGTCG","ACCTGTCG","CCCTGTCG","GCCTGTCG","TCCTGTCG",
+ "AGCTGTCG","CGCTGTCG","GGCTGTCG","TGCTGTCG","ATCTGTCG","CTCTGTCG","GTCTGTCG","TTCTGTCG",
+ "AAGTGTCG","CAGTGTCG","GAGTGTCG","TAGTGTCG","ACGTGTCG","CCGTGTCG","GCGTGTCG","TCGTGTCG",
+ "AGGTGTCG","CGGTGTCG","GGGTGTCG","TGGTGTCG","ATGTGTCG","CTGTGTCG","GTGTGTCG","TTGTGTCG",
+ "AATTGTCG","CATTGTCG","GATTGTCG","TATTGTCG","ACTTGTCG","CCTTGTCG","GCTTGTCG","TCTTGTCG",
+ "AGTTGTCG","CGTTGTCG","GGTTGTCG","TGTTGTCG","ATTTGTCG","CTTTGTCG","GTTTGTCG","TTTTGTCG",
+ "AAAATTCG","CAAATTCG","GAAATTCG","TAAATTCG","ACAATTCG","CCAATTCG","GCAATTCG","TCAATTCG",
+ "AGAATTCG","CGAATTCG","GGAATTCG","TGAATTCG","ATAATTCG","CTAATTCG","GTAATTCG","TTAATTCG",
+ "AACATTCG","CACATTCG","GACATTCG","TACATTCG","ACCATTCG","CCCATTCG","GCCATTCG","TCCATTCG",
+ "AGCATTCG","CGCATTCG","GGCATTCG","TGCATTCG","ATCATTCG","CTCATTCG","GTCATTCG","TTCATTCG",
+ "AAGATTCG","CAGATTCG","GAGATTCG","TAGATTCG","ACGATTCG","CCGATTCG","GCGATTCG","TCGATTCG",
+ "AGGATTCG","CGGATTCG","GGGATTCG","TGGATTCG","ATGATTCG","CTGATTCG","GTGATTCG","TTGATTCG",
+ "AATATTCG","CATATTCG","GATATTCG","TATATTCG","ACTATTCG","CCTATTCG","GCTATTCG","TCTATTCG",
+ "AGTATTCG","CGTATTCG","GGTATTCG","TGTATTCG","ATTATTCG","CTTATTCG","GTTATTCG","TTTATTCG",
+ "AAACTTCG","CAACTTCG","GAACTTCG","TAACTTCG","ACACTTCG","CCACTTCG","GCACTTCG","TCACTTCG",
+ "AGACTTCG","CGACTTCG","GGACTTCG","TGACTTCG","ATACTTCG","CTACTTCG","GTACTTCG","TTACTTCG",
+ "AACCTTCG","CACCTTCG","GACCTTCG","TACCTTCG","ACCCTTCG","CCCCTTCG","GCCCTTCG","TCCCTTCG",
+ "AGCCTTCG","CGCCTTCG","GGCCTTCG","TGCCTTCG","ATCCTTCG","CTCCTTCG","GTCCTTCG","TTCCTTCG",
+ "AAGCTTCG","CAGCTTCG","GAGCTTCG","TAGCTTCG","ACGCTTCG","CCGCTTCG","GCGCTTCG","TCGCTTCG",
+ "AGGCTTCG","CGGCTTCG","GGGCTTCG","TGGCTTCG","ATGCTTCG","CTGCTTCG","GTGCTTCG","TTGCTTCG",
+ "AATCTTCG","CATCTTCG","GATCTTCG","TATCTTCG","ACTCTTCG","CCTCTTCG","GCTCTTCG","TCTCTTCG",
+ "AGTCTTCG","CGTCTTCG","GGTCTTCG","TGTCTTCG","ATTCTTCG","CTTCTTCG","GTTCTTCG","TTTCTTCG",
+ "AAAGTTCG","CAAGTTCG","GAAGTTCG","TAAGTTCG","ACAGTTCG","CCAGTTCG","GCAGTTCG","TCAGTTCG",
+ "AGAGTTCG","CGAGTTCG","GGAGTTCG","TGAGTTCG","ATAGTTCG","CTAGTTCG","GTAGTTCG","TTAGTTCG",
+ "AACGTTCG","CACGTTCG","GACGTTCG","TACGTTCG","ACCGTTCG","CCCGTTCG","GCCGTTCG","TCCGTTCG",
+ "AGCGTTCG","CGCGTTCG","GGCGTTCG","TGCGTTCG","ATCGTTCG","CTCGTTCG","GTCGTTCG","TTCGTTCG",
+ "AAGGTTCG","CAGGTTCG","GAGGTTCG","TAGGTTCG","ACGGTTCG","CCGGTTCG","GCGGTTCG","TCGGTTCG",
+ "AGGGTTCG","CGGGTTCG","GGGGTTCG","TGGGTTCG","ATGGTTCG","CTGGTTCG","GTGGTTCG","TTGGTTCG",
+ "AATGTTCG","CATGTTCG","GATGTTCG","TATGTTCG","ACTGTTCG","CCTGTTCG","GCTGTTCG","TCTGTTCG",
+ "AGTGTTCG","CGTGTTCG","GGTGTTCG","TGTGTTCG","ATTGTTCG","CTTGTTCG","GTTGTTCG","TTTGTTCG",
+ "AAATTTCG","CAATTTCG","GAATTTCG","TAATTTCG","ACATTTCG","CCATTTCG","GCATTTCG","TCATTTCG",
+ "AGATTTCG","CGATTTCG","GGATTTCG","TGATTTCG","ATATTTCG","CTATTTCG","GTATTTCG","TTATTTCG",
+ "AACTTTCG","CACTTTCG","GACTTTCG","TACTTTCG","ACCTTTCG","CCCTTTCG","GCCTTTCG","TCCTTTCG",
+ "AGCTTTCG","CGCTTTCG","GGCTTTCG","TGCTTTCG","ATCTTTCG","CTCTTTCG","GTCTTTCG","TTCTTTCG",
+ "AAGTTTCG","CAGTTTCG","GAGTTTCG","TAGTTTCG","ACGTTTCG","CCGTTTCG","GCGTTTCG","TCGTTTCG",
+ "AGGTTTCG","CGGTTTCG","GGGTTTCG","TGGTTTCG","ATGTTTCG","CTGTTTCG","GTGTTTCG","TTGTTTCG",
+ "AATTTTCG","CATTTTCG","GATTTTCG","TATTTTCG","ACTTTTCG","CCTTTTCG","GCTTTTCG","TCTTTTCG",
+ "AGTTTTCG","CGTTTTCG","GGTTTTCG","TGTTTTCG","ATTTTTCG","CTTTTTCG","GTTTTTCG","TTTTTTCG",
+ "AAAAAAGG","CAAAAAGG","GAAAAAGG","TAAAAAGG","ACAAAAGG","CCAAAAGG","GCAAAAGG","TCAAAAGG",
+ "AGAAAAGG","CGAAAAGG","GGAAAAGG","TGAAAAGG","ATAAAAGG","CTAAAAGG","GTAAAAGG","TTAAAAGG",
+ "AACAAAGG","CACAAAGG","GACAAAGG","TACAAAGG","ACCAAAGG","CCCAAAGG","GCCAAAGG","TCCAAAGG",
+ "AGCAAAGG","CGCAAAGG","GGCAAAGG","TGCAAAGG","ATCAAAGG","CTCAAAGG","GTCAAAGG","TTCAAAGG",
+ "AAGAAAGG","CAGAAAGG","GAGAAAGG","TAGAAAGG","ACGAAAGG","CCGAAAGG","GCGAAAGG","TCGAAAGG",
+ "AGGAAAGG","CGGAAAGG","GGGAAAGG","TGGAAAGG","ATGAAAGG","CTGAAAGG","GTGAAAGG","TTGAAAGG",
+ "AATAAAGG","CATAAAGG","GATAAAGG","TATAAAGG","ACTAAAGG","CCTAAAGG","GCTAAAGG","TCTAAAGG",
+ "AGTAAAGG","CGTAAAGG","GGTAAAGG","TGTAAAGG","ATTAAAGG","CTTAAAGG","GTTAAAGG","TTTAAAGG",
+ "AAACAAGG","CAACAAGG","GAACAAGG","TAACAAGG","ACACAAGG","CCACAAGG","GCACAAGG","TCACAAGG",
+ "AGACAAGG","CGACAAGG","GGACAAGG","TGACAAGG","ATACAAGG","CTACAAGG","GTACAAGG","TTACAAGG",
+ "AACCAAGG","CACCAAGG","GACCAAGG","TACCAAGG","ACCCAAGG","CCCCAAGG","GCCCAAGG","TCCCAAGG",
+ "AGCCAAGG","CGCCAAGG","GGCCAAGG","TGCCAAGG","ATCCAAGG","CTCCAAGG","GTCCAAGG","TTCCAAGG",
+ "AAGCAAGG","CAGCAAGG","GAGCAAGG","TAGCAAGG","ACGCAAGG","CCGCAAGG","GCGCAAGG","TCGCAAGG",
+ "AGGCAAGG","CGGCAAGG","GGGCAAGG","TGGCAAGG","ATGCAAGG","CTGCAAGG","GTGCAAGG","TTGCAAGG",
+ "AATCAAGG","CATCAAGG","GATCAAGG","TATCAAGG","ACTCAAGG","CCTCAAGG","GCTCAAGG","TCTCAAGG",
+ "AGTCAAGG","CGTCAAGG","GGTCAAGG","TGTCAAGG","ATTCAAGG","CTTCAAGG","GTTCAAGG","TTTCAAGG",
+ "AAAGAAGG","CAAGAAGG","GAAGAAGG","TAAGAAGG","ACAGAAGG","CCAGAAGG","GCAGAAGG","TCAGAAGG",
+ "AGAGAAGG","CGAGAAGG","GGAGAAGG","TGAGAAGG","ATAGAAGG","CTAGAAGG","GTAGAAGG","TTAGAAGG",
+ "AACGAAGG","CACGAAGG","GACGAAGG","TACGAAGG","ACCGAAGG","CCCGAAGG","GCCGAAGG","TCCGAAGG",
+ "AGCGAAGG","CGCGAAGG","GGCGAAGG","TGCGAAGG","ATCGAAGG","CTCGAAGG","GTCGAAGG","TTCGAAGG",
+ "AAGGAAGG","CAGGAAGG","GAGGAAGG","TAGGAAGG","ACGGAAGG","CCGGAAGG","GCGGAAGG","TCGGAAGG",
+ "AGGGAAGG","CGGGAAGG","GGGGAAGG","TGGGAAGG","ATGGAAGG","CTGGAAGG","GTGGAAGG","TTGGAAGG",
+ "AATGAAGG","CATGAAGG","GATGAAGG","TATGAAGG","ACTGAAGG","CCTGAAGG","GCTGAAGG","TCTGAAGG",
+ "AGTGAAGG","CGTGAAGG","GGTGAAGG","TGTGAAGG","ATTGAAGG","CTTGAAGG","GTTGAAGG","TTTGAAGG",
+ "AAATAAGG","CAATAAGG","GAATAAGG","TAATAAGG","ACATAAGG","CCATAAGG","GCATAAGG","TCATAAGG",
+ "AGATAAGG","CGATAAGG","GGATAAGG","TGATAAGG","ATATAAGG","CTATAAGG","GTATAAGG","TTATAAGG",
+ "AACTAAGG","CACTAAGG","GACTAAGG","TACTAAGG","ACCTAAGG","CCCTAAGG","GCCTAAGG","TCCTAAGG",
+ "AGCTAAGG","CGCTAAGG","GGCTAAGG","TGCTAAGG","ATCTAAGG","CTCTAAGG","GTCTAAGG","TTCTAAGG",
+ "AAGTAAGG","CAGTAAGG","GAGTAAGG","TAGTAAGG","ACGTAAGG","CCGTAAGG","GCGTAAGG","TCGTAAGG",
+ "AGGTAAGG","CGGTAAGG","GGGTAAGG","TGGTAAGG","ATGTAAGG","CTGTAAGG","GTGTAAGG","TTGTAAGG",
+ "AATTAAGG","CATTAAGG","GATTAAGG","TATTAAGG","ACTTAAGG","CCTTAAGG","GCTTAAGG","TCTTAAGG",
+ "AGTTAAGG","CGTTAAGG","GGTTAAGG","TGTTAAGG","ATTTAAGG","CTTTAAGG","GTTTAAGG","TTTTAAGG",
+ "AAAACAGG","CAAACAGG","GAAACAGG","TAAACAGG","ACAACAGG","CCAACAGG","GCAACAGG","TCAACAGG",
+ "AGAACAGG","CGAACAGG","GGAACAGG","TGAACAGG","ATAACAGG","CTAACAGG","GTAACAGG","TTAACAGG",
+ "AACACAGG","CACACAGG","GACACAGG","TACACAGG","ACCACAGG","CCCACAGG","GCCACAGG","TCCACAGG",
+ "AGCACAGG","CGCACAGG","GGCACAGG","TGCACAGG","ATCACAGG","CTCACAGG","GTCACAGG","TTCACAGG",
+ "AAGACAGG","CAGACAGG","GAGACAGG","TAGACAGG","ACGACAGG","CCGACAGG","GCGACAGG","TCGACAGG",
+ "AGGACAGG","CGGACAGG","GGGACAGG","TGGACAGG","ATGACAGG","CTGACAGG","GTGACAGG","TTGACAGG",
+ "AATACAGG","CATACAGG","GATACAGG","TATACAGG","ACTACAGG","CCTACAGG","GCTACAGG","TCTACAGG",
+ "AGTACAGG","CGTACAGG","GGTACAGG","TGTACAGG","ATTACAGG","CTTACAGG","GTTACAGG","TTTACAGG",
+ "AAACCAGG","CAACCAGG","GAACCAGG","TAACCAGG","ACACCAGG","CCACCAGG","GCACCAGG","TCACCAGG",
+ "AGACCAGG","CGACCAGG","GGACCAGG","TGACCAGG","ATACCAGG","CTACCAGG","GTACCAGG","TTACCAGG",
+ "AACCCAGG","CACCCAGG","GACCCAGG","TACCCAGG","ACCCCAGG","CCCCCAGG","GCCCCAGG","TCCCCAGG",
+ "AGCCCAGG","CGCCCAGG","GGCCCAGG","TGCCCAGG","ATCCCAGG","CTCCCAGG","GTCCCAGG","TTCCCAGG",
+ "AAGCCAGG","CAGCCAGG","GAGCCAGG","TAGCCAGG","ACGCCAGG","CCGCCAGG","GCGCCAGG","TCGCCAGG",
+ "AGGCCAGG","CGGCCAGG","GGGCCAGG","TGGCCAGG","ATGCCAGG","CTGCCAGG","GTGCCAGG","TTGCCAGG",
+ "AATCCAGG","CATCCAGG","GATCCAGG","TATCCAGG","ACTCCAGG","CCTCCAGG","GCTCCAGG","TCTCCAGG",
+ "AGTCCAGG","CGTCCAGG","GGTCCAGG","TGTCCAGG","ATTCCAGG","CTTCCAGG","GTTCCAGG","TTTCCAGG",
+ "AAAGCAGG","CAAGCAGG","GAAGCAGG","TAAGCAGG","ACAGCAGG","CCAGCAGG","GCAGCAGG","TCAGCAGG",
+ "AGAGCAGG","CGAGCAGG","GGAGCAGG","TGAGCAGG","ATAGCAGG","CTAGCAGG","GTAGCAGG","TTAGCAGG",
+ "AACGCAGG","CACGCAGG","GACGCAGG","TACGCAGG","ACCGCAGG","CCCGCAGG","GCCGCAGG","TCCGCAGG",
+ "AGCGCAGG","CGCGCAGG","GGCGCAGG","TGCGCAGG","ATCGCAGG","CTCGCAGG","GTCGCAGG","TTCGCAGG",
+ "AAGGCAGG","CAGGCAGG","GAGGCAGG","TAGGCAGG","ACGGCAGG","CCGGCAGG","GCGGCAGG","TCGGCAGG",
+ "AGGGCAGG","CGGGCAGG","GGGGCAGG","TGGGCAGG","ATGGCAGG","CTGGCAGG","GTGGCAGG","TTGGCAGG",
+ "AATGCAGG","CATGCAGG","GATGCAGG","TATGCAGG","ACTGCAGG","CCTGCAGG","GCTGCAGG","TCTGCAGG",
+ "AGTGCAGG","CGTGCAGG","GGTGCAGG","TGTGCAGG","ATTGCAGG","CTTGCAGG","GTTGCAGG","TTTGCAGG",
+ "AAATCAGG","CAATCAGG","GAATCAGG","TAATCAGG","ACATCAGG","CCATCAGG","GCATCAGG","TCATCAGG",
+ "AGATCAGG","CGATCAGG","GGATCAGG","TGATCAGG","ATATCAGG","CTATCAGG","GTATCAGG","TTATCAGG",
+ "AACTCAGG","CACTCAGG","GACTCAGG","TACTCAGG","ACCTCAGG","CCCTCAGG","GCCTCAGG","TCCTCAGG",
+ "AGCTCAGG","CGCTCAGG","GGCTCAGG","TGCTCAGG","ATCTCAGG","CTCTCAGG","GTCTCAGG","TTCTCAGG",
+ "AAGTCAGG","CAGTCAGG","GAGTCAGG","TAGTCAGG","ACGTCAGG","CCGTCAGG","GCGTCAGG","TCGTCAGG",
+ "AGGTCAGG","CGGTCAGG","GGGTCAGG","TGGTCAGG","ATGTCAGG","CTGTCAGG","GTGTCAGG","TTGTCAGG",
+ "AATTCAGG","CATTCAGG","GATTCAGG","TATTCAGG","ACTTCAGG","CCTTCAGG","GCTTCAGG","TCTTCAGG",
+ "AGTTCAGG","CGTTCAGG","GGTTCAGG","TGTTCAGG","ATTTCAGG","CTTTCAGG","GTTTCAGG","TTTTCAGG",
+ "AAAAGAGG","CAAAGAGG","GAAAGAGG","TAAAGAGG","ACAAGAGG","CCAAGAGG","GCAAGAGG","TCAAGAGG",
+ "AGAAGAGG","CGAAGAGG","GGAAGAGG","TGAAGAGG","ATAAGAGG","CTAAGAGG","GTAAGAGG","TTAAGAGG",
+ "AACAGAGG","CACAGAGG","GACAGAGG","TACAGAGG","ACCAGAGG","CCCAGAGG","GCCAGAGG","TCCAGAGG",
+ "AGCAGAGG","CGCAGAGG","GGCAGAGG","TGCAGAGG","ATCAGAGG","CTCAGAGG","GTCAGAGG","TTCAGAGG",
+ "AAGAGAGG","CAGAGAGG","GAGAGAGG","TAGAGAGG","ACGAGAGG","CCGAGAGG","GCGAGAGG","TCGAGAGG",
+ "AGGAGAGG","CGGAGAGG","GGGAGAGG","TGGAGAGG","ATGAGAGG","CTGAGAGG","GTGAGAGG","TTGAGAGG",
+ "AATAGAGG","CATAGAGG","GATAGAGG","TATAGAGG","ACTAGAGG","CCTAGAGG","GCTAGAGG","TCTAGAGG",
+ "AGTAGAGG","CGTAGAGG","GGTAGAGG","TGTAGAGG","ATTAGAGG","CTTAGAGG","GTTAGAGG","TTTAGAGG",
+ "AAACGAGG","CAACGAGG","GAACGAGG","TAACGAGG","ACACGAGG","CCACGAGG","GCACGAGG","TCACGAGG",
+ "AGACGAGG","CGACGAGG","GGACGAGG","TGACGAGG","ATACGAGG","CTACGAGG","GTACGAGG","TTACGAGG",
+ "AACCGAGG","CACCGAGG","GACCGAGG","TACCGAGG","ACCCGAGG","CCCCGAGG","GCCCGAGG","TCCCGAGG",
+ "AGCCGAGG","CGCCGAGG","GGCCGAGG","TGCCGAGG","ATCCGAGG","CTCCGAGG","GTCCGAGG","TTCCGAGG",
+ "AAGCGAGG","CAGCGAGG","GAGCGAGG","TAGCGAGG","ACGCGAGG","CCGCGAGG","GCGCGAGG","TCGCGAGG",
+ "AGGCGAGG","CGGCGAGG","GGGCGAGG","TGGCGAGG","ATGCGAGG","CTGCGAGG","GTGCGAGG","TTGCGAGG",
+ "AATCGAGG","CATCGAGG","GATCGAGG","TATCGAGG","ACTCGAGG","CCTCGAGG","GCTCGAGG","TCTCGAGG",
+ "AGTCGAGG","CGTCGAGG","GGTCGAGG","TGTCGAGG","ATTCGAGG","CTTCGAGG","GTTCGAGG","TTTCGAGG",
+ "AAAGGAGG","CAAGGAGG","GAAGGAGG","TAAGGAGG","ACAGGAGG","CCAGGAGG","GCAGGAGG","TCAGGAGG",
+ "AGAGGAGG","CGAGGAGG","GGAGGAGG","TGAGGAGG","ATAGGAGG","CTAGGAGG","GTAGGAGG","TTAGGAGG",
+ "AACGGAGG","CACGGAGG","GACGGAGG","TACGGAGG","ACCGGAGG","CCCGGAGG","GCCGGAGG","TCCGGAGG",
+ "AGCGGAGG","CGCGGAGG","GGCGGAGG","TGCGGAGG","ATCGGAGG","CTCGGAGG","GTCGGAGG","TTCGGAGG",
+ "AAGGGAGG","CAGGGAGG","GAGGGAGG","TAGGGAGG","ACGGGAGG","CCGGGAGG","GCGGGAGG","TCGGGAGG",
+ "AGGGGAGG","CGGGGAGG","GGGGGAGG","TGGGGAGG","ATGGGAGG","CTGGGAGG","GTGGGAGG","TTGGGAGG",
+ "AATGGAGG","CATGGAGG","GATGGAGG","TATGGAGG","ACTGGAGG","CCTGGAGG","GCTGGAGG","TCTGGAGG",
+ "AGTGGAGG","CGTGGAGG","GGTGGAGG","TGTGGAGG","ATTGGAGG","CTTGGAGG","GTTGGAGG","TTTGGAGG",
+ "AAATGAGG","CAATGAGG","GAATGAGG","TAATGAGG","ACATGAGG","CCATGAGG","GCATGAGG","TCATGAGG",
+ "AGATGAGG","CGATGAGG","GGATGAGG","TGATGAGG","ATATGAGG","CTATGAGG","GTATGAGG","TTATGAGG",
+ "AACTGAGG","CACTGAGG","GACTGAGG","TACTGAGG","ACCTGAGG","CCCTGAGG","GCCTGAGG","TCCTGAGG",
+ "AGCTGAGG","CGCTGAGG","GGCTGAGG","TGCTGAGG","ATCTGAGG","CTCTGAGG","GTCTGAGG","TTCTGAGG",
+ "AAGTGAGG","CAGTGAGG","GAGTGAGG","TAGTGAGG","ACGTGAGG","CCGTGAGG","GCGTGAGG","TCGTGAGG",
+ "AGGTGAGG","CGGTGAGG","GGGTGAGG","TGGTGAGG","ATGTGAGG","CTGTGAGG","GTGTGAGG","TTGTGAGG",
+ "AATTGAGG","CATTGAGG","GATTGAGG","TATTGAGG","ACTTGAGG","CCTTGAGG","GCTTGAGG","TCTTGAGG",
+ "AGTTGAGG","CGTTGAGG","GGTTGAGG","TGTTGAGG","ATTTGAGG","CTTTGAGG","GTTTGAGG","TTTTGAGG",
+ "AAAATAGG","CAAATAGG","GAAATAGG","TAAATAGG","ACAATAGG","CCAATAGG","GCAATAGG","TCAATAGG",
+ "AGAATAGG","CGAATAGG","GGAATAGG","TGAATAGG","ATAATAGG","CTAATAGG","GTAATAGG","TTAATAGG",
+ "AACATAGG","CACATAGG","GACATAGG","TACATAGG","ACCATAGG","CCCATAGG","GCCATAGG","TCCATAGG",
+ "AGCATAGG","CGCATAGG","GGCATAGG","TGCATAGG","ATCATAGG","CTCATAGG","GTCATAGG","TTCATAGG",
+ "AAGATAGG","CAGATAGG","GAGATAGG","TAGATAGG","ACGATAGG","CCGATAGG","GCGATAGG","TCGATAGG",
+ "AGGATAGG","CGGATAGG","GGGATAGG","TGGATAGG","ATGATAGG","CTGATAGG","GTGATAGG","TTGATAGG",
+ "AATATAGG","CATATAGG","GATATAGG","TATATAGG","ACTATAGG","CCTATAGG","GCTATAGG","TCTATAGG",
+ "AGTATAGG","CGTATAGG","GGTATAGG","TGTATAGG","ATTATAGG","CTTATAGG","GTTATAGG","TTTATAGG",
+ "AAACTAGG","CAACTAGG","GAACTAGG","TAACTAGG","ACACTAGG","CCACTAGG","GCACTAGG","TCACTAGG",
+ "AGACTAGG","CGACTAGG","GGACTAGG","TGACTAGG","ATACTAGG","CTACTAGG","GTACTAGG","TTACTAGG",
+ "AACCTAGG","CACCTAGG","GACCTAGG","TACCTAGG","ACCCTAGG","CCCCTAGG","GCCCTAGG","TCCCTAGG",
+ "AGCCTAGG","CGCCTAGG","GGCCTAGG","TGCCTAGG","ATCCTAGG","CTCCTAGG","GTCCTAGG","TTCCTAGG",
+ "AAGCTAGG","CAGCTAGG","GAGCTAGG","TAGCTAGG","ACGCTAGG","CCGCTAGG","GCGCTAGG","TCGCTAGG",
+ "AGGCTAGG","CGGCTAGG","GGGCTAGG","TGGCTAGG","ATGCTAGG","CTGCTAGG","GTGCTAGG","TTGCTAGG",
+ "AATCTAGG","CATCTAGG","GATCTAGG","TATCTAGG","ACTCTAGG","CCTCTAGG","GCTCTAGG","TCTCTAGG",
+ "AGTCTAGG","CGTCTAGG","GGTCTAGG","TGTCTAGG","ATTCTAGG","CTTCTAGG","GTTCTAGG","TTTCTAGG",
+ "AAAGTAGG","CAAGTAGG","GAAGTAGG","TAAGTAGG","ACAGTAGG","CCAGTAGG","GCAGTAGG","TCAGTAGG",
+ "AGAGTAGG","CGAGTAGG","GGAGTAGG","TGAGTAGG","ATAGTAGG","CTAGTAGG","GTAGTAGG","TTAGTAGG",
+ "AACGTAGG","CACGTAGG","GACGTAGG","TACGTAGG","ACCGTAGG","CCCGTAGG","GCCGTAGG","TCCGTAGG",
+ "AGCGTAGG","CGCGTAGG","GGCGTAGG","TGCGTAGG","ATCGTAGG","CTCGTAGG","GTCGTAGG","TTCGTAGG",
+ "AAGGTAGG","CAGGTAGG","GAGGTAGG","TAGGTAGG","ACGGTAGG","CCGGTAGG","GCGGTAGG","TCGGTAGG",
+ "AGGGTAGG","CGGGTAGG","GGGGTAGG","TGGGTAGG","ATGGTAGG","CTGGTAGG","GTGGTAGG","TTGGTAGG",
+ "AATGTAGG","CATGTAGG","GATGTAGG","TATGTAGG","ACTGTAGG","CCTGTAGG","GCTGTAGG","TCTGTAGG",
+ "AGTGTAGG","CGTGTAGG","GGTGTAGG","TGTGTAGG","ATTGTAGG","CTTGTAGG","GTTGTAGG","TTTGTAGG",
+ "AAATTAGG","CAATTAGG","GAATTAGG","TAATTAGG","ACATTAGG","CCATTAGG","GCATTAGG","TCATTAGG",
+ "AGATTAGG","CGATTAGG","GGATTAGG","TGATTAGG","ATATTAGG","CTATTAGG","GTATTAGG","TTATTAGG",
+ "AACTTAGG","CACTTAGG","GACTTAGG","TACTTAGG","ACCTTAGG","CCCTTAGG","GCCTTAGG","TCCTTAGG",
+ "AGCTTAGG","CGCTTAGG","GGCTTAGG","TGCTTAGG","ATCTTAGG","CTCTTAGG","GTCTTAGG","TTCTTAGG",
+ "AAGTTAGG","CAGTTAGG","GAGTTAGG","TAGTTAGG","ACGTTAGG","CCGTTAGG","GCGTTAGG","TCGTTAGG",
+ "AGGTTAGG","CGGTTAGG","GGGTTAGG","TGGTTAGG","ATGTTAGG","CTGTTAGG","GTGTTAGG","TTGTTAGG",
+ "AATTTAGG","CATTTAGG","GATTTAGG","TATTTAGG","ACTTTAGG","CCTTTAGG","GCTTTAGG","TCTTTAGG",
+ "AGTTTAGG","CGTTTAGG","GGTTTAGG","TGTTTAGG","ATTTTAGG","CTTTTAGG","GTTTTAGG","TTTTTAGG",
+ "AAAAACGG","CAAAACGG","GAAAACGG","TAAAACGG","ACAAACGG","CCAAACGG","GCAAACGG","TCAAACGG",
+ "AGAAACGG","CGAAACGG","GGAAACGG","TGAAACGG","ATAAACGG","CTAAACGG","GTAAACGG","TTAAACGG",
+ "AACAACGG","CACAACGG","GACAACGG","TACAACGG","ACCAACGG","CCCAACGG","GCCAACGG","TCCAACGG",
+ "AGCAACGG","CGCAACGG","GGCAACGG","TGCAACGG","ATCAACGG","CTCAACGG","GTCAACGG","TTCAACGG",
+ "AAGAACGG","CAGAACGG","GAGAACGG","TAGAACGG","ACGAACGG","CCGAACGG","GCGAACGG","TCGAACGG",
+ "AGGAACGG","CGGAACGG","GGGAACGG","TGGAACGG","ATGAACGG","CTGAACGG","GTGAACGG","TTGAACGG",
+ "AATAACGG","CATAACGG","GATAACGG","TATAACGG","ACTAACGG","CCTAACGG","GCTAACGG","TCTAACGG",
+ "AGTAACGG","CGTAACGG","GGTAACGG","TGTAACGG","ATTAACGG","CTTAACGG","GTTAACGG","TTTAACGG",
+ "AAACACGG","CAACACGG","GAACACGG","TAACACGG","ACACACGG","CCACACGG","GCACACGG","TCACACGG",
+ "AGACACGG","CGACACGG","GGACACGG","TGACACGG","ATACACGG","CTACACGG","GTACACGG","TTACACGG",
+ "AACCACGG","CACCACGG","GACCACGG","TACCACGG","ACCCACGG","CCCCACGG","GCCCACGG","TCCCACGG",
+ "AGCCACGG","CGCCACGG","GGCCACGG","TGCCACGG","ATCCACGG","CTCCACGG","GTCCACGG","TTCCACGG",
+ "AAGCACGG","CAGCACGG","GAGCACGG","TAGCACGG","ACGCACGG","CCGCACGG","GCGCACGG","TCGCACGG",
+ "AGGCACGG","CGGCACGG","GGGCACGG","TGGCACGG","ATGCACGG","CTGCACGG","GTGCACGG","TTGCACGG",
+ "AATCACGG","CATCACGG","GATCACGG","TATCACGG","ACTCACGG","CCTCACGG","GCTCACGG","TCTCACGG",
+ "AGTCACGG","CGTCACGG","GGTCACGG","TGTCACGG","ATTCACGG","CTTCACGG","GTTCACGG","TTTCACGG",
+ "AAAGACGG","CAAGACGG","GAAGACGG","TAAGACGG","ACAGACGG","CCAGACGG","GCAGACGG","TCAGACGG",
+ "AGAGACGG","CGAGACGG","GGAGACGG","TGAGACGG","ATAGACGG","CTAGACGG","GTAGACGG","TTAGACGG",
+ "AACGACGG","CACGACGG","GACGACGG","TACGACGG","ACCGACGG","CCCGACGG","GCCGACGG","TCCGACGG",
+ "AGCGACGG","CGCGACGG","GGCGACGG","TGCGACGG","ATCGACGG","CTCGACGG","GTCGACGG","TTCGACGG",
+ "AAGGACGG","CAGGACGG","GAGGACGG","TAGGACGG","ACGGACGG","CCGGACGG","GCGGACGG","TCGGACGG",
+ "AGGGACGG","CGGGACGG","GGGGACGG","TGGGACGG","ATGGACGG","CTGGACGG","GTGGACGG","TTGGACGG",
+ "AATGACGG","CATGACGG","GATGACGG","TATGACGG","ACTGACGG","CCTGACGG","GCTGACGG","TCTGACGG",
+ "AGTGACGG","CGTGACGG","GGTGACGG","TGTGACGG","ATTGACGG","CTTGACGG","GTTGACGG","TTTGACGG",
+ "AAATACGG","CAATACGG","GAATACGG","TAATACGG","ACATACGG","CCATACGG","GCATACGG","TCATACGG",
+ "AGATACGG","CGATACGG","GGATACGG","TGATACGG","ATATACGG","CTATACGG","GTATACGG","TTATACGG",
+ "AACTACGG","CACTACGG","GACTACGG","TACTACGG","ACCTACGG","CCCTACGG","GCCTACGG","TCCTACGG",
+ "AGCTACGG","CGCTACGG","GGCTACGG","TGCTACGG","ATCTACGG","CTCTACGG","GTCTACGG","TTCTACGG",
+ "AAGTACGG","CAGTACGG","GAGTACGG","TAGTACGG","ACGTACGG","CCGTACGG","GCGTACGG","TCGTACGG",
+ "AGGTACGG","CGGTACGG","GGGTACGG","TGGTACGG","ATGTACGG","CTGTACGG","GTGTACGG","TTGTACGG",
+ "AATTACGG","CATTACGG","GATTACGG","TATTACGG","ACTTACGG","CCTTACGG","GCTTACGG","TCTTACGG",
+ "AGTTACGG","CGTTACGG","GGTTACGG","TGTTACGG","ATTTACGG","CTTTACGG","GTTTACGG","TTTTACGG",
+ "AAAACCGG","CAAACCGG","GAAACCGG","TAAACCGG","ACAACCGG","CCAACCGG","GCAACCGG","TCAACCGG",
+ "AGAACCGG","CGAACCGG","GGAACCGG","TGAACCGG","ATAACCGG","CTAACCGG","GTAACCGG","TTAACCGG",
+ "AACACCGG","CACACCGG","GACACCGG","TACACCGG","ACCACCGG","CCCACCGG","GCCACCGG","TCCACCGG",
+ "AGCACCGG","CGCACCGG","GGCACCGG","TGCACCGG","ATCACCGG","CTCACCGG","GTCACCGG","TTCACCGG",
+ "AAGACCGG","CAGACCGG","GAGACCGG","TAGACCGG","ACGACCGG","CCGACCGG","GCGACCGG","TCGACCGG",
+ "AGGACCGG","CGGACCGG","GGGACCGG","TGGACCGG","ATGACCGG","CTGACCGG","GTGACCGG","TTGACCGG",
+ "AATACCGG","CATACCGG","GATACCGG","TATACCGG","ACTACCGG","CCTACCGG","GCTACCGG","TCTACCGG",
+ "AGTACCGG","CGTACCGG","GGTACCGG","TGTACCGG","ATTACCGG","CTTACCGG","GTTACCGG","TTTACCGG",
+ "AAACCCGG","CAACCCGG","GAACCCGG","TAACCCGG","ACACCCGG","CCACCCGG","GCACCCGG","TCACCCGG",
+ "AGACCCGG","CGACCCGG","GGACCCGG","TGACCCGG","ATACCCGG","CTACCCGG","GTACCCGG","TTACCCGG",
+ "AACCCCGG","CACCCCGG","GACCCCGG","TACCCCGG","ACCCCCGG","CCCCCCGG","GCCCCCGG","TCCCCCGG",
+ "AGCCCCGG","CGCCCCGG","GGCCCCGG","TGCCCCGG","ATCCCCGG","CTCCCCGG","GTCCCCGG","TTCCCCGG",
+ "AAGCCCGG","CAGCCCGG","GAGCCCGG","TAGCCCGG","ACGCCCGG","CCGCCCGG","GCGCCCGG","TCGCCCGG",
+ "AGGCCCGG","CGGCCCGG","GGGCCCGG","TGGCCCGG","ATGCCCGG","CTGCCCGG","GTGCCCGG","TTGCCCGG",
+ "AATCCCGG","CATCCCGG","GATCCCGG","TATCCCGG","ACTCCCGG","CCTCCCGG","GCTCCCGG","TCTCCCGG",
+ "AGTCCCGG","CGTCCCGG","GGTCCCGG","TGTCCCGG","ATTCCCGG","CTTCCCGG","GTTCCCGG","TTTCCCGG",
+ "AAAGCCGG","CAAGCCGG","GAAGCCGG","TAAGCCGG","ACAGCCGG","CCAGCCGG","GCAGCCGG","TCAGCCGG",
+ "AGAGCCGG","CGAGCCGG","GGAGCCGG","TGAGCCGG","ATAGCCGG","CTAGCCGG","GTAGCCGG","TTAGCCGG",
+ "AACGCCGG","CACGCCGG","GACGCCGG","TACGCCGG","ACCGCCGG","CCCGCCGG","GCCGCCGG","TCCGCCGG",
+ "AGCGCCGG","CGCGCCGG","GGCGCCGG","TGCGCCGG","ATCGCCGG","CTCGCCGG","GTCGCCGG","TTCGCCGG",
+ "AAGGCCGG","CAGGCCGG","GAGGCCGG","TAGGCCGG","ACGGCCGG","CCGGCCGG","GCGGCCGG","TCGGCCGG",
+ "AGGGCCGG","CGGGCCGG","GGGGCCGG","TGGGCCGG","ATGGCCGG","CTGGCCGG","GTGGCCGG","TTGGCCGG",
+ "AATGCCGG","CATGCCGG","GATGCCGG","TATGCCGG","ACTGCCGG","CCTGCCGG","GCTGCCGG","TCTGCCGG",
+ "AGTGCCGG","CGTGCCGG","GGTGCCGG","TGTGCCGG","ATTGCCGG","CTTGCCGG","GTTGCCGG","TTTGCCGG",
+ "AAATCCGG","CAATCCGG","GAATCCGG","TAATCCGG","ACATCCGG","CCATCCGG","GCATCCGG","TCATCCGG",
+ "AGATCCGG","CGATCCGG","GGATCCGG","TGATCCGG","ATATCCGG","CTATCCGG","GTATCCGG","TTATCCGG",
+ "AACTCCGG","CACTCCGG","GACTCCGG","TACTCCGG","ACCTCCGG","CCCTCCGG","GCCTCCGG","TCCTCCGG",
+ "AGCTCCGG","CGCTCCGG","GGCTCCGG","TGCTCCGG","ATCTCCGG","CTCTCCGG","GTCTCCGG","TTCTCCGG",
+ "AAGTCCGG","CAGTCCGG","GAGTCCGG","TAGTCCGG","ACGTCCGG","CCGTCCGG","GCGTCCGG","TCGTCCGG",
+ "AGGTCCGG","CGGTCCGG","GGGTCCGG","TGGTCCGG","ATGTCCGG","CTGTCCGG","GTGTCCGG","TTGTCCGG",
+ "AATTCCGG","CATTCCGG","GATTCCGG","TATTCCGG","ACTTCCGG","CCTTCCGG","GCTTCCGG","TCTTCCGG",
+ "AGTTCCGG","CGTTCCGG","GGTTCCGG","TGTTCCGG","ATTTCCGG","CTTTCCGG","GTTTCCGG","TTTTCCGG",
+ "AAAAGCGG","CAAAGCGG","GAAAGCGG","TAAAGCGG","ACAAGCGG","CCAAGCGG","GCAAGCGG","TCAAGCGG",
+ "AGAAGCGG","CGAAGCGG","GGAAGCGG","TGAAGCGG","ATAAGCGG","CTAAGCGG","GTAAGCGG","TTAAGCGG",
+ "AACAGCGG","CACAGCGG","GACAGCGG","TACAGCGG","ACCAGCGG","CCCAGCGG","GCCAGCGG","TCCAGCGG",
+ "AGCAGCGG","CGCAGCGG","GGCAGCGG","TGCAGCGG","ATCAGCGG","CTCAGCGG","GTCAGCGG","TTCAGCGG",
+ "AAGAGCGG","CAGAGCGG","GAGAGCGG","TAGAGCGG","ACGAGCGG","CCGAGCGG","GCGAGCGG","TCGAGCGG",
+ "AGGAGCGG","CGGAGCGG","GGGAGCGG","TGGAGCGG","ATGAGCGG","CTGAGCGG","GTGAGCGG","TTGAGCGG",
+ "AATAGCGG","CATAGCGG","GATAGCGG","TATAGCGG","ACTAGCGG","CCTAGCGG","GCTAGCGG","TCTAGCGG",
+ "AGTAGCGG","CGTAGCGG","GGTAGCGG","TGTAGCGG","ATTAGCGG","CTTAGCGG","GTTAGCGG","TTTAGCGG",
+ "AAACGCGG","CAACGCGG","GAACGCGG","TAACGCGG","ACACGCGG","CCACGCGG","GCACGCGG","TCACGCGG",
+ "AGACGCGG","CGACGCGG","GGACGCGG","TGACGCGG","ATACGCGG","CTACGCGG","GTACGCGG","TTACGCGG",
+ "AACCGCGG","CACCGCGG","GACCGCGG","TACCGCGG","ACCCGCGG","CCCCGCGG","GCCCGCGG","TCCCGCGG",
+ "AGCCGCGG","CGCCGCGG","GGCCGCGG","TGCCGCGG","ATCCGCGG","CTCCGCGG","GTCCGCGG","TTCCGCGG",
+ "AAGCGCGG","CAGCGCGG","GAGCGCGG","TAGCGCGG","ACGCGCGG","CCGCGCGG","GCGCGCGG","TCGCGCGG",
+ "AGGCGCGG","CGGCGCGG","GGGCGCGG","TGGCGCGG","ATGCGCGG","CTGCGCGG","GTGCGCGG","TTGCGCGG",
+ "AATCGCGG","CATCGCGG","GATCGCGG","TATCGCGG","ACTCGCGG","CCTCGCGG","GCTCGCGG","TCTCGCGG",
+ "AGTCGCGG","CGTCGCGG","GGTCGCGG","TGTCGCGG","ATTCGCGG","CTTCGCGG","GTTCGCGG","TTTCGCGG",
+ "AAAGGCGG","CAAGGCGG","GAAGGCGG","TAAGGCGG","ACAGGCGG","CCAGGCGG","GCAGGCGG","TCAGGCGG",
+ "AGAGGCGG","CGAGGCGG","GGAGGCGG","TGAGGCGG","ATAGGCGG","CTAGGCGG","GTAGGCGG","TTAGGCGG",
+ "AACGGCGG","CACGGCGG","GACGGCGG","TACGGCGG","ACCGGCGG","CCCGGCGG","GCCGGCGG","TCCGGCGG",
+ "AGCGGCGG","CGCGGCGG","GGCGGCGG","TGCGGCGG","ATCGGCGG","CTCGGCGG","GTCGGCGG","TTCGGCGG",
+ "AAGGGCGG","CAGGGCGG","GAGGGCGG","TAGGGCGG","ACGGGCGG","CCGGGCGG","GCGGGCGG","TCGGGCGG",
+ "AGGGGCGG","CGGGGCGG","GGGGGCGG","TGGGGCGG","ATGGGCGG","CTGGGCGG","GTGGGCGG","TTGGGCGG",
+ "AATGGCGG","CATGGCGG","GATGGCGG","TATGGCGG","ACTGGCGG","CCTGGCGG","GCTGGCGG","TCTGGCGG",
+ "AGTGGCGG","CGTGGCGG","GGTGGCGG","TGTGGCGG","ATTGGCGG","CTTGGCGG","GTTGGCGG","TTTGGCGG",
+ "AAATGCGG","CAATGCGG","GAATGCGG","TAATGCGG","ACATGCGG","CCATGCGG","GCATGCGG","TCATGCGG",
+ "AGATGCGG","CGATGCGG","GGATGCGG","TGATGCGG","ATATGCGG","CTATGCGG","GTATGCGG","TTATGCGG",
+ "AACTGCGG","CACTGCGG","GACTGCGG","TACTGCGG","ACCTGCGG","CCCTGCGG","GCCTGCGG","TCCTGCGG",
+ "AGCTGCGG","CGCTGCGG","GGCTGCGG","TGCTGCGG","ATCTGCGG","CTCTGCGG","GTCTGCGG","TTCTGCGG",
+ "AAGTGCGG","CAGTGCGG","GAGTGCGG","TAGTGCGG","ACGTGCGG","CCGTGCGG","GCGTGCGG","TCGTGCGG",
+ "AGGTGCGG","CGGTGCGG","GGGTGCGG","TGGTGCGG","ATGTGCGG","CTGTGCGG","GTGTGCGG","TTGTGCGG",
+ "AATTGCGG","CATTGCGG","GATTGCGG","TATTGCGG","ACTTGCGG","CCTTGCGG","GCTTGCGG","TCTTGCGG",
+ "AGTTGCGG","CGTTGCGG","GGTTGCGG","TGTTGCGG","ATTTGCGG","CTTTGCGG","GTTTGCGG","TTTTGCGG",
+ "AAAATCGG","CAAATCGG","GAAATCGG","TAAATCGG","ACAATCGG","CCAATCGG","GCAATCGG","TCAATCGG",
+ "AGAATCGG","CGAATCGG","GGAATCGG","TGAATCGG","ATAATCGG","CTAATCGG","GTAATCGG","TTAATCGG",
+ "AACATCGG","CACATCGG","GACATCGG","TACATCGG","ACCATCGG","CCCATCGG","GCCATCGG","TCCATCGG",
+ "AGCATCGG","CGCATCGG","GGCATCGG","TGCATCGG","ATCATCGG","CTCATCGG","GTCATCGG","TTCATCGG",
+ "AAGATCGG","CAGATCGG","GAGATCGG","TAGATCGG","ACGATCGG","CCGATCGG","GCGATCGG","TCGATCGG",
+ "AGGATCGG","CGGATCGG","GGGATCGG","TGGATCGG","ATGATCGG","CTGATCGG","GTGATCGG","TTGATCGG",
+ "AATATCGG","CATATCGG","GATATCGG","TATATCGG","ACTATCGG","CCTATCGG","GCTATCGG","TCTATCGG",
+ "AGTATCGG","CGTATCGG","GGTATCGG","TGTATCGG","ATTATCGG","CTTATCGG","GTTATCGG","TTTATCGG",
+ "AAACTCGG","CAACTCGG","GAACTCGG","TAACTCGG","ACACTCGG","CCACTCGG","GCACTCGG","TCACTCGG",
+ "AGACTCGG","CGACTCGG","GGACTCGG","TGACTCGG","ATACTCGG","CTACTCGG","GTACTCGG","TTACTCGG",
+ "AACCTCGG","CACCTCGG","GACCTCGG","TACCTCGG","ACCCTCGG","CCCCTCGG","GCCCTCGG","TCCCTCGG",
+ "AGCCTCGG","CGCCTCGG","GGCCTCGG","TGCCTCGG","ATCCTCGG","CTCCTCGG","GTCCTCGG","TTCCTCGG",
+ "AAGCTCGG","CAGCTCGG","GAGCTCGG","TAGCTCGG","ACGCTCGG","CCGCTCGG","GCGCTCGG","TCGCTCGG",
+ "AGGCTCGG","CGGCTCGG","GGGCTCGG","TGGCTCGG","ATGCTCGG","CTGCTCGG","GTGCTCGG","TTGCTCGG",
+ "AATCTCGG","CATCTCGG","GATCTCGG","TATCTCGG","ACTCTCGG","CCTCTCGG","GCTCTCGG","TCTCTCGG",
+ "AGTCTCGG","CGTCTCGG","GGTCTCGG","TGTCTCGG","ATTCTCGG","CTTCTCGG","GTTCTCGG","TTTCTCGG",
+ "AAAGTCGG","CAAGTCGG","GAAGTCGG","TAAGTCGG","ACAGTCGG","CCAGTCGG","GCAGTCGG","TCAGTCGG",
+ "AGAGTCGG","CGAGTCGG","GGAGTCGG","TGAGTCGG","ATAGTCGG","CTAGTCGG","GTAGTCGG","TTAGTCGG",
+ "AACGTCGG","CACGTCGG","GACGTCGG","TACGTCGG","ACCGTCGG","CCCGTCGG","GCCGTCGG","TCCGTCGG",
+ "AGCGTCGG","CGCGTCGG","GGCGTCGG","TGCGTCGG","ATCGTCGG","CTCGTCGG","GTCGTCGG","TTCGTCGG",
+ "AAGGTCGG","CAGGTCGG","GAGGTCGG","TAGGTCGG","ACGGTCGG","CCGGTCGG","GCGGTCGG","TCGGTCGG",
+ "AGGGTCGG","CGGGTCGG","GGGGTCGG","TGGGTCGG","ATGGTCGG","CTGGTCGG","GTGGTCGG","TTGGTCGG",
+ "AATGTCGG","CATGTCGG","GATGTCGG","TATGTCGG","ACTGTCGG","CCTGTCGG","GCTGTCGG","TCTGTCGG",
+ "AGTGTCGG","CGTGTCGG","GGTGTCGG","TGTGTCGG","ATTGTCGG","CTTGTCGG","GTTGTCGG","TTTGTCGG",
+ "AAATTCGG","CAATTCGG","GAATTCGG","TAATTCGG","ACATTCGG","CCATTCGG","GCATTCGG","TCATTCGG",
+ "AGATTCGG","CGATTCGG","GGATTCGG","TGATTCGG","ATATTCGG","CTATTCGG","GTATTCGG","TTATTCGG",
+ "AACTTCGG","CACTTCGG","GACTTCGG","TACTTCGG","ACCTTCGG","CCCTTCGG","GCCTTCGG","TCCTTCGG",
+ "AGCTTCGG","CGCTTCGG","GGCTTCGG","TGCTTCGG","ATCTTCGG","CTCTTCGG","GTCTTCGG","TTCTTCGG",
+ "AAGTTCGG","CAGTTCGG","GAGTTCGG","TAGTTCGG","ACGTTCGG","CCGTTCGG","GCGTTCGG","TCGTTCGG",
+ "AGGTTCGG","CGGTTCGG","GGGTTCGG","TGGTTCGG","ATGTTCGG","CTGTTCGG","GTGTTCGG","TTGTTCGG",
+ "AATTTCGG","CATTTCGG","GATTTCGG","TATTTCGG","ACTTTCGG","CCTTTCGG","GCTTTCGG","TCTTTCGG",
+ "AGTTTCGG","CGTTTCGG","GGTTTCGG","TGTTTCGG","ATTTTCGG","CTTTTCGG","GTTTTCGG","TTTTTCGG",
+ "AAAAAGGG","CAAAAGGG","GAAAAGGG","TAAAAGGG","ACAAAGGG","CCAAAGGG","GCAAAGGG","TCAAAGGG",
+ "AGAAAGGG","CGAAAGGG","GGAAAGGG","TGAAAGGG","ATAAAGGG","CTAAAGGG","GTAAAGGG","TTAAAGGG",
+ "AACAAGGG","CACAAGGG","GACAAGGG","TACAAGGG","ACCAAGGG","CCCAAGGG","GCCAAGGG","TCCAAGGG",
+ "AGCAAGGG","CGCAAGGG","GGCAAGGG","TGCAAGGG","ATCAAGGG","CTCAAGGG","GTCAAGGG","TTCAAGGG",
+ "AAGAAGGG","CAGAAGGG","GAGAAGGG","TAGAAGGG","ACGAAGGG","CCGAAGGG","GCGAAGGG","TCGAAGGG",
+ "AGGAAGGG","CGGAAGGG","GGGAAGGG","TGGAAGGG","ATGAAGGG","CTGAAGGG","GTGAAGGG","TTGAAGGG",
+ "AATAAGGG","CATAAGGG","GATAAGGG","TATAAGGG","ACTAAGGG","CCTAAGGG","GCTAAGGG","TCTAAGGG",
+ "AGTAAGGG","CGTAAGGG","GGTAAGGG","TGTAAGGG","ATTAAGGG","CTTAAGGG","GTTAAGGG","TTTAAGGG",
+ "AAACAGGG","CAACAGGG","GAACAGGG","TAACAGGG","ACACAGGG","CCACAGGG","GCACAGGG","TCACAGGG",
+ "AGACAGGG","CGACAGGG","GGACAGGG","TGACAGGG","ATACAGGG","CTACAGGG","GTACAGGG","TTACAGGG",
+ "AACCAGGG","CACCAGGG","GACCAGGG","TACCAGGG","ACCCAGGG","CCCCAGGG","GCCCAGGG","TCCCAGGG",
+ "AGCCAGGG","CGCCAGGG","GGCCAGGG","TGCCAGGG","ATCCAGGG","CTCCAGGG","GTCCAGGG","TTCCAGGG",
+ "AAGCAGGG","CAGCAGGG","GAGCAGGG","TAGCAGGG","ACGCAGGG","CCGCAGGG","GCGCAGGG","TCGCAGGG",
+ "AGGCAGGG","CGGCAGGG","GGGCAGGG","TGGCAGGG","ATGCAGGG","CTGCAGGG","GTGCAGGG","TTGCAGGG",
+ "AATCAGGG","CATCAGGG","GATCAGGG","TATCAGGG","ACTCAGGG","CCTCAGGG","GCTCAGGG","TCTCAGGG",
+ "AGTCAGGG","CGTCAGGG","GGTCAGGG","TGTCAGGG","ATTCAGGG","CTTCAGGG","GTTCAGGG","TTTCAGGG",
+ "AAAGAGGG","CAAGAGGG","GAAGAGGG","TAAGAGGG","ACAGAGGG","CCAGAGGG","GCAGAGGG","TCAGAGGG",
+ "AGAGAGGG","CGAGAGGG","GGAGAGGG","TGAGAGGG","ATAGAGGG","CTAGAGGG","GTAGAGGG","TTAGAGGG",
+ "AACGAGGG","CACGAGGG","GACGAGGG","TACGAGGG","ACCGAGGG","CCCGAGGG","GCCGAGGG","TCCGAGGG",
+ "AGCGAGGG","CGCGAGGG","GGCGAGGG","TGCGAGGG","ATCGAGGG","CTCGAGGG","GTCGAGGG","TTCGAGGG",
+ "AAGGAGGG","CAGGAGGG","GAGGAGGG","TAGGAGGG","ACGGAGGG","CCGGAGGG","GCGGAGGG","TCGGAGGG",
+ "AGGGAGGG","CGGGAGGG","GGGGAGGG","TGGGAGGG","ATGGAGGG","CTGGAGGG","GTGGAGGG","TTGGAGGG",
+ "AATGAGGG","CATGAGGG","GATGAGGG","TATGAGGG","ACTGAGGG","CCTGAGGG","GCTGAGGG","TCTGAGGG",
+ "AGTGAGGG","CGTGAGGG","GGTGAGGG","TGTGAGGG","ATTGAGGG","CTTGAGGG","GTTGAGGG","TTTGAGGG",
+ "AAATAGGG","CAATAGGG","GAATAGGG","TAATAGGG","ACATAGGG","CCATAGGG","GCATAGGG","TCATAGGG",
+ "AGATAGGG","CGATAGGG","GGATAGGG","TGATAGGG","ATATAGGG","CTATAGGG","GTATAGGG","TTATAGGG",
+ "AACTAGGG","CACTAGGG","GACTAGGG","TACTAGGG","ACCTAGGG","CCCTAGGG","GCCTAGGG","TCCTAGGG",
+ "AGCTAGGG","CGCTAGGG","GGCTAGGG","TGCTAGGG","ATCTAGGG","CTCTAGGG","GTCTAGGG","TTCTAGGG",
+ "AAGTAGGG","CAGTAGGG","GAGTAGGG","TAGTAGGG","ACGTAGGG","CCGTAGGG","GCGTAGGG","TCGTAGGG",
+ "AGGTAGGG","CGGTAGGG","GGGTAGGG","TGGTAGGG","ATGTAGGG","CTGTAGGG","GTGTAGGG","TTGTAGGG",
+ "AATTAGGG","CATTAGGG","GATTAGGG","TATTAGGG","ACTTAGGG","CCTTAGGG","GCTTAGGG","TCTTAGGG",
+ "AGTTAGGG","CGTTAGGG","GGTTAGGG","TGTTAGGG","ATTTAGGG","CTTTAGGG","GTTTAGGG","TTTTAGGG",
+ "AAAACGGG","CAAACGGG","GAAACGGG","TAAACGGG","ACAACGGG","CCAACGGG","GCAACGGG","TCAACGGG",
+ "AGAACGGG","CGAACGGG","GGAACGGG","TGAACGGG","ATAACGGG","CTAACGGG","GTAACGGG","TTAACGGG",
+ "AACACGGG","CACACGGG","GACACGGG","TACACGGG","ACCACGGG","CCCACGGG","GCCACGGG","TCCACGGG",
+ "AGCACGGG","CGCACGGG","GGCACGGG","TGCACGGG","ATCACGGG","CTCACGGG","GTCACGGG","TTCACGGG",
+ "AAGACGGG","CAGACGGG","GAGACGGG","TAGACGGG","ACGACGGG","CCGACGGG","GCGACGGG","TCGACGGG",
+ "AGGACGGG","CGGACGGG","GGGACGGG","TGGACGGG","ATGACGGG","CTGACGGG","GTGACGGG","TTGACGGG",
+ "AATACGGG","CATACGGG","GATACGGG","TATACGGG","ACTACGGG","CCTACGGG","GCTACGGG","TCTACGGG",
+ "AGTACGGG","CGTACGGG","GGTACGGG","TGTACGGG","ATTACGGG","CTTACGGG","GTTACGGG","TTTACGGG",
+ "AAACCGGG","CAACCGGG","GAACCGGG","TAACCGGG","ACACCGGG","CCACCGGG","GCACCGGG","TCACCGGG",
+ "AGACCGGG","CGACCGGG","GGACCGGG","TGACCGGG","ATACCGGG","CTACCGGG","GTACCGGG","TTACCGGG",
+ "AACCCGGG","CACCCGGG","GACCCGGG","TACCCGGG","ACCCCGGG","CCCCCGGG","GCCCCGGG","TCCCCGGG",
+ "AGCCCGGG","CGCCCGGG","GGCCCGGG","TGCCCGGG","ATCCCGGG","CTCCCGGG","GTCCCGGG","TTCCCGGG",
+ "AAGCCGGG","CAGCCGGG","GAGCCGGG","TAGCCGGG","ACGCCGGG","CCGCCGGG","GCGCCGGG","TCGCCGGG",
+ "AGGCCGGG","CGGCCGGG","GGGCCGGG","TGGCCGGG","ATGCCGGG","CTGCCGGG","GTGCCGGG","TTGCCGGG",
+ "AATCCGGG","CATCCGGG","GATCCGGG","TATCCGGG","ACTCCGGG","CCTCCGGG","GCTCCGGG","TCTCCGGG",
+ "AGTCCGGG","CGTCCGGG","GGTCCGGG","TGTCCGGG","ATTCCGGG","CTTCCGGG","GTTCCGGG","TTTCCGGG",
+ "AAAGCGGG","CAAGCGGG","GAAGCGGG","TAAGCGGG","ACAGCGGG","CCAGCGGG","GCAGCGGG","TCAGCGGG",
+ "AGAGCGGG","CGAGCGGG","GGAGCGGG","TGAGCGGG","ATAGCGGG","CTAGCGGG","GTAGCGGG","TTAGCGGG",
+ "AACGCGGG","CACGCGGG","GACGCGGG","TACGCGGG","ACCGCGGG","CCCGCGGG","GCCGCGGG","TCCGCGGG",
+ "AGCGCGGG","CGCGCGGG","GGCGCGGG","TGCGCGGG","ATCGCGGG","CTCGCGGG","GTCGCGGG","TTCGCGGG",
+ "AAGGCGGG","CAGGCGGG","GAGGCGGG","TAGGCGGG","ACGGCGGG","CCGGCGGG","GCGGCGGG","TCGGCGGG",
+ "AGGGCGGG","CGGGCGGG","GGGGCGGG","TGGGCGGG","ATGGCGGG","CTGGCGGG","GTGGCGGG","TTGGCGGG",
+ "AATGCGGG","CATGCGGG","GATGCGGG","TATGCGGG","ACTGCGGG","CCTGCGGG","GCTGCGGG","TCTGCGGG",
+ "AGTGCGGG","CGTGCGGG","GGTGCGGG","TGTGCGGG","ATTGCGGG","CTTGCGGG","GTTGCGGG","TTTGCGGG",
+ "AAATCGGG","CAATCGGG","GAATCGGG","TAATCGGG","ACATCGGG","CCATCGGG","GCATCGGG","TCATCGGG",
+ "AGATCGGG","CGATCGGG","GGATCGGG","TGATCGGG","ATATCGGG","CTATCGGG","GTATCGGG","TTATCGGG",
+ "AACTCGGG","CACTCGGG","GACTCGGG","TACTCGGG","ACCTCGGG","CCCTCGGG","GCCTCGGG","TCCTCGGG",
+ "AGCTCGGG","CGCTCGGG","GGCTCGGG","TGCTCGGG","ATCTCGGG","CTCTCGGG","GTCTCGGG","TTCTCGGG",
+ "AAGTCGGG","CAGTCGGG","GAGTCGGG","TAGTCGGG","ACGTCGGG","CCGTCGGG","GCGTCGGG","TCGTCGGG",
+ "AGGTCGGG","CGGTCGGG","GGGTCGGG","TGGTCGGG","ATGTCGGG","CTGTCGGG","GTGTCGGG","TTGTCGGG",
+ "AATTCGGG","CATTCGGG","GATTCGGG","TATTCGGG","ACTTCGGG","CCTTCGGG","GCTTCGGG","TCTTCGGG",
+ "AGTTCGGG","CGTTCGGG","GGTTCGGG","TGTTCGGG","ATTTCGGG","CTTTCGGG","GTTTCGGG","TTTTCGGG",
+ "AAAAGGGG","CAAAGGGG","GAAAGGGG","TAAAGGGG","ACAAGGGG","CCAAGGGG","GCAAGGGG","TCAAGGGG",
+ "AGAAGGGG","CGAAGGGG","GGAAGGGG","TGAAGGGG","ATAAGGGG","CTAAGGGG","GTAAGGGG","TTAAGGGG",
+ "AACAGGGG","CACAGGGG","GACAGGGG","TACAGGGG","ACCAGGGG","CCCAGGGG","GCCAGGGG","TCCAGGGG",
+ "AGCAGGGG","CGCAGGGG","GGCAGGGG","TGCAGGGG","ATCAGGGG","CTCAGGGG","GTCAGGGG","TTCAGGGG",
+ "AAGAGGGG","CAGAGGGG","GAGAGGGG","TAGAGGGG","ACGAGGGG","CCGAGGGG","GCGAGGGG","TCGAGGGG",
+ "AGGAGGGG","CGGAGGGG","GGGAGGGG","TGGAGGGG","ATGAGGGG","CTGAGGGG","GTGAGGGG","TTGAGGGG",
+ "AATAGGGG","CATAGGGG","GATAGGGG","TATAGGGG","ACTAGGGG","CCTAGGGG","GCTAGGGG","TCTAGGGG",
+ "AGTAGGGG","CGTAGGGG","GGTAGGGG","TGTAGGGG","ATTAGGGG","CTTAGGGG","GTTAGGGG","TTTAGGGG",
+ "AAACGGGG","CAACGGGG","GAACGGGG","TAACGGGG","ACACGGGG","CCACGGGG","GCACGGGG","TCACGGGG",
+ "AGACGGGG","CGACGGGG","GGACGGGG","TGACGGGG","ATACGGGG","CTACGGGG","GTACGGGG","TTACGGGG",
+ "AACCGGGG","CACCGGGG","GACCGGGG","TACCGGGG","ACCCGGGG","CCCCGGGG","GCCCGGGG","TCCCGGGG",
+ "AGCCGGGG","CGCCGGGG","GGCCGGGG","TGCCGGGG","ATCCGGGG","CTCCGGGG","GTCCGGGG","TTCCGGGG",
+ "AAGCGGGG","CAGCGGGG","GAGCGGGG","TAGCGGGG","ACGCGGGG","CCGCGGGG","GCGCGGGG","TCGCGGGG",
+ "AGGCGGGG","CGGCGGGG","GGGCGGGG","TGGCGGGG","ATGCGGGG","CTGCGGGG","GTGCGGGG","TTGCGGGG",
+ "AATCGGGG","CATCGGGG","GATCGGGG","TATCGGGG","ACTCGGGG","CCTCGGGG","GCTCGGGG","TCTCGGGG",
+ "AGTCGGGG","CGTCGGGG","GGTCGGGG","TGTCGGGG","ATTCGGGG","CTTCGGGG","GTTCGGGG","TTTCGGGG",
+ "AAAGGGGG","CAAGGGGG","GAAGGGGG","TAAGGGGG","ACAGGGGG","CCAGGGGG","GCAGGGGG","TCAGGGGG",
+ "AGAGGGGG","CGAGGGGG","GGAGGGGG","TGAGGGGG","ATAGGGGG","CTAGGGGG","GTAGGGGG","TTAGGGGG",
+ "AACGGGGG","CACGGGGG","GACGGGGG","TACGGGGG","ACCGGGGG","CCCGGGGG","GCCGGGGG","TCCGGGGG",
+ "AGCGGGGG","CGCGGGGG","GGCGGGGG","TGCGGGGG","ATCGGGGG","CTCGGGGG","GTCGGGGG","TTCGGGGG",
+ "AAGGGGGG","CAGGGGGG","GAGGGGGG","TAGGGGGG","ACGGGGGG","CCGGGGGG","GCGGGGGG","TCGGGGGG",
+ "AGGGGGGG","CGGGGGGG","GGGGGGGG","TGGGGGGG","ATGGGGGG","CTGGGGGG","GTGGGGGG","TTGGGGGG",
+ "AATGGGGG","CATGGGGG","GATGGGGG","TATGGGGG","ACTGGGGG","CCTGGGGG","GCTGGGGG","TCTGGGGG",
+ "AGTGGGGG","CGTGGGGG","GGTGGGGG","TGTGGGGG","ATTGGGGG","CTTGGGGG","GTTGGGGG","TTTGGGGG",
+ "AAATGGGG","CAATGGGG","GAATGGGG","TAATGGGG","ACATGGGG","CCATGGGG","GCATGGGG","TCATGGGG",
+ "AGATGGGG","CGATGGGG","GGATGGGG","TGATGGGG","ATATGGGG","CTATGGGG","GTATGGGG","TTATGGGG",
+ "AACTGGGG","CACTGGGG","GACTGGGG","TACTGGGG","ACCTGGGG","CCCTGGGG","GCCTGGGG","TCCTGGGG",
+ "AGCTGGGG","CGCTGGGG","GGCTGGGG","TGCTGGGG","ATCTGGGG","CTCTGGGG","GTCTGGGG","TTCTGGGG",
+ "AAGTGGGG","CAGTGGGG","GAGTGGGG","TAGTGGGG","ACGTGGGG","CCGTGGGG","GCGTGGGG","TCGTGGGG",
+ "AGGTGGGG","CGGTGGGG","GGGTGGGG","TGGTGGGG","ATGTGGGG","CTGTGGGG","GTGTGGGG","TTGTGGGG",
+ "AATTGGGG","CATTGGGG","GATTGGGG","TATTGGGG","ACTTGGGG","CCTTGGGG","GCTTGGGG","TCTTGGGG",
+ "AGTTGGGG","CGTTGGGG","GGTTGGGG","TGTTGGGG","ATTTGGGG","CTTTGGGG","GTTTGGGG","TTTTGGGG",
+ "AAAATGGG","CAAATGGG","GAAATGGG","TAAATGGG","ACAATGGG","CCAATGGG","GCAATGGG","TCAATGGG",
+ "AGAATGGG","CGAATGGG","GGAATGGG","TGAATGGG","ATAATGGG","CTAATGGG","GTAATGGG","TTAATGGG",
+ "AACATGGG","CACATGGG","GACATGGG","TACATGGG","ACCATGGG","CCCATGGG","GCCATGGG","TCCATGGG",
+ "AGCATGGG","CGCATGGG","GGCATGGG","TGCATGGG","ATCATGGG","CTCATGGG","GTCATGGG","TTCATGGG",
+ "AAGATGGG","CAGATGGG","GAGATGGG","TAGATGGG","ACGATGGG","CCGATGGG","GCGATGGG","TCGATGGG",
+ "AGGATGGG","CGGATGGG","GGGATGGG","TGGATGGG","ATGATGGG","CTGATGGG","GTGATGGG","TTGATGGG",
+ "AATATGGG","CATATGGG","GATATGGG","TATATGGG","ACTATGGG","CCTATGGG","GCTATGGG","TCTATGGG",
+ "AGTATGGG","CGTATGGG","GGTATGGG","TGTATGGG","ATTATGGG","CTTATGGG","GTTATGGG","TTTATGGG",
+ "AAACTGGG","CAACTGGG","GAACTGGG","TAACTGGG","ACACTGGG","CCACTGGG","GCACTGGG","TCACTGGG",
+ "AGACTGGG","CGACTGGG","GGACTGGG","TGACTGGG","ATACTGGG","CTACTGGG","GTACTGGG","TTACTGGG",
+ "AACCTGGG","CACCTGGG","GACCTGGG","TACCTGGG","ACCCTGGG","CCCCTGGG","GCCCTGGG","TCCCTGGG",
+ "AGCCTGGG","CGCCTGGG","GGCCTGGG","TGCCTGGG","ATCCTGGG","CTCCTGGG","GTCCTGGG","TTCCTGGG",
+ "AAGCTGGG","CAGCTGGG","GAGCTGGG","TAGCTGGG","ACGCTGGG","CCGCTGGG","GCGCTGGG","TCGCTGGG",
+ "AGGCTGGG","CGGCTGGG","GGGCTGGG","TGGCTGGG","ATGCTGGG","CTGCTGGG","GTGCTGGG","TTGCTGGG",
+ "AATCTGGG","CATCTGGG","GATCTGGG","TATCTGGG","ACTCTGGG","CCTCTGGG","GCTCTGGG","TCTCTGGG",
+ "AGTCTGGG","CGTCTGGG","GGTCTGGG","TGTCTGGG","ATTCTGGG","CTTCTGGG","GTTCTGGG","TTTCTGGG",
+ "AAAGTGGG","CAAGTGGG","GAAGTGGG","TAAGTGGG","ACAGTGGG","CCAGTGGG","GCAGTGGG","TCAGTGGG",
+ "AGAGTGGG","CGAGTGGG","GGAGTGGG","TGAGTGGG","ATAGTGGG","CTAGTGGG","GTAGTGGG","TTAGTGGG",
+ "AACGTGGG","CACGTGGG","GACGTGGG","TACGTGGG","ACCGTGGG","CCCGTGGG","GCCGTGGG","TCCGTGGG",
+ "AGCGTGGG","CGCGTGGG","GGCGTGGG","TGCGTGGG","ATCGTGGG","CTCGTGGG","GTCGTGGG","TTCGTGGG",
+ "AAGGTGGG","CAGGTGGG","GAGGTGGG","TAGGTGGG","ACGGTGGG","CCGGTGGG","GCGGTGGG","TCGGTGGG",
+ "AGGGTGGG","CGGGTGGG","GGGGTGGG","TGGGTGGG","ATGGTGGG","CTGGTGGG","GTGGTGGG","TTGGTGGG",
+ "AATGTGGG","CATGTGGG","GATGTGGG","TATGTGGG","ACTGTGGG","CCTGTGGG","GCTGTGGG","TCTGTGGG",
+ "AGTGTGGG","CGTGTGGG","GGTGTGGG","TGTGTGGG","ATTGTGGG","CTTGTGGG","GTTGTGGG","TTTGTGGG",
+ "AAATTGGG","CAATTGGG","GAATTGGG","TAATTGGG","ACATTGGG","CCATTGGG","GCATTGGG","TCATTGGG",
+ "AGATTGGG","CGATTGGG","GGATTGGG","TGATTGGG","ATATTGGG","CTATTGGG","GTATTGGG","TTATTGGG",
+ "AACTTGGG","CACTTGGG","GACTTGGG","TACTTGGG","ACCTTGGG","CCCTTGGG","GCCTTGGG","TCCTTGGG",
+ "AGCTTGGG","CGCTTGGG","GGCTTGGG","TGCTTGGG","ATCTTGGG","CTCTTGGG","GTCTTGGG","TTCTTGGG",
+ "AAGTTGGG","CAGTTGGG","GAGTTGGG","TAGTTGGG","ACGTTGGG","CCGTTGGG","GCGTTGGG","TCGTTGGG",
+ "AGGTTGGG","CGGTTGGG","GGGTTGGG","TGGTTGGG","ATGTTGGG","CTGTTGGG","GTGTTGGG","TTGTTGGG",
+ "AATTTGGG","CATTTGGG","GATTTGGG","TATTTGGG","ACTTTGGG","CCTTTGGG","GCTTTGGG","TCTTTGGG",
+ "AGTTTGGG","CGTTTGGG","GGTTTGGG","TGTTTGGG","ATTTTGGG","CTTTTGGG","GTTTTGGG","TTTTTGGG",
+ "AAAAATGG","CAAAATGG","GAAAATGG","TAAAATGG","ACAAATGG","CCAAATGG","GCAAATGG","TCAAATGG",
+ "AGAAATGG","CGAAATGG","GGAAATGG","TGAAATGG","ATAAATGG","CTAAATGG","GTAAATGG","TTAAATGG",
+ "AACAATGG","CACAATGG","GACAATGG","TACAATGG","ACCAATGG","CCCAATGG","GCCAATGG","TCCAATGG",
+ "AGCAATGG","CGCAATGG","GGCAATGG","TGCAATGG","ATCAATGG","CTCAATGG","GTCAATGG","TTCAATGG",
+ "AAGAATGG","CAGAATGG","GAGAATGG","TAGAATGG","ACGAATGG","CCGAATGG","GCGAATGG","TCGAATGG",
+ "AGGAATGG","CGGAATGG","GGGAATGG","TGGAATGG","ATGAATGG","CTGAATGG","GTGAATGG","TTGAATGG",
+ "AATAATGG","CATAATGG","GATAATGG","TATAATGG","ACTAATGG","CCTAATGG","GCTAATGG","TCTAATGG",
+ "AGTAATGG","CGTAATGG","GGTAATGG","TGTAATGG","ATTAATGG","CTTAATGG","GTTAATGG","TTTAATGG",
+ "AAACATGG","CAACATGG","GAACATGG","TAACATGG","ACACATGG","CCACATGG","GCACATGG","TCACATGG",
+ "AGACATGG","CGACATGG","GGACATGG","TGACATGG","ATACATGG","CTACATGG","GTACATGG","TTACATGG",
+ "AACCATGG","CACCATGG","GACCATGG","TACCATGG","ACCCATGG","CCCCATGG","GCCCATGG","TCCCATGG",
+ "AGCCATGG","CGCCATGG","GGCCATGG","TGCCATGG","ATCCATGG","CTCCATGG","GTCCATGG","TTCCATGG",
+ "AAGCATGG","CAGCATGG","GAGCATGG","TAGCATGG","ACGCATGG","CCGCATGG","GCGCATGG","TCGCATGG",
+ "AGGCATGG","CGGCATGG","GGGCATGG","TGGCATGG","ATGCATGG","CTGCATGG","GTGCATGG","TTGCATGG",
+ "AATCATGG","CATCATGG","GATCATGG","TATCATGG","ACTCATGG","CCTCATGG","GCTCATGG","TCTCATGG",
+ "AGTCATGG","CGTCATGG","GGTCATGG","TGTCATGG","ATTCATGG","CTTCATGG","GTTCATGG","TTTCATGG",
+ "AAAGATGG","CAAGATGG","GAAGATGG","TAAGATGG","ACAGATGG","CCAGATGG","GCAGATGG","TCAGATGG",
+ "AGAGATGG","CGAGATGG","GGAGATGG","TGAGATGG","ATAGATGG","CTAGATGG","GTAGATGG","TTAGATGG",
+ "AACGATGG","CACGATGG","GACGATGG","TACGATGG","ACCGATGG","CCCGATGG","GCCGATGG","TCCGATGG",
+ "AGCGATGG","CGCGATGG","GGCGATGG","TGCGATGG","ATCGATGG","CTCGATGG","GTCGATGG","TTCGATGG",
+ "AAGGATGG","CAGGATGG","GAGGATGG","TAGGATGG","ACGGATGG","CCGGATGG","GCGGATGG","TCGGATGG",
+ "AGGGATGG","CGGGATGG","GGGGATGG","TGGGATGG","ATGGATGG","CTGGATGG","GTGGATGG","TTGGATGG",
+ "AATGATGG","CATGATGG","GATGATGG","TATGATGG","ACTGATGG","CCTGATGG","GCTGATGG","TCTGATGG",
+ "AGTGATGG","CGTGATGG","GGTGATGG","TGTGATGG","ATTGATGG","CTTGATGG","GTTGATGG","TTTGATGG",
+ "AAATATGG","CAATATGG","GAATATGG","TAATATGG","ACATATGG","CCATATGG","GCATATGG","TCATATGG",
+ "AGATATGG","CGATATGG","GGATATGG","TGATATGG","ATATATGG","CTATATGG","GTATATGG","TTATATGG",
+ "AACTATGG","CACTATGG","GACTATGG","TACTATGG","ACCTATGG","CCCTATGG","GCCTATGG","TCCTATGG",
+ "AGCTATGG","CGCTATGG","GGCTATGG","TGCTATGG","ATCTATGG","CTCTATGG","GTCTATGG","TTCTATGG",
+ "AAGTATGG","CAGTATGG","GAGTATGG","TAGTATGG","ACGTATGG","CCGTATGG","GCGTATGG","TCGTATGG",
+ "AGGTATGG","CGGTATGG","GGGTATGG","TGGTATGG","ATGTATGG","CTGTATGG","GTGTATGG","TTGTATGG",
+ "AATTATGG","CATTATGG","GATTATGG","TATTATGG","ACTTATGG","CCTTATGG","GCTTATGG","TCTTATGG",
+ "AGTTATGG","CGTTATGG","GGTTATGG","TGTTATGG","ATTTATGG","CTTTATGG","GTTTATGG","TTTTATGG",
+ "AAAACTGG","CAAACTGG","GAAACTGG","TAAACTGG","ACAACTGG","CCAACTGG","GCAACTGG","TCAACTGG",
+ "AGAACTGG","CGAACTGG","GGAACTGG","TGAACTGG","ATAACTGG","CTAACTGG","GTAACTGG","TTAACTGG",
+ "AACACTGG","CACACTGG","GACACTGG","TACACTGG","ACCACTGG","CCCACTGG","GCCACTGG","TCCACTGG",
+ "AGCACTGG","CGCACTGG","GGCACTGG","TGCACTGG","ATCACTGG","CTCACTGG","GTCACTGG","TTCACTGG",
+ "AAGACTGG","CAGACTGG","GAGACTGG","TAGACTGG","ACGACTGG","CCGACTGG","GCGACTGG","TCGACTGG",
+ "AGGACTGG","CGGACTGG","GGGACTGG","TGGACTGG","ATGACTGG","CTGACTGG","GTGACTGG","TTGACTGG",
+ "AATACTGG","CATACTGG","GATACTGG","TATACTGG","ACTACTGG","CCTACTGG","GCTACTGG","TCTACTGG",
+ "AGTACTGG","CGTACTGG","GGTACTGG","TGTACTGG","ATTACTGG","CTTACTGG","GTTACTGG","TTTACTGG",
+ "AAACCTGG","CAACCTGG","GAACCTGG","TAACCTGG","ACACCTGG","CCACCTGG","GCACCTGG","TCACCTGG",
+ "AGACCTGG","CGACCTGG","GGACCTGG","TGACCTGG","ATACCTGG","CTACCTGG","GTACCTGG","TTACCTGG",
+ "AACCCTGG","CACCCTGG","GACCCTGG","TACCCTGG","ACCCCTGG","CCCCCTGG","GCCCCTGG","TCCCCTGG",
+ "AGCCCTGG","CGCCCTGG","GGCCCTGG","TGCCCTGG","ATCCCTGG","CTCCCTGG","GTCCCTGG","TTCCCTGG",
+ "AAGCCTGG","CAGCCTGG","GAGCCTGG","TAGCCTGG","ACGCCTGG","CCGCCTGG","GCGCCTGG","TCGCCTGG",
+ "AGGCCTGG","CGGCCTGG","GGGCCTGG","TGGCCTGG","ATGCCTGG","CTGCCTGG","GTGCCTGG","TTGCCTGG",
+ "AATCCTGG","CATCCTGG","GATCCTGG","TATCCTGG","ACTCCTGG","CCTCCTGG","GCTCCTGG","TCTCCTGG",
+ "AGTCCTGG","CGTCCTGG","GGTCCTGG","TGTCCTGG","ATTCCTGG","CTTCCTGG","GTTCCTGG","TTTCCTGG",
+ "AAAGCTGG","CAAGCTGG","GAAGCTGG","TAAGCTGG","ACAGCTGG","CCAGCTGG","GCAGCTGG","TCAGCTGG",
+ "AGAGCTGG","CGAGCTGG","GGAGCTGG","TGAGCTGG","ATAGCTGG","CTAGCTGG","GTAGCTGG","TTAGCTGG",
+ "AACGCTGG","CACGCTGG","GACGCTGG","TACGCTGG","ACCGCTGG","CCCGCTGG","GCCGCTGG","TCCGCTGG",
+ "AGCGCTGG","CGCGCTGG","GGCGCTGG","TGCGCTGG","ATCGCTGG","CTCGCTGG","GTCGCTGG","TTCGCTGG",
+ "AAGGCTGG","CAGGCTGG","GAGGCTGG","TAGGCTGG","ACGGCTGG","CCGGCTGG","GCGGCTGG","TCGGCTGG",
+ "AGGGCTGG","CGGGCTGG","GGGGCTGG","TGGGCTGG","ATGGCTGG","CTGGCTGG","GTGGCTGG","TTGGCTGG",
+ "AATGCTGG","CATGCTGG","GATGCTGG","TATGCTGG","ACTGCTGG","CCTGCTGG","GCTGCTGG","TCTGCTGG",
+ "AGTGCTGG","CGTGCTGG","GGTGCTGG","TGTGCTGG","ATTGCTGG","CTTGCTGG","GTTGCTGG","TTTGCTGG",
+ "AAATCTGG","CAATCTGG","GAATCTGG","TAATCTGG","ACATCTGG","CCATCTGG","GCATCTGG","TCATCTGG",
+ "AGATCTGG","CGATCTGG","GGATCTGG","TGATCTGG","ATATCTGG","CTATCTGG","GTATCTGG","TTATCTGG",
+ "AACTCTGG","CACTCTGG","GACTCTGG","TACTCTGG","ACCTCTGG","CCCTCTGG","GCCTCTGG","TCCTCTGG",
+ "AGCTCTGG","CGCTCTGG","GGCTCTGG","TGCTCTGG","ATCTCTGG","CTCTCTGG","GTCTCTGG","TTCTCTGG",
+ "AAGTCTGG","CAGTCTGG","GAGTCTGG","TAGTCTGG","ACGTCTGG","CCGTCTGG","GCGTCTGG","TCGTCTGG",
+ "AGGTCTGG","CGGTCTGG","GGGTCTGG","TGGTCTGG","ATGTCTGG","CTGTCTGG","GTGTCTGG","TTGTCTGG",
+ "AATTCTGG","CATTCTGG","GATTCTGG","TATTCTGG","ACTTCTGG","CCTTCTGG","GCTTCTGG","TCTTCTGG",
+ "AGTTCTGG","CGTTCTGG","GGTTCTGG","TGTTCTGG","ATTTCTGG","CTTTCTGG","GTTTCTGG","TTTTCTGG",
+ "AAAAGTGG","CAAAGTGG","GAAAGTGG","TAAAGTGG","ACAAGTGG","CCAAGTGG","GCAAGTGG","TCAAGTGG",
+ "AGAAGTGG","CGAAGTGG","GGAAGTGG","TGAAGTGG","ATAAGTGG","CTAAGTGG","GTAAGTGG","TTAAGTGG",
+ "AACAGTGG","CACAGTGG","GACAGTGG","TACAGTGG","ACCAGTGG","CCCAGTGG","GCCAGTGG","TCCAGTGG",
+ "AGCAGTGG","CGCAGTGG","GGCAGTGG","TGCAGTGG","ATCAGTGG","CTCAGTGG","GTCAGTGG","TTCAGTGG",
+ "AAGAGTGG","CAGAGTGG","GAGAGTGG","TAGAGTGG","ACGAGTGG","CCGAGTGG","GCGAGTGG","TCGAGTGG",
+ "AGGAGTGG","CGGAGTGG","GGGAGTGG","TGGAGTGG","ATGAGTGG","CTGAGTGG","GTGAGTGG","TTGAGTGG",
+ "AATAGTGG","CATAGTGG","GATAGTGG","TATAGTGG","ACTAGTGG","CCTAGTGG","GCTAGTGG","TCTAGTGG",
+ "AGTAGTGG","CGTAGTGG","GGTAGTGG","TGTAGTGG","ATTAGTGG","CTTAGTGG","GTTAGTGG","TTTAGTGG",
+ "AAACGTGG","CAACGTGG","GAACGTGG","TAACGTGG","ACACGTGG","CCACGTGG","GCACGTGG","TCACGTGG",
+ "AGACGTGG","CGACGTGG","GGACGTGG","TGACGTGG","ATACGTGG","CTACGTGG","GTACGTGG","TTACGTGG",
+ "AACCGTGG","CACCGTGG","GACCGTGG","TACCGTGG","ACCCGTGG","CCCCGTGG","GCCCGTGG","TCCCGTGG",
+ "AGCCGTGG","CGCCGTGG","GGCCGTGG","TGCCGTGG","ATCCGTGG","CTCCGTGG","GTCCGTGG","TTCCGTGG",
+ "AAGCGTGG","CAGCGTGG","GAGCGTGG","TAGCGTGG","ACGCGTGG","CCGCGTGG","GCGCGTGG","TCGCGTGG",
+ "AGGCGTGG","CGGCGTGG","GGGCGTGG","TGGCGTGG","ATGCGTGG","CTGCGTGG","GTGCGTGG","TTGCGTGG",
+ "AATCGTGG","CATCGTGG","GATCGTGG","TATCGTGG","ACTCGTGG","CCTCGTGG","GCTCGTGG","TCTCGTGG",
+ "AGTCGTGG","CGTCGTGG","GGTCGTGG","TGTCGTGG","ATTCGTGG","CTTCGTGG","GTTCGTGG","TTTCGTGG",
+ "AAAGGTGG","CAAGGTGG","GAAGGTGG","TAAGGTGG","ACAGGTGG","CCAGGTGG","GCAGGTGG","TCAGGTGG",
+ "AGAGGTGG","CGAGGTGG","GGAGGTGG","TGAGGTGG","ATAGGTGG","CTAGGTGG","GTAGGTGG","TTAGGTGG",
+ "AACGGTGG","CACGGTGG","GACGGTGG","TACGGTGG","ACCGGTGG","CCCGGTGG","GCCGGTGG","TCCGGTGG",
+ "AGCGGTGG","CGCGGTGG","GGCGGTGG","TGCGGTGG","ATCGGTGG","CTCGGTGG","GTCGGTGG","TTCGGTGG",
+ "AAGGGTGG","CAGGGTGG","GAGGGTGG","TAGGGTGG","ACGGGTGG","CCGGGTGG","GCGGGTGG","TCGGGTGG",
+ "AGGGGTGG","CGGGGTGG","GGGGGTGG","TGGGGTGG","ATGGGTGG","CTGGGTGG","GTGGGTGG","TTGGGTGG",
+ "AATGGTGG","CATGGTGG","GATGGTGG","TATGGTGG","ACTGGTGG","CCTGGTGG","GCTGGTGG","TCTGGTGG",
+ "AGTGGTGG","CGTGGTGG","GGTGGTGG","TGTGGTGG","ATTGGTGG","CTTGGTGG","GTTGGTGG","TTTGGTGG",
+ "AAATGTGG","CAATGTGG","GAATGTGG","TAATGTGG","ACATGTGG","CCATGTGG","GCATGTGG","TCATGTGG",
+ "AGATGTGG","CGATGTGG","GGATGTGG","TGATGTGG","ATATGTGG","CTATGTGG","GTATGTGG","TTATGTGG",
+ "AACTGTGG","CACTGTGG","GACTGTGG","TACTGTGG","ACCTGTGG","CCCTGTGG","GCCTGTGG","TCCTGTGG",
+ "AGCTGTGG","CGCTGTGG","GGCTGTGG","TGCTGTGG","ATCTGTGG","CTCTGTGG","GTCTGTGG","TTCTGTGG",
+ "AAGTGTGG","CAGTGTGG","GAGTGTGG","TAGTGTGG","ACGTGTGG","CCGTGTGG","GCGTGTGG","TCGTGTGG",
+ "AGGTGTGG","CGGTGTGG","GGGTGTGG","TGGTGTGG","ATGTGTGG","CTGTGTGG","GTGTGTGG","TTGTGTGG",
+ "AATTGTGG","CATTGTGG","GATTGTGG","TATTGTGG","ACTTGTGG","CCTTGTGG","GCTTGTGG","TCTTGTGG",
+ "AGTTGTGG","CGTTGTGG","GGTTGTGG","TGTTGTGG","ATTTGTGG","CTTTGTGG","GTTTGTGG","TTTTGTGG",
+ "AAAATTGG","CAAATTGG","GAAATTGG","TAAATTGG","ACAATTGG","CCAATTGG","GCAATTGG","TCAATTGG",
+ "AGAATTGG","CGAATTGG","GGAATTGG","TGAATTGG","ATAATTGG","CTAATTGG","GTAATTGG","TTAATTGG",
+ "AACATTGG","CACATTGG","GACATTGG","TACATTGG","ACCATTGG","CCCATTGG","GCCATTGG","TCCATTGG",
+ "AGCATTGG","CGCATTGG","GGCATTGG","TGCATTGG","ATCATTGG","CTCATTGG","GTCATTGG","TTCATTGG",
+ "AAGATTGG","CAGATTGG","GAGATTGG","TAGATTGG","ACGATTGG","CCGATTGG","GCGATTGG","TCGATTGG",
+ "AGGATTGG","CGGATTGG","GGGATTGG","TGGATTGG","ATGATTGG","CTGATTGG","GTGATTGG","TTGATTGG",
+ "AATATTGG","CATATTGG","GATATTGG","TATATTGG","ACTATTGG","CCTATTGG","GCTATTGG","TCTATTGG",
+ "AGTATTGG","CGTATTGG","GGTATTGG","TGTATTGG","ATTATTGG","CTTATTGG","GTTATTGG","TTTATTGG",
+ "AAACTTGG","CAACTTGG","GAACTTGG","TAACTTGG","ACACTTGG","CCACTTGG","GCACTTGG","TCACTTGG",
+ "AGACTTGG","CGACTTGG","GGACTTGG","TGACTTGG","ATACTTGG","CTACTTGG","GTACTTGG","TTACTTGG",
+ "AACCTTGG","CACCTTGG","GACCTTGG","TACCTTGG","ACCCTTGG","CCCCTTGG","GCCCTTGG","TCCCTTGG",
+ "AGCCTTGG","CGCCTTGG","GGCCTTGG","TGCCTTGG","ATCCTTGG","CTCCTTGG","GTCCTTGG","TTCCTTGG",
+ "AAGCTTGG","CAGCTTGG","GAGCTTGG","TAGCTTGG","ACGCTTGG","CCGCTTGG","GCGCTTGG","TCGCTTGG",
+ "AGGCTTGG","CGGCTTGG","GGGCTTGG","TGGCTTGG","ATGCTTGG","CTGCTTGG","GTGCTTGG","TTGCTTGG",
+ "AATCTTGG","CATCTTGG","GATCTTGG","TATCTTGG","ACTCTTGG","CCTCTTGG","GCTCTTGG","TCTCTTGG",
+ "AGTCTTGG","CGTCTTGG","GGTCTTGG","TGTCTTGG","ATTCTTGG","CTTCTTGG","GTTCTTGG","TTTCTTGG",
+ "AAAGTTGG","CAAGTTGG","GAAGTTGG","TAAGTTGG","ACAGTTGG","CCAGTTGG","GCAGTTGG","TCAGTTGG",
+ "AGAGTTGG","CGAGTTGG","GGAGTTGG","TGAGTTGG","ATAGTTGG","CTAGTTGG","GTAGTTGG","TTAGTTGG",
+ "AACGTTGG","CACGTTGG","GACGTTGG","TACGTTGG","ACCGTTGG","CCCGTTGG","GCCGTTGG","TCCGTTGG",
+ "AGCGTTGG","CGCGTTGG","GGCGTTGG","TGCGTTGG","ATCGTTGG","CTCGTTGG","GTCGTTGG","TTCGTTGG",
+ "AAGGTTGG","CAGGTTGG","GAGGTTGG","TAGGTTGG","ACGGTTGG","CCGGTTGG","GCGGTTGG","TCGGTTGG",
+ "AGGGTTGG","CGGGTTGG","GGGGTTGG","TGGGTTGG","ATGGTTGG","CTGGTTGG","GTGGTTGG","TTGGTTGG",
+ "AATGTTGG","CATGTTGG","GATGTTGG","TATGTTGG","ACTGTTGG","CCTGTTGG","GCTGTTGG","TCTGTTGG",
+ "AGTGTTGG","CGTGTTGG","GGTGTTGG","TGTGTTGG","ATTGTTGG","CTTGTTGG","GTTGTTGG","TTTGTTGG",
+ "AAATTTGG","CAATTTGG","GAATTTGG","TAATTTGG","ACATTTGG","CCATTTGG","GCATTTGG","TCATTTGG",
+ "AGATTTGG","CGATTTGG","GGATTTGG","TGATTTGG","ATATTTGG","CTATTTGG","GTATTTGG","TTATTTGG",
+ "AACTTTGG","CACTTTGG","GACTTTGG","TACTTTGG","ACCTTTGG","CCCTTTGG","GCCTTTGG","TCCTTTGG",
+ "AGCTTTGG","CGCTTTGG","GGCTTTGG","TGCTTTGG","ATCTTTGG","CTCTTTGG","GTCTTTGG","TTCTTTGG",
+ "AAGTTTGG","CAGTTTGG","GAGTTTGG","TAGTTTGG","ACGTTTGG","CCGTTTGG","GCGTTTGG","TCGTTTGG",
+ "AGGTTTGG","CGGTTTGG","GGGTTTGG","TGGTTTGG","ATGTTTGG","CTGTTTGG","GTGTTTGG","TTGTTTGG",
+ "AATTTTGG","CATTTTGG","GATTTTGG","TATTTTGG","ACTTTTGG","CCTTTTGG","GCTTTTGG","TCTTTTGG",
+ "AGTTTTGG","CGTTTTGG","GGTTTTGG","TGTTTTGG","ATTTTTGG","CTTTTTGG","GTTTTTGG","TTTTTTGG",
+ "AAAAAATG","CAAAAATG","GAAAAATG","TAAAAATG","ACAAAATG","CCAAAATG","GCAAAATG","TCAAAATG",
+ "AGAAAATG","CGAAAATG","GGAAAATG","TGAAAATG","ATAAAATG","CTAAAATG","GTAAAATG","TTAAAATG",
+ "AACAAATG","CACAAATG","GACAAATG","TACAAATG","ACCAAATG","CCCAAATG","GCCAAATG","TCCAAATG",
+ "AGCAAATG","CGCAAATG","GGCAAATG","TGCAAATG","ATCAAATG","CTCAAATG","GTCAAATG","TTCAAATG",
+ "AAGAAATG","CAGAAATG","GAGAAATG","TAGAAATG","ACGAAATG","CCGAAATG","GCGAAATG","TCGAAATG",
+ "AGGAAATG","CGGAAATG","GGGAAATG","TGGAAATG","ATGAAATG","CTGAAATG","GTGAAATG","TTGAAATG",
+ "AATAAATG","CATAAATG","GATAAATG","TATAAATG","ACTAAATG","CCTAAATG","GCTAAATG","TCTAAATG",
+ "AGTAAATG","CGTAAATG","GGTAAATG","TGTAAATG","ATTAAATG","CTTAAATG","GTTAAATG","TTTAAATG",
+ "AAACAATG","CAACAATG","GAACAATG","TAACAATG","ACACAATG","CCACAATG","GCACAATG","TCACAATG",
+ "AGACAATG","CGACAATG","GGACAATG","TGACAATG","ATACAATG","CTACAATG","GTACAATG","TTACAATG",
+ "AACCAATG","CACCAATG","GACCAATG","TACCAATG","ACCCAATG","CCCCAATG","GCCCAATG","TCCCAATG",
+ "AGCCAATG","CGCCAATG","GGCCAATG","TGCCAATG","ATCCAATG","CTCCAATG","GTCCAATG","TTCCAATG",
+ "AAGCAATG","CAGCAATG","GAGCAATG","TAGCAATG","ACGCAATG","CCGCAATG","GCGCAATG","TCGCAATG",
+ "AGGCAATG","CGGCAATG","GGGCAATG","TGGCAATG","ATGCAATG","CTGCAATG","GTGCAATG","TTGCAATG",
+ "AATCAATG","CATCAATG","GATCAATG","TATCAATG","ACTCAATG","CCTCAATG","GCTCAATG","TCTCAATG",
+ "AGTCAATG","CGTCAATG","GGTCAATG","TGTCAATG","ATTCAATG","CTTCAATG","GTTCAATG","TTTCAATG",
+ "AAAGAATG","CAAGAATG","GAAGAATG","TAAGAATG","ACAGAATG","CCAGAATG","GCAGAATG","TCAGAATG",
+ "AGAGAATG","CGAGAATG","GGAGAATG","TGAGAATG","ATAGAATG","CTAGAATG","GTAGAATG","TTAGAATG",
+ "AACGAATG","CACGAATG","GACGAATG","TACGAATG","ACCGAATG","CCCGAATG","GCCGAATG","TCCGAATG",
+ "AGCGAATG","CGCGAATG","GGCGAATG","TGCGAATG","ATCGAATG","CTCGAATG","GTCGAATG","TTCGAATG",
+ "AAGGAATG","CAGGAATG","GAGGAATG","TAGGAATG","ACGGAATG","CCGGAATG","GCGGAATG","TCGGAATG",
+ "AGGGAATG","CGGGAATG","GGGGAATG","TGGGAATG","ATGGAATG","CTGGAATG","GTGGAATG","TTGGAATG",
+ "AATGAATG","CATGAATG","GATGAATG","TATGAATG","ACTGAATG","CCTGAATG","GCTGAATG","TCTGAATG",
+ "AGTGAATG","CGTGAATG","GGTGAATG","TGTGAATG","ATTGAATG","CTTGAATG","GTTGAATG","TTTGAATG",
+ "AAATAATG","CAATAATG","GAATAATG","TAATAATG","ACATAATG","CCATAATG","GCATAATG","TCATAATG",
+ "AGATAATG","CGATAATG","GGATAATG","TGATAATG","ATATAATG","CTATAATG","GTATAATG","TTATAATG",
+ "AACTAATG","CACTAATG","GACTAATG","TACTAATG","ACCTAATG","CCCTAATG","GCCTAATG","TCCTAATG",
+ "AGCTAATG","CGCTAATG","GGCTAATG","TGCTAATG","ATCTAATG","CTCTAATG","GTCTAATG","TTCTAATG",
+ "AAGTAATG","CAGTAATG","GAGTAATG","TAGTAATG","ACGTAATG","CCGTAATG","GCGTAATG","TCGTAATG",
+ "AGGTAATG","CGGTAATG","GGGTAATG","TGGTAATG","ATGTAATG","CTGTAATG","GTGTAATG","TTGTAATG",
+ "AATTAATG","CATTAATG","GATTAATG","TATTAATG","ACTTAATG","CCTTAATG","GCTTAATG","TCTTAATG",
+ "AGTTAATG","CGTTAATG","GGTTAATG","TGTTAATG","ATTTAATG","CTTTAATG","GTTTAATG","TTTTAATG",
+ "AAAACATG","CAAACATG","GAAACATG","TAAACATG","ACAACATG","CCAACATG","GCAACATG","TCAACATG",
+ "AGAACATG","CGAACATG","GGAACATG","TGAACATG","ATAACATG","CTAACATG","GTAACATG","TTAACATG",
+ "AACACATG","CACACATG","GACACATG","TACACATG","ACCACATG","CCCACATG","GCCACATG","TCCACATG",
+ "AGCACATG","CGCACATG","GGCACATG","TGCACATG","ATCACATG","CTCACATG","GTCACATG","TTCACATG",
+ "AAGACATG","CAGACATG","GAGACATG","TAGACATG","ACGACATG","CCGACATG","GCGACATG","TCGACATG",
+ "AGGACATG","CGGACATG","GGGACATG","TGGACATG","ATGACATG","CTGACATG","GTGACATG","TTGACATG",
+ "AATACATG","CATACATG","GATACATG","TATACATG","ACTACATG","CCTACATG","GCTACATG","TCTACATG",
+ "AGTACATG","CGTACATG","GGTACATG","TGTACATG","ATTACATG","CTTACATG","GTTACATG","TTTACATG",
+ "AAACCATG","CAACCATG","GAACCATG","TAACCATG","ACACCATG","CCACCATG","GCACCATG","TCACCATG",
+ "AGACCATG","CGACCATG","GGACCATG","TGACCATG","ATACCATG","CTACCATG","GTACCATG","TTACCATG",
+ "AACCCATG","CACCCATG","GACCCATG","TACCCATG","ACCCCATG","CCCCCATG","GCCCCATG","TCCCCATG",
+ "AGCCCATG","CGCCCATG","GGCCCATG","TGCCCATG","ATCCCATG","CTCCCATG","GTCCCATG","TTCCCATG",
+ "AAGCCATG","CAGCCATG","GAGCCATG","TAGCCATG","ACGCCATG","CCGCCATG","GCGCCATG","TCGCCATG",
+ "AGGCCATG","CGGCCATG","GGGCCATG","TGGCCATG","ATGCCATG","CTGCCATG","GTGCCATG","TTGCCATG",
+ "AATCCATG","CATCCATG","GATCCATG","TATCCATG","ACTCCATG","CCTCCATG","GCTCCATG","TCTCCATG",
+ "AGTCCATG","CGTCCATG","GGTCCATG","TGTCCATG","ATTCCATG","CTTCCATG","GTTCCATG","TTTCCATG",
+ "AAAGCATG","CAAGCATG","GAAGCATG","TAAGCATG","ACAGCATG","CCAGCATG","GCAGCATG","TCAGCATG",
+ "AGAGCATG","CGAGCATG","GGAGCATG","TGAGCATG","ATAGCATG","CTAGCATG","GTAGCATG","TTAGCATG",
+ "AACGCATG","CACGCATG","GACGCATG","TACGCATG","ACCGCATG","CCCGCATG","GCCGCATG","TCCGCATG",
+ "AGCGCATG","CGCGCATG","GGCGCATG","TGCGCATG","ATCGCATG","CTCGCATG","GTCGCATG","TTCGCATG",
+ "AAGGCATG","CAGGCATG","GAGGCATG","TAGGCATG","ACGGCATG","CCGGCATG","GCGGCATG","TCGGCATG",
+ "AGGGCATG","CGGGCATG","GGGGCATG","TGGGCATG","ATGGCATG","CTGGCATG","GTGGCATG","TTGGCATG",
+ "AATGCATG","CATGCATG","GATGCATG","TATGCATG","ACTGCATG","CCTGCATG","GCTGCATG","TCTGCATG",
+ "AGTGCATG","CGTGCATG","GGTGCATG","TGTGCATG","ATTGCATG","CTTGCATG","GTTGCATG","TTTGCATG",
+ "AAATCATG","CAATCATG","GAATCATG","TAATCATG","ACATCATG","CCATCATG","GCATCATG","TCATCATG",
+ "AGATCATG","CGATCATG","GGATCATG","TGATCATG","ATATCATG","CTATCATG","GTATCATG","TTATCATG",
+ "AACTCATG","CACTCATG","GACTCATG","TACTCATG","ACCTCATG","CCCTCATG","GCCTCATG","TCCTCATG",
+ "AGCTCATG","CGCTCATG","GGCTCATG","TGCTCATG","ATCTCATG","CTCTCATG","GTCTCATG","TTCTCATG",
+ "AAGTCATG","CAGTCATG","GAGTCATG","TAGTCATG","ACGTCATG","CCGTCATG","GCGTCATG","TCGTCATG",
+ "AGGTCATG","CGGTCATG","GGGTCATG","TGGTCATG","ATGTCATG","CTGTCATG","GTGTCATG","TTGTCATG",
+ "AATTCATG","CATTCATG","GATTCATG","TATTCATG","ACTTCATG","CCTTCATG","GCTTCATG","TCTTCATG",
+ "AGTTCATG","CGTTCATG","GGTTCATG","TGTTCATG","ATTTCATG","CTTTCATG","GTTTCATG","TTTTCATG",
+ "AAAAGATG","CAAAGATG","GAAAGATG","TAAAGATG","ACAAGATG","CCAAGATG","GCAAGATG","TCAAGATG",
+ "AGAAGATG","CGAAGATG","GGAAGATG","TGAAGATG","ATAAGATG","CTAAGATG","GTAAGATG","TTAAGATG",
+ "AACAGATG","CACAGATG","GACAGATG","TACAGATG","ACCAGATG","CCCAGATG","GCCAGATG","TCCAGATG",
+ "AGCAGATG","CGCAGATG","GGCAGATG","TGCAGATG","ATCAGATG","CTCAGATG","GTCAGATG","TTCAGATG",
+ "AAGAGATG","CAGAGATG","GAGAGATG","TAGAGATG","ACGAGATG","CCGAGATG","GCGAGATG","TCGAGATG",
+ "AGGAGATG","CGGAGATG","GGGAGATG","TGGAGATG","ATGAGATG","CTGAGATG","GTGAGATG","TTGAGATG",
+ "AATAGATG","CATAGATG","GATAGATG","TATAGATG","ACTAGATG","CCTAGATG","GCTAGATG","TCTAGATG",
+ "AGTAGATG","CGTAGATG","GGTAGATG","TGTAGATG","ATTAGATG","CTTAGATG","GTTAGATG","TTTAGATG",
+ "AAACGATG","CAACGATG","GAACGATG","TAACGATG","ACACGATG","CCACGATG","GCACGATG","TCACGATG",
+ "AGACGATG","CGACGATG","GGACGATG","TGACGATG","ATACGATG","CTACGATG","GTACGATG","TTACGATG",
+ "AACCGATG","CACCGATG","GACCGATG","TACCGATG","ACCCGATG","CCCCGATG","GCCCGATG","TCCCGATG",
+ "AGCCGATG","CGCCGATG","GGCCGATG","TGCCGATG","ATCCGATG","CTCCGATG","GTCCGATG","TTCCGATG",
+ "AAGCGATG","CAGCGATG","GAGCGATG","TAGCGATG","ACGCGATG","CCGCGATG","GCGCGATG","TCGCGATG",
+ "AGGCGATG","CGGCGATG","GGGCGATG","TGGCGATG","ATGCGATG","CTGCGATG","GTGCGATG","TTGCGATG",
+ "AATCGATG","CATCGATG","GATCGATG","TATCGATG","ACTCGATG","CCTCGATG","GCTCGATG","TCTCGATG",
+ "AGTCGATG","CGTCGATG","GGTCGATG","TGTCGATG","ATTCGATG","CTTCGATG","GTTCGATG","TTTCGATG",
+ "AAAGGATG","CAAGGATG","GAAGGATG","TAAGGATG","ACAGGATG","CCAGGATG","GCAGGATG","TCAGGATG",
+ "AGAGGATG","CGAGGATG","GGAGGATG","TGAGGATG","ATAGGATG","CTAGGATG","GTAGGATG","TTAGGATG",
+ "AACGGATG","CACGGATG","GACGGATG","TACGGATG","ACCGGATG","CCCGGATG","GCCGGATG","TCCGGATG",
+ "AGCGGATG","CGCGGATG","GGCGGATG","TGCGGATG","ATCGGATG","CTCGGATG","GTCGGATG","TTCGGATG",
+ "AAGGGATG","CAGGGATG","GAGGGATG","TAGGGATG","ACGGGATG","CCGGGATG","GCGGGATG","TCGGGATG",
+ "AGGGGATG","CGGGGATG","GGGGGATG","TGGGGATG","ATGGGATG","CTGGGATG","GTGGGATG","TTGGGATG",
+ "AATGGATG","CATGGATG","GATGGATG","TATGGATG","ACTGGATG","CCTGGATG","GCTGGATG","TCTGGATG",
+ "AGTGGATG","CGTGGATG","GGTGGATG","TGTGGATG","ATTGGATG","CTTGGATG","GTTGGATG","TTTGGATG",
+ "AAATGATG","CAATGATG","GAATGATG","TAATGATG","ACATGATG","CCATGATG","GCATGATG","TCATGATG",
+ "AGATGATG","CGATGATG","GGATGATG","TGATGATG","ATATGATG","CTATGATG","GTATGATG","TTATGATG",
+ "AACTGATG","CACTGATG","GACTGATG","TACTGATG","ACCTGATG","CCCTGATG","GCCTGATG","TCCTGATG",
+ "AGCTGATG","CGCTGATG","GGCTGATG","TGCTGATG","ATCTGATG","CTCTGATG","GTCTGATG","TTCTGATG",
+ "AAGTGATG","CAGTGATG","GAGTGATG","TAGTGATG","ACGTGATG","CCGTGATG","GCGTGATG","TCGTGATG",
+ "AGGTGATG","CGGTGATG","GGGTGATG","TGGTGATG","ATGTGATG","CTGTGATG","GTGTGATG","TTGTGATG",
+ "AATTGATG","CATTGATG","GATTGATG","TATTGATG","ACTTGATG","CCTTGATG","GCTTGATG","TCTTGATG",
+ "AGTTGATG","CGTTGATG","GGTTGATG","TGTTGATG","ATTTGATG","CTTTGATG","GTTTGATG","TTTTGATG",
+ "AAAATATG","CAAATATG","GAAATATG","TAAATATG","ACAATATG","CCAATATG","GCAATATG","TCAATATG",
+ "AGAATATG","CGAATATG","GGAATATG","TGAATATG","ATAATATG","CTAATATG","GTAATATG","TTAATATG",
+ "AACATATG","CACATATG","GACATATG","TACATATG","ACCATATG","CCCATATG","GCCATATG","TCCATATG",
+ "AGCATATG","CGCATATG","GGCATATG","TGCATATG","ATCATATG","CTCATATG","GTCATATG","TTCATATG",
+ "AAGATATG","CAGATATG","GAGATATG","TAGATATG","ACGATATG","CCGATATG","GCGATATG","TCGATATG",
+ "AGGATATG","CGGATATG","GGGATATG","TGGATATG","ATGATATG","CTGATATG","GTGATATG","TTGATATG",
+ "AATATATG","CATATATG","GATATATG","TATATATG","ACTATATG","CCTATATG","GCTATATG","TCTATATG",
+ "AGTATATG","CGTATATG","GGTATATG","TGTATATG","ATTATATG","CTTATATG","GTTATATG","TTTATATG",
+ "AAACTATG","CAACTATG","GAACTATG","TAACTATG","ACACTATG","CCACTATG","GCACTATG","TCACTATG",
+ "AGACTATG","CGACTATG","GGACTATG","TGACTATG","ATACTATG","CTACTATG","GTACTATG","TTACTATG",
+ "AACCTATG","CACCTATG","GACCTATG","TACCTATG","ACCCTATG","CCCCTATG","GCCCTATG","TCCCTATG",
+ "AGCCTATG","CGCCTATG","GGCCTATG","TGCCTATG","ATCCTATG","CTCCTATG","GTCCTATG","TTCCTATG",
+ "AAGCTATG","CAGCTATG","GAGCTATG","TAGCTATG","ACGCTATG","CCGCTATG","GCGCTATG","TCGCTATG",
+ "AGGCTATG","CGGCTATG","GGGCTATG","TGGCTATG","ATGCTATG","CTGCTATG","GTGCTATG","TTGCTATG",
+ "AATCTATG","CATCTATG","GATCTATG","TATCTATG","ACTCTATG","CCTCTATG","GCTCTATG","TCTCTATG",
+ "AGTCTATG","CGTCTATG","GGTCTATG","TGTCTATG","ATTCTATG","CTTCTATG","GTTCTATG","TTTCTATG",
+ "AAAGTATG","CAAGTATG","GAAGTATG","TAAGTATG","ACAGTATG","CCAGTATG","GCAGTATG","TCAGTATG",
+ "AGAGTATG","CGAGTATG","GGAGTATG","TGAGTATG","ATAGTATG","CTAGTATG","GTAGTATG","TTAGTATG",
+ "AACGTATG","CACGTATG","GACGTATG","TACGTATG","ACCGTATG","CCCGTATG","GCCGTATG","TCCGTATG",
+ "AGCGTATG","CGCGTATG","GGCGTATG","TGCGTATG","ATCGTATG","CTCGTATG","GTCGTATG","TTCGTATG",
+ "AAGGTATG","CAGGTATG","GAGGTATG","TAGGTATG","ACGGTATG","CCGGTATG","GCGGTATG","TCGGTATG",
+ "AGGGTATG","CGGGTATG","GGGGTATG","TGGGTATG","ATGGTATG","CTGGTATG","GTGGTATG","TTGGTATG",
+ "AATGTATG","CATGTATG","GATGTATG","TATGTATG","ACTGTATG","CCTGTATG","GCTGTATG","TCTGTATG",
+ "AGTGTATG","CGTGTATG","GGTGTATG","TGTGTATG","ATTGTATG","CTTGTATG","GTTGTATG","TTTGTATG",
+ "AAATTATG","CAATTATG","GAATTATG","TAATTATG","ACATTATG","CCATTATG","GCATTATG","TCATTATG",
+ "AGATTATG","CGATTATG","GGATTATG","TGATTATG","ATATTATG","CTATTATG","GTATTATG","TTATTATG",
+ "AACTTATG","CACTTATG","GACTTATG","TACTTATG","ACCTTATG","CCCTTATG","GCCTTATG","TCCTTATG",
+ "AGCTTATG","CGCTTATG","GGCTTATG","TGCTTATG","ATCTTATG","CTCTTATG","GTCTTATG","TTCTTATG",
+ "AAGTTATG","CAGTTATG","GAGTTATG","TAGTTATG","ACGTTATG","CCGTTATG","GCGTTATG","TCGTTATG",
+ "AGGTTATG","CGGTTATG","GGGTTATG","TGGTTATG","ATGTTATG","CTGTTATG","GTGTTATG","TTGTTATG",
+ "AATTTATG","CATTTATG","GATTTATG","TATTTATG","ACTTTATG","CCTTTATG","GCTTTATG","TCTTTATG",
+ "AGTTTATG","CGTTTATG","GGTTTATG","TGTTTATG","ATTTTATG","CTTTTATG","GTTTTATG","TTTTTATG",
+ "AAAAACTG","CAAAACTG","GAAAACTG","TAAAACTG","ACAAACTG","CCAAACTG","GCAAACTG","TCAAACTG",
+ "AGAAACTG","CGAAACTG","GGAAACTG","TGAAACTG","ATAAACTG","CTAAACTG","GTAAACTG","TTAAACTG",
+ "AACAACTG","CACAACTG","GACAACTG","TACAACTG","ACCAACTG","CCCAACTG","GCCAACTG","TCCAACTG",
+ "AGCAACTG","CGCAACTG","GGCAACTG","TGCAACTG","ATCAACTG","CTCAACTG","GTCAACTG","TTCAACTG",
+ "AAGAACTG","CAGAACTG","GAGAACTG","TAGAACTG","ACGAACTG","CCGAACTG","GCGAACTG","TCGAACTG",
+ "AGGAACTG","CGGAACTG","GGGAACTG","TGGAACTG","ATGAACTG","CTGAACTG","GTGAACTG","TTGAACTG",
+ "AATAACTG","CATAACTG","GATAACTG","TATAACTG","ACTAACTG","CCTAACTG","GCTAACTG","TCTAACTG",
+ "AGTAACTG","CGTAACTG","GGTAACTG","TGTAACTG","ATTAACTG","CTTAACTG","GTTAACTG","TTTAACTG",
+ "AAACACTG","CAACACTG","GAACACTG","TAACACTG","ACACACTG","CCACACTG","GCACACTG","TCACACTG",
+ "AGACACTG","CGACACTG","GGACACTG","TGACACTG","ATACACTG","CTACACTG","GTACACTG","TTACACTG",
+ "AACCACTG","CACCACTG","GACCACTG","TACCACTG","ACCCACTG","CCCCACTG","GCCCACTG","TCCCACTG",
+ "AGCCACTG","CGCCACTG","GGCCACTG","TGCCACTG","ATCCACTG","CTCCACTG","GTCCACTG","TTCCACTG",
+ "AAGCACTG","CAGCACTG","GAGCACTG","TAGCACTG","ACGCACTG","CCGCACTG","GCGCACTG","TCGCACTG",
+ "AGGCACTG","CGGCACTG","GGGCACTG","TGGCACTG","ATGCACTG","CTGCACTG","GTGCACTG","TTGCACTG",
+ "AATCACTG","CATCACTG","GATCACTG","TATCACTG","ACTCACTG","CCTCACTG","GCTCACTG","TCTCACTG",
+ "AGTCACTG","CGTCACTG","GGTCACTG","TGTCACTG","ATTCACTG","CTTCACTG","GTTCACTG","TTTCACTG",
+ "AAAGACTG","CAAGACTG","GAAGACTG","TAAGACTG","ACAGACTG","CCAGACTG","GCAGACTG","TCAGACTG",
+ "AGAGACTG","CGAGACTG","GGAGACTG","TGAGACTG","ATAGACTG","CTAGACTG","GTAGACTG","TTAGACTG",
+ "AACGACTG","CACGACTG","GACGACTG","TACGACTG","ACCGACTG","CCCGACTG","GCCGACTG","TCCGACTG",
+ "AGCGACTG","CGCGACTG","GGCGACTG","TGCGACTG","ATCGACTG","CTCGACTG","GTCGACTG","TTCGACTG",
+ "AAGGACTG","CAGGACTG","GAGGACTG","TAGGACTG","ACGGACTG","CCGGACTG","GCGGACTG","TCGGACTG",
+ "AGGGACTG","CGGGACTG","GGGGACTG","TGGGACTG","ATGGACTG","CTGGACTG","GTGGACTG","TTGGACTG",
+ "AATGACTG","CATGACTG","GATGACTG","TATGACTG","ACTGACTG","CCTGACTG","GCTGACTG","TCTGACTG",
+ "AGTGACTG","CGTGACTG","GGTGACTG","TGTGACTG","ATTGACTG","CTTGACTG","GTTGACTG","TTTGACTG",
+ "AAATACTG","CAATACTG","GAATACTG","TAATACTG","ACATACTG","CCATACTG","GCATACTG","TCATACTG",
+ "AGATACTG","CGATACTG","GGATACTG","TGATACTG","ATATACTG","CTATACTG","GTATACTG","TTATACTG",
+ "AACTACTG","CACTACTG","GACTACTG","TACTACTG","ACCTACTG","CCCTACTG","GCCTACTG","TCCTACTG",
+ "AGCTACTG","CGCTACTG","GGCTACTG","TGCTACTG","ATCTACTG","CTCTACTG","GTCTACTG","TTCTACTG",
+ "AAGTACTG","CAGTACTG","GAGTACTG","TAGTACTG","ACGTACTG","CCGTACTG","GCGTACTG","TCGTACTG",
+ "AGGTACTG","CGGTACTG","GGGTACTG","TGGTACTG","ATGTACTG","CTGTACTG","GTGTACTG","TTGTACTG",
+ "AATTACTG","CATTACTG","GATTACTG","TATTACTG","ACTTACTG","CCTTACTG","GCTTACTG","TCTTACTG",
+ "AGTTACTG","CGTTACTG","GGTTACTG","TGTTACTG","ATTTACTG","CTTTACTG","GTTTACTG","TTTTACTG",
+ "AAAACCTG","CAAACCTG","GAAACCTG","TAAACCTG","ACAACCTG","CCAACCTG","GCAACCTG","TCAACCTG",
+ "AGAACCTG","CGAACCTG","GGAACCTG","TGAACCTG","ATAACCTG","CTAACCTG","GTAACCTG","TTAACCTG",
+ "AACACCTG","CACACCTG","GACACCTG","TACACCTG","ACCACCTG","CCCACCTG","GCCACCTG","TCCACCTG",
+ "AGCACCTG","CGCACCTG","GGCACCTG","TGCACCTG","ATCACCTG","CTCACCTG","GTCACCTG","TTCACCTG",
+ "AAGACCTG","CAGACCTG","GAGACCTG","TAGACCTG","ACGACCTG","CCGACCTG","GCGACCTG","TCGACCTG",
+ "AGGACCTG","CGGACCTG","GGGACCTG","TGGACCTG","ATGACCTG","CTGACCTG","GTGACCTG","TTGACCTG",
+ "AATACCTG","CATACCTG","GATACCTG","TATACCTG","ACTACCTG","CCTACCTG","GCTACCTG","TCTACCTG",
+ "AGTACCTG","CGTACCTG","GGTACCTG","TGTACCTG","ATTACCTG","CTTACCTG","GTTACCTG","TTTACCTG",
+ "AAACCCTG","CAACCCTG","GAACCCTG","TAACCCTG","ACACCCTG","CCACCCTG","GCACCCTG","TCACCCTG",
+ "AGACCCTG","CGACCCTG","GGACCCTG","TGACCCTG","ATACCCTG","CTACCCTG","GTACCCTG","TTACCCTG",
+ "AACCCCTG","CACCCCTG","GACCCCTG","TACCCCTG","ACCCCCTG","CCCCCCTG","GCCCCCTG","TCCCCCTG",
+ "AGCCCCTG","CGCCCCTG","GGCCCCTG","TGCCCCTG","ATCCCCTG","CTCCCCTG","GTCCCCTG","TTCCCCTG",
+ "AAGCCCTG","CAGCCCTG","GAGCCCTG","TAGCCCTG","ACGCCCTG","CCGCCCTG","GCGCCCTG","TCGCCCTG",
+ "AGGCCCTG","CGGCCCTG","GGGCCCTG","TGGCCCTG","ATGCCCTG","CTGCCCTG","GTGCCCTG","TTGCCCTG",
+ "AATCCCTG","CATCCCTG","GATCCCTG","TATCCCTG","ACTCCCTG","CCTCCCTG","GCTCCCTG","TCTCCCTG",
+ "AGTCCCTG","CGTCCCTG","GGTCCCTG","TGTCCCTG","ATTCCCTG","CTTCCCTG","GTTCCCTG","TTTCCCTG",
+ "AAAGCCTG","CAAGCCTG","GAAGCCTG","TAAGCCTG","ACAGCCTG","CCAGCCTG","GCAGCCTG","TCAGCCTG",
+ "AGAGCCTG","CGAGCCTG","GGAGCCTG","TGAGCCTG","ATAGCCTG","CTAGCCTG","GTAGCCTG","TTAGCCTG",
+ "AACGCCTG","CACGCCTG","GACGCCTG","TACGCCTG","ACCGCCTG","CCCGCCTG","GCCGCCTG","TCCGCCTG",
+ "AGCGCCTG","CGCGCCTG","GGCGCCTG","TGCGCCTG","ATCGCCTG","CTCGCCTG","GTCGCCTG","TTCGCCTG",
+ "AAGGCCTG","CAGGCCTG","GAGGCCTG","TAGGCCTG","ACGGCCTG","CCGGCCTG","GCGGCCTG","TCGGCCTG",
+ "AGGGCCTG","CGGGCCTG","GGGGCCTG","TGGGCCTG","ATGGCCTG","CTGGCCTG","GTGGCCTG","TTGGCCTG",
+ "AATGCCTG","CATGCCTG","GATGCCTG","TATGCCTG","ACTGCCTG","CCTGCCTG","GCTGCCTG","TCTGCCTG",
+ "AGTGCCTG","CGTGCCTG","GGTGCCTG","TGTGCCTG","ATTGCCTG","CTTGCCTG","GTTGCCTG","TTTGCCTG",
+ "AAATCCTG","CAATCCTG","GAATCCTG","TAATCCTG","ACATCCTG","CCATCCTG","GCATCCTG","TCATCCTG",
+ "AGATCCTG","CGATCCTG","GGATCCTG","TGATCCTG","ATATCCTG","CTATCCTG","GTATCCTG","TTATCCTG",
+ "AACTCCTG","CACTCCTG","GACTCCTG","TACTCCTG","ACCTCCTG","CCCTCCTG","GCCTCCTG","TCCTCCTG",
+ "AGCTCCTG","CGCTCCTG","GGCTCCTG","TGCTCCTG","ATCTCCTG","CTCTCCTG","GTCTCCTG","TTCTCCTG",
+ "AAGTCCTG","CAGTCCTG","GAGTCCTG","TAGTCCTG","ACGTCCTG","CCGTCCTG","GCGTCCTG","TCGTCCTG",
+ "AGGTCCTG","CGGTCCTG","GGGTCCTG","TGGTCCTG","ATGTCCTG","CTGTCCTG","GTGTCCTG","TTGTCCTG",
+ "AATTCCTG","CATTCCTG","GATTCCTG","TATTCCTG","ACTTCCTG","CCTTCCTG","GCTTCCTG","TCTTCCTG",
+ "AGTTCCTG","CGTTCCTG","GGTTCCTG","TGTTCCTG","ATTTCCTG","CTTTCCTG","GTTTCCTG","TTTTCCTG",
+ "AAAAGCTG","CAAAGCTG","GAAAGCTG","TAAAGCTG","ACAAGCTG","CCAAGCTG","GCAAGCTG","TCAAGCTG",
+ "AGAAGCTG","CGAAGCTG","GGAAGCTG","TGAAGCTG","ATAAGCTG","CTAAGCTG","GTAAGCTG","TTAAGCTG",
+ "AACAGCTG","CACAGCTG","GACAGCTG","TACAGCTG","ACCAGCTG","CCCAGCTG","GCCAGCTG","TCCAGCTG",
+ "AGCAGCTG","CGCAGCTG","GGCAGCTG","TGCAGCTG","ATCAGCTG","CTCAGCTG","GTCAGCTG","TTCAGCTG",
+ "AAGAGCTG","CAGAGCTG","GAGAGCTG","TAGAGCTG","ACGAGCTG","CCGAGCTG","GCGAGCTG","TCGAGCTG",
+ "AGGAGCTG","CGGAGCTG","GGGAGCTG","TGGAGCTG","ATGAGCTG","CTGAGCTG","GTGAGCTG","TTGAGCTG",
+ "AATAGCTG","CATAGCTG","GATAGCTG","TATAGCTG","ACTAGCTG","CCTAGCTG","GCTAGCTG","TCTAGCTG",
+ "AGTAGCTG","CGTAGCTG","GGTAGCTG","TGTAGCTG","ATTAGCTG","CTTAGCTG","GTTAGCTG","TTTAGCTG",
+ "AAACGCTG","CAACGCTG","GAACGCTG","TAACGCTG","ACACGCTG","CCACGCTG","GCACGCTG","TCACGCTG",
+ "AGACGCTG","CGACGCTG","GGACGCTG","TGACGCTG","ATACGCTG","CTACGCTG","GTACGCTG","TTACGCTG",
+ "AACCGCTG","CACCGCTG","GACCGCTG","TACCGCTG","ACCCGCTG","CCCCGCTG","GCCCGCTG","TCCCGCTG",
+ "AGCCGCTG","CGCCGCTG","GGCCGCTG","TGCCGCTG","ATCCGCTG","CTCCGCTG","GTCCGCTG","TTCCGCTG",
+ "AAGCGCTG","CAGCGCTG","GAGCGCTG","TAGCGCTG","ACGCGCTG","CCGCGCTG","GCGCGCTG","TCGCGCTG",
+ "AGGCGCTG","CGGCGCTG","GGGCGCTG","TGGCGCTG","ATGCGCTG","CTGCGCTG","GTGCGCTG","TTGCGCTG",
+ "AATCGCTG","CATCGCTG","GATCGCTG","TATCGCTG","ACTCGCTG","CCTCGCTG","GCTCGCTG","TCTCGCTG",
+ "AGTCGCTG","CGTCGCTG","GGTCGCTG","TGTCGCTG","ATTCGCTG","CTTCGCTG","GTTCGCTG","TTTCGCTG",
+ "AAAGGCTG","CAAGGCTG","GAAGGCTG","TAAGGCTG","ACAGGCTG","CCAGGCTG","GCAGGCTG","TCAGGCTG",
+ "AGAGGCTG","CGAGGCTG","GGAGGCTG","TGAGGCTG","ATAGGCTG","CTAGGCTG","GTAGGCTG","TTAGGCTG",
+ "AACGGCTG","CACGGCTG","GACGGCTG","TACGGCTG","ACCGGCTG","CCCGGCTG","GCCGGCTG","TCCGGCTG",
+ "AGCGGCTG","CGCGGCTG","GGCGGCTG","TGCGGCTG","ATCGGCTG","CTCGGCTG","GTCGGCTG","TTCGGCTG",
+ "AAGGGCTG","CAGGGCTG","GAGGGCTG","TAGGGCTG","ACGGGCTG","CCGGGCTG","GCGGGCTG","TCGGGCTG",
+ "AGGGGCTG","CGGGGCTG","GGGGGCTG","TGGGGCTG","ATGGGCTG","CTGGGCTG","GTGGGCTG","TTGGGCTG",
+ "AATGGCTG","CATGGCTG","GATGGCTG","TATGGCTG","ACTGGCTG","CCTGGCTG","GCTGGCTG","TCTGGCTG",
+ "AGTGGCTG","CGTGGCTG","GGTGGCTG","TGTGGCTG","ATTGGCTG","CTTGGCTG","GTTGGCTG","TTTGGCTG",
+ "AAATGCTG","CAATGCTG","GAATGCTG","TAATGCTG","ACATGCTG","CCATGCTG","GCATGCTG","TCATGCTG",
+ "AGATGCTG","CGATGCTG","GGATGCTG","TGATGCTG","ATATGCTG","CTATGCTG","GTATGCTG","TTATGCTG",
+ "AACTGCTG","CACTGCTG","GACTGCTG","TACTGCTG","ACCTGCTG","CCCTGCTG","GCCTGCTG","TCCTGCTG",
+ "AGCTGCTG","CGCTGCTG","GGCTGCTG","TGCTGCTG","ATCTGCTG","CTCTGCTG","GTCTGCTG","TTCTGCTG",
+ "AAGTGCTG","CAGTGCTG","GAGTGCTG","TAGTGCTG","ACGTGCTG","CCGTGCTG","GCGTGCTG","TCGTGCTG",
+ "AGGTGCTG","CGGTGCTG","GGGTGCTG","TGGTGCTG","ATGTGCTG","CTGTGCTG","GTGTGCTG","TTGTGCTG",
+ "AATTGCTG","CATTGCTG","GATTGCTG","TATTGCTG","ACTTGCTG","CCTTGCTG","GCTTGCTG","TCTTGCTG",
+ "AGTTGCTG","CGTTGCTG","GGTTGCTG","TGTTGCTG","ATTTGCTG","CTTTGCTG","GTTTGCTG","TTTTGCTG",
+ "AAAATCTG","CAAATCTG","GAAATCTG","TAAATCTG","ACAATCTG","CCAATCTG","GCAATCTG","TCAATCTG",
+ "AGAATCTG","CGAATCTG","GGAATCTG","TGAATCTG","ATAATCTG","CTAATCTG","GTAATCTG","TTAATCTG",
+ "AACATCTG","CACATCTG","GACATCTG","TACATCTG","ACCATCTG","CCCATCTG","GCCATCTG","TCCATCTG",
+ "AGCATCTG","CGCATCTG","GGCATCTG","TGCATCTG","ATCATCTG","CTCATCTG","GTCATCTG","TTCATCTG",
+ "AAGATCTG","CAGATCTG","GAGATCTG","TAGATCTG","ACGATCTG","CCGATCTG","GCGATCTG","TCGATCTG",
+ "AGGATCTG","CGGATCTG","GGGATCTG","TGGATCTG","ATGATCTG","CTGATCTG","GTGATCTG","TTGATCTG",
+ "AATATCTG","CATATCTG","GATATCTG","TATATCTG","ACTATCTG","CCTATCTG","GCTATCTG","TCTATCTG",
+ "AGTATCTG","CGTATCTG","GGTATCTG","TGTATCTG","ATTATCTG","CTTATCTG","GTTATCTG","TTTATCTG",
+ "AAACTCTG","CAACTCTG","GAACTCTG","TAACTCTG","ACACTCTG","CCACTCTG","GCACTCTG","TCACTCTG",
+ "AGACTCTG","CGACTCTG","GGACTCTG","TGACTCTG","ATACTCTG","CTACTCTG","GTACTCTG","TTACTCTG",
+ "AACCTCTG","CACCTCTG","GACCTCTG","TACCTCTG","ACCCTCTG","CCCCTCTG","GCCCTCTG","TCCCTCTG",
+ "AGCCTCTG","CGCCTCTG","GGCCTCTG","TGCCTCTG","ATCCTCTG","CTCCTCTG","GTCCTCTG","TTCCTCTG",
+ "AAGCTCTG","CAGCTCTG","GAGCTCTG","TAGCTCTG","ACGCTCTG","CCGCTCTG","GCGCTCTG","TCGCTCTG",
+ "AGGCTCTG","CGGCTCTG","GGGCTCTG","TGGCTCTG","ATGCTCTG","CTGCTCTG","GTGCTCTG","TTGCTCTG",
+ "AATCTCTG","CATCTCTG","GATCTCTG","TATCTCTG","ACTCTCTG","CCTCTCTG","GCTCTCTG","TCTCTCTG",
+ "AGTCTCTG","CGTCTCTG","GGTCTCTG","TGTCTCTG","ATTCTCTG","CTTCTCTG","GTTCTCTG","TTTCTCTG",
+ "AAAGTCTG","CAAGTCTG","GAAGTCTG","TAAGTCTG","ACAGTCTG","CCAGTCTG","GCAGTCTG","TCAGTCTG",
+ "AGAGTCTG","CGAGTCTG","GGAGTCTG","TGAGTCTG","ATAGTCTG","CTAGTCTG","GTAGTCTG","TTAGTCTG",
+ "AACGTCTG","CACGTCTG","GACGTCTG","TACGTCTG","ACCGTCTG","CCCGTCTG","GCCGTCTG","TCCGTCTG",
+ "AGCGTCTG","CGCGTCTG","GGCGTCTG","TGCGTCTG","ATCGTCTG","CTCGTCTG","GTCGTCTG","TTCGTCTG",
+ "AAGGTCTG","CAGGTCTG","GAGGTCTG","TAGGTCTG","ACGGTCTG","CCGGTCTG","GCGGTCTG","TCGGTCTG",
+ "AGGGTCTG","CGGGTCTG","GGGGTCTG","TGGGTCTG","ATGGTCTG","CTGGTCTG","GTGGTCTG","TTGGTCTG",
+ "AATGTCTG","CATGTCTG","GATGTCTG","TATGTCTG","ACTGTCTG","CCTGTCTG","GCTGTCTG","TCTGTCTG",
+ "AGTGTCTG","CGTGTCTG","GGTGTCTG","TGTGTCTG","ATTGTCTG","CTTGTCTG","GTTGTCTG","TTTGTCTG",
+ "AAATTCTG","CAATTCTG","GAATTCTG","TAATTCTG","ACATTCTG","CCATTCTG","GCATTCTG","TCATTCTG",
+ "AGATTCTG","CGATTCTG","GGATTCTG","TGATTCTG","ATATTCTG","CTATTCTG","GTATTCTG","TTATTCTG",
+ "AACTTCTG","CACTTCTG","GACTTCTG","TACTTCTG","ACCTTCTG","CCCTTCTG","GCCTTCTG","TCCTTCTG",
+ "AGCTTCTG","CGCTTCTG","GGCTTCTG","TGCTTCTG","ATCTTCTG","CTCTTCTG","GTCTTCTG","TTCTTCTG",
+ "AAGTTCTG","CAGTTCTG","GAGTTCTG","TAGTTCTG","ACGTTCTG","CCGTTCTG","GCGTTCTG","TCGTTCTG",
+ "AGGTTCTG","CGGTTCTG","GGGTTCTG","TGGTTCTG","ATGTTCTG","CTGTTCTG","GTGTTCTG","TTGTTCTG",
+ "AATTTCTG","CATTTCTG","GATTTCTG","TATTTCTG","ACTTTCTG","CCTTTCTG","GCTTTCTG","TCTTTCTG",
+ "AGTTTCTG","CGTTTCTG","GGTTTCTG","TGTTTCTG","ATTTTCTG","CTTTTCTG","GTTTTCTG","TTTTTCTG",
+ "AAAAAGTG","CAAAAGTG","GAAAAGTG","TAAAAGTG","ACAAAGTG","CCAAAGTG","GCAAAGTG","TCAAAGTG",
+ "AGAAAGTG","CGAAAGTG","GGAAAGTG","TGAAAGTG","ATAAAGTG","CTAAAGTG","GTAAAGTG","TTAAAGTG",
+ "AACAAGTG","CACAAGTG","GACAAGTG","TACAAGTG","ACCAAGTG","CCCAAGTG","GCCAAGTG","TCCAAGTG",
+ "AGCAAGTG","CGCAAGTG","GGCAAGTG","TGCAAGTG","ATCAAGTG","CTCAAGTG","GTCAAGTG","TTCAAGTG",
+ "AAGAAGTG","CAGAAGTG","GAGAAGTG","TAGAAGTG","ACGAAGTG","CCGAAGTG","GCGAAGTG","TCGAAGTG",
+ "AGGAAGTG","CGGAAGTG","GGGAAGTG","TGGAAGTG","ATGAAGTG","CTGAAGTG","GTGAAGTG","TTGAAGTG",
+ "AATAAGTG","CATAAGTG","GATAAGTG","TATAAGTG","ACTAAGTG","CCTAAGTG","GCTAAGTG","TCTAAGTG",
+ "AGTAAGTG","CGTAAGTG","GGTAAGTG","TGTAAGTG","ATTAAGTG","CTTAAGTG","GTTAAGTG","TTTAAGTG",
+ "AAACAGTG","CAACAGTG","GAACAGTG","TAACAGTG","ACACAGTG","CCACAGTG","GCACAGTG","TCACAGTG",
+ "AGACAGTG","CGACAGTG","GGACAGTG","TGACAGTG","ATACAGTG","CTACAGTG","GTACAGTG","TTACAGTG",
+ "AACCAGTG","CACCAGTG","GACCAGTG","TACCAGTG","ACCCAGTG","CCCCAGTG","GCCCAGTG","TCCCAGTG",
+ "AGCCAGTG","CGCCAGTG","GGCCAGTG","TGCCAGTG","ATCCAGTG","CTCCAGTG","GTCCAGTG","TTCCAGTG",
+ "AAGCAGTG","CAGCAGTG","GAGCAGTG","TAGCAGTG","ACGCAGTG","CCGCAGTG","GCGCAGTG","TCGCAGTG",
+ "AGGCAGTG","CGGCAGTG","GGGCAGTG","TGGCAGTG","ATGCAGTG","CTGCAGTG","GTGCAGTG","TTGCAGTG",
+ "AATCAGTG","CATCAGTG","GATCAGTG","TATCAGTG","ACTCAGTG","CCTCAGTG","GCTCAGTG","TCTCAGTG",
+ "AGTCAGTG","CGTCAGTG","GGTCAGTG","TGTCAGTG","ATTCAGTG","CTTCAGTG","GTTCAGTG","TTTCAGTG",
+ "AAAGAGTG","CAAGAGTG","GAAGAGTG","TAAGAGTG","ACAGAGTG","CCAGAGTG","GCAGAGTG","TCAGAGTG",
+ "AGAGAGTG","CGAGAGTG","GGAGAGTG","TGAGAGTG","ATAGAGTG","CTAGAGTG","GTAGAGTG","TTAGAGTG",
+ "AACGAGTG","CACGAGTG","GACGAGTG","TACGAGTG","ACCGAGTG","CCCGAGTG","GCCGAGTG","TCCGAGTG",
+ "AGCGAGTG","CGCGAGTG","GGCGAGTG","TGCGAGTG","ATCGAGTG","CTCGAGTG","GTCGAGTG","TTCGAGTG",
+ "AAGGAGTG","CAGGAGTG","GAGGAGTG","TAGGAGTG","ACGGAGTG","CCGGAGTG","GCGGAGTG","TCGGAGTG",
+ "AGGGAGTG","CGGGAGTG","GGGGAGTG","TGGGAGTG","ATGGAGTG","CTGGAGTG","GTGGAGTG","TTGGAGTG",
+ "AATGAGTG","CATGAGTG","GATGAGTG","TATGAGTG","ACTGAGTG","CCTGAGTG","GCTGAGTG","TCTGAGTG",
+ "AGTGAGTG","CGTGAGTG","GGTGAGTG","TGTGAGTG","ATTGAGTG","CTTGAGTG","GTTGAGTG","TTTGAGTG",
+ "AAATAGTG","CAATAGTG","GAATAGTG","TAATAGTG","ACATAGTG","CCATAGTG","GCATAGTG","TCATAGTG",
+ "AGATAGTG","CGATAGTG","GGATAGTG","TGATAGTG","ATATAGTG","CTATAGTG","GTATAGTG","TTATAGTG",
+ "AACTAGTG","CACTAGTG","GACTAGTG","TACTAGTG","ACCTAGTG","CCCTAGTG","GCCTAGTG","TCCTAGTG",
+ "AGCTAGTG","CGCTAGTG","GGCTAGTG","TGCTAGTG","ATCTAGTG","CTCTAGTG","GTCTAGTG","TTCTAGTG",
+ "AAGTAGTG","CAGTAGTG","GAGTAGTG","TAGTAGTG","ACGTAGTG","CCGTAGTG","GCGTAGTG","TCGTAGTG",
+ "AGGTAGTG","CGGTAGTG","GGGTAGTG","TGGTAGTG","ATGTAGTG","CTGTAGTG","GTGTAGTG","TTGTAGTG",
+ "AATTAGTG","CATTAGTG","GATTAGTG","TATTAGTG","ACTTAGTG","CCTTAGTG","GCTTAGTG","TCTTAGTG",
+ "AGTTAGTG","CGTTAGTG","GGTTAGTG","TGTTAGTG","ATTTAGTG","CTTTAGTG","GTTTAGTG","TTTTAGTG",
+ "AAAACGTG","CAAACGTG","GAAACGTG","TAAACGTG","ACAACGTG","CCAACGTG","GCAACGTG","TCAACGTG",
+ "AGAACGTG","CGAACGTG","GGAACGTG","TGAACGTG","ATAACGTG","CTAACGTG","GTAACGTG","TTAACGTG",
+ "AACACGTG","CACACGTG","GACACGTG","TACACGTG","ACCACGTG","CCCACGTG","GCCACGTG","TCCACGTG",
+ "AGCACGTG","CGCACGTG","GGCACGTG","TGCACGTG","ATCACGTG","CTCACGTG","GTCACGTG","TTCACGTG",
+ "AAGACGTG","CAGACGTG","GAGACGTG","TAGACGTG","ACGACGTG","CCGACGTG","GCGACGTG","TCGACGTG",
+ "AGGACGTG","CGGACGTG","GGGACGTG","TGGACGTG","ATGACGTG","CTGACGTG","GTGACGTG","TTGACGTG",
+ "AATACGTG","CATACGTG","GATACGTG","TATACGTG","ACTACGTG","CCTACGTG","GCTACGTG","TCTACGTG",
+ "AGTACGTG","CGTACGTG","GGTACGTG","TGTACGTG","ATTACGTG","CTTACGTG","GTTACGTG","TTTACGTG",
+ "AAACCGTG","CAACCGTG","GAACCGTG","TAACCGTG","ACACCGTG","CCACCGTG","GCACCGTG","TCACCGTG",
+ "AGACCGTG","CGACCGTG","GGACCGTG","TGACCGTG","ATACCGTG","CTACCGTG","GTACCGTG","TTACCGTG",
+ "AACCCGTG","CACCCGTG","GACCCGTG","TACCCGTG","ACCCCGTG","CCCCCGTG","GCCCCGTG","TCCCCGTG",
+ "AGCCCGTG","CGCCCGTG","GGCCCGTG","TGCCCGTG","ATCCCGTG","CTCCCGTG","GTCCCGTG","TTCCCGTG",
+ "AAGCCGTG","CAGCCGTG","GAGCCGTG","TAGCCGTG","ACGCCGTG","CCGCCGTG","GCGCCGTG","TCGCCGTG",
+ "AGGCCGTG","CGGCCGTG","GGGCCGTG","TGGCCGTG","ATGCCGTG","CTGCCGTG","GTGCCGTG","TTGCCGTG",
+ "AATCCGTG","CATCCGTG","GATCCGTG","TATCCGTG","ACTCCGTG","CCTCCGTG","GCTCCGTG","TCTCCGTG",
+ "AGTCCGTG","CGTCCGTG","GGTCCGTG","TGTCCGTG","ATTCCGTG","CTTCCGTG","GTTCCGTG","TTTCCGTG",
+ "AAAGCGTG","CAAGCGTG","GAAGCGTG","TAAGCGTG","ACAGCGTG","CCAGCGTG","GCAGCGTG","TCAGCGTG",
+ "AGAGCGTG","CGAGCGTG","GGAGCGTG","TGAGCGTG","ATAGCGTG","CTAGCGTG","GTAGCGTG","TTAGCGTG",
+ "AACGCGTG","CACGCGTG","GACGCGTG","TACGCGTG","ACCGCGTG","CCCGCGTG","GCCGCGTG","TCCGCGTG",
+ "AGCGCGTG","CGCGCGTG","GGCGCGTG","TGCGCGTG","ATCGCGTG","CTCGCGTG","GTCGCGTG","TTCGCGTG",
+ "AAGGCGTG","CAGGCGTG","GAGGCGTG","TAGGCGTG","ACGGCGTG","CCGGCGTG","GCGGCGTG","TCGGCGTG",
+ "AGGGCGTG","CGGGCGTG","GGGGCGTG","TGGGCGTG","ATGGCGTG","CTGGCGTG","GTGGCGTG","TTGGCGTG",
+ "AATGCGTG","CATGCGTG","GATGCGTG","TATGCGTG","ACTGCGTG","CCTGCGTG","GCTGCGTG","TCTGCGTG",
+ "AGTGCGTG","CGTGCGTG","GGTGCGTG","TGTGCGTG","ATTGCGTG","CTTGCGTG","GTTGCGTG","TTTGCGTG",
+ "AAATCGTG","CAATCGTG","GAATCGTG","TAATCGTG","ACATCGTG","CCATCGTG","GCATCGTG","TCATCGTG",
+ "AGATCGTG","CGATCGTG","GGATCGTG","TGATCGTG","ATATCGTG","CTATCGTG","GTATCGTG","TTATCGTG",
+ "AACTCGTG","CACTCGTG","GACTCGTG","TACTCGTG","ACCTCGTG","CCCTCGTG","GCCTCGTG","TCCTCGTG",
+ "AGCTCGTG","CGCTCGTG","GGCTCGTG","TGCTCGTG","ATCTCGTG","CTCTCGTG","GTCTCGTG","TTCTCGTG",
+ "AAGTCGTG","CAGTCGTG","GAGTCGTG","TAGTCGTG","ACGTCGTG","CCGTCGTG","GCGTCGTG","TCGTCGTG",
+ "AGGTCGTG","CGGTCGTG","GGGTCGTG","TGGTCGTG","ATGTCGTG","CTGTCGTG","GTGTCGTG","TTGTCGTG",
+ "AATTCGTG","CATTCGTG","GATTCGTG","TATTCGTG","ACTTCGTG","CCTTCGTG","GCTTCGTG","TCTTCGTG",
+ "AGTTCGTG","CGTTCGTG","GGTTCGTG","TGTTCGTG","ATTTCGTG","CTTTCGTG","GTTTCGTG","TTTTCGTG",
+ "AAAAGGTG","CAAAGGTG","GAAAGGTG","TAAAGGTG","ACAAGGTG","CCAAGGTG","GCAAGGTG","TCAAGGTG",
+ "AGAAGGTG","CGAAGGTG","GGAAGGTG","TGAAGGTG","ATAAGGTG","CTAAGGTG","GTAAGGTG","TTAAGGTG",
+ "AACAGGTG","CACAGGTG","GACAGGTG","TACAGGTG","ACCAGGTG","CCCAGGTG","GCCAGGTG","TCCAGGTG",
+ "AGCAGGTG","CGCAGGTG","GGCAGGTG","TGCAGGTG","ATCAGGTG","CTCAGGTG","GTCAGGTG","TTCAGGTG",
+ "AAGAGGTG","CAGAGGTG","GAGAGGTG","TAGAGGTG","ACGAGGTG","CCGAGGTG","GCGAGGTG","TCGAGGTG",
+ "AGGAGGTG","CGGAGGTG","GGGAGGTG","TGGAGGTG","ATGAGGTG","CTGAGGTG","GTGAGGTG","TTGAGGTG",
+ "AATAGGTG","CATAGGTG","GATAGGTG","TATAGGTG","ACTAGGTG","CCTAGGTG","GCTAGGTG","TCTAGGTG",
+ "AGTAGGTG","CGTAGGTG","GGTAGGTG","TGTAGGTG","ATTAGGTG","CTTAGGTG","GTTAGGTG","TTTAGGTG",
+ "AAACGGTG","CAACGGTG","GAACGGTG","TAACGGTG","ACACGGTG","CCACGGTG","GCACGGTG","TCACGGTG",
+ "AGACGGTG","CGACGGTG","GGACGGTG","TGACGGTG","ATACGGTG","CTACGGTG","GTACGGTG","TTACGGTG",
+ "AACCGGTG","CACCGGTG","GACCGGTG","TACCGGTG","ACCCGGTG","CCCCGGTG","GCCCGGTG","TCCCGGTG",
+ "AGCCGGTG","CGCCGGTG","GGCCGGTG","TGCCGGTG","ATCCGGTG","CTCCGGTG","GTCCGGTG","TTCCGGTG",
+ "AAGCGGTG","CAGCGGTG","GAGCGGTG","TAGCGGTG","ACGCGGTG","CCGCGGTG","GCGCGGTG","TCGCGGTG",
+ "AGGCGGTG","CGGCGGTG","GGGCGGTG","TGGCGGTG","ATGCGGTG","CTGCGGTG","GTGCGGTG","TTGCGGTG",
+ "AATCGGTG","CATCGGTG","GATCGGTG","TATCGGTG","ACTCGGTG","CCTCGGTG","GCTCGGTG","TCTCGGTG",
+ "AGTCGGTG","CGTCGGTG","GGTCGGTG","TGTCGGTG","ATTCGGTG","CTTCGGTG","GTTCGGTG","TTTCGGTG",
+ "AAAGGGTG","CAAGGGTG","GAAGGGTG","TAAGGGTG","ACAGGGTG","CCAGGGTG","GCAGGGTG","TCAGGGTG",
+ "AGAGGGTG","CGAGGGTG","GGAGGGTG","TGAGGGTG","ATAGGGTG","CTAGGGTG","GTAGGGTG","TTAGGGTG",
+ "AACGGGTG","CACGGGTG","GACGGGTG","TACGGGTG","ACCGGGTG","CCCGGGTG","GCCGGGTG","TCCGGGTG",
+ "AGCGGGTG","CGCGGGTG","GGCGGGTG","TGCGGGTG","ATCGGGTG","CTCGGGTG","GTCGGGTG","TTCGGGTG",
+ "AAGGGGTG","CAGGGGTG","GAGGGGTG","TAGGGGTG","ACGGGGTG","CCGGGGTG","GCGGGGTG","TCGGGGTG",
+ "AGGGGGTG","CGGGGGTG","GGGGGGTG","TGGGGGTG","ATGGGGTG","CTGGGGTG","GTGGGGTG","TTGGGGTG",
+ "AATGGGTG","CATGGGTG","GATGGGTG","TATGGGTG","ACTGGGTG","CCTGGGTG","GCTGGGTG","TCTGGGTG",
+ "AGTGGGTG","CGTGGGTG","GGTGGGTG","TGTGGGTG","ATTGGGTG","CTTGGGTG","GTTGGGTG","TTTGGGTG",
+ "AAATGGTG","CAATGGTG","GAATGGTG","TAATGGTG","ACATGGTG","CCATGGTG","GCATGGTG","TCATGGTG",
+ "AGATGGTG","CGATGGTG","GGATGGTG","TGATGGTG","ATATGGTG","CTATGGTG","GTATGGTG","TTATGGTG",
+ "AACTGGTG","CACTGGTG","GACTGGTG","TACTGGTG","ACCTGGTG","CCCTGGTG","GCCTGGTG","TCCTGGTG",
+ "AGCTGGTG","CGCTGGTG","GGCTGGTG","TGCTGGTG","ATCTGGTG","CTCTGGTG","GTCTGGTG","TTCTGGTG",
+ "AAGTGGTG","CAGTGGTG","GAGTGGTG","TAGTGGTG","ACGTGGTG","CCGTGGTG","GCGTGGTG","TCGTGGTG",
+ "AGGTGGTG","CGGTGGTG","GGGTGGTG","TGGTGGTG","ATGTGGTG","CTGTGGTG","GTGTGGTG","TTGTGGTG",
+ "AATTGGTG","CATTGGTG","GATTGGTG","TATTGGTG","ACTTGGTG","CCTTGGTG","GCTTGGTG","TCTTGGTG",
+ "AGTTGGTG","CGTTGGTG","GGTTGGTG","TGTTGGTG","ATTTGGTG","CTTTGGTG","GTTTGGTG","TTTTGGTG",
+ "AAAATGTG","CAAATGTG","GAAATGTG","TAAATGTG","ACAATGTG","CCAATGTG","GCAATGTG","TCAATGTG",
+ "AGAATGTG","CGAATGTG","GGAATGTG","TGAATGTG","ATAATGTG","CTAATGTG","GTAATGTG","TTAATGTG",
+ "AACATGTG","CACATGTG","GACATGTG","TACATGTG","ACCATGTG","CCCATGTG","GCCATGTG","TCCATGTG",
+ "AGCATGTG","CGCATGTG","GGCATGTG","TGCATGTG","ATCATGTG","CTCATGTG","GTCATGTG","TTCATGTG",
+ "AAGATGTG","CAGATGTG","GAGATGTG","TAGATGTG","ACGATGTG","CCGATGTG","GCGATGTG","TCGATGTG",
+ "AGGATGTG","CGGATGTG","GGGATGTG","TGGATGTG","ATGATGTG","CTGATGTG","GTGATGTG","TTGATGTG",
+ "AATATGTG","CATATGTG","GATATGTG","TATATGTG","ACTATGTG","CCTATGTG","GCTATGTG","TCTATGTG",
+ "AGTATGTG","CGTATGTG","GGTATGTG","TGTATGTG","ATTATGTG","CTTATGTG","GTTATGTG","TTTATGTG",
+ "AAACTGTG","CAACTGTG","GAACTGTG","TAACTGTG","ACACTGTG","CCACTGTG","GCACTGTG","TCACTGTG",
+ "AGACTGTG","CGACTGTG","GGACTGTG","TGACTGTG","ATACTGTG","CTACTGTG","GTACTGTG","TTACTGTG",
+ "AACCTGTG","CACCTGTG","GACCTGTG","TACCTGTG","ACCCTGTG","CCCCTGTG","GCCCTGTG","TCCCTGTG",
+ "AGCCTGTG","CGCCTGTG","GGCCTGTG","TGCCTGTG","ATCCTGTG","CTCCTGTG","GTCCTGTG","TTCCTGTG",
+ "AAGCTGTG","CAGCTGTG","GAGCTGTG","TAGCTGTG","ACGCTGTG","CCGCTGTG","GCGCTGTG","TCGCTGTG",
+ "AGGCTGTG","CGGCTGTG","GGGCTGTG","TGGCTGTG","ATGCTGTG","CTGCTGTG","GTGCTGTG","TTGCTGTG",
+ "AATCTGTG","CATCTGTG","GATCTGTG","TATCTGTG","ACTCTGTG","CCTCTGTG","GCTCTGTG","TCTCTGTG",
+ "AGTCTGTG","CGTCTGTG","GGTCTGTG","TGTCTGTG","ATTCTGTG","CTTCTGTG","GTTCTGTG","TTTCTGTG",
+ "AAAGTGTG","CAAGTGTG","GAAGTGTG","TAAGTGTG","ACAGTGTG","CCAGTGTG","GCAGTGTG","TCAGTGTG",
+ "AGAGTGTG","CGAGTGTG","GGAGTGTG","TGAGTGTG","ATAGTGTG","CTAGTGTG","GTAGTGTG","TTAGTGTG",
+ "AACGTGTG","CACGTGTG","GACGTGTG","TACGTGTG","ACCGTGTG","CCCGTGTG","GCCGTGTG","TCCGTGTG",
+ "AGCGTGTG","CGCGTGTG","GGCGTGTG","TGCGTGTG","ATCGTGTG","CTCGTGTG","GTCGTGTG","TTCGTGTG",
+ "AAGGTGTG","CAGGTGTG","GAGGTGTG","TAGGTGTG","ACGGTGTG","CCGGTGTG","GCGGTGTG","TCGGTGTG",
+ "AGGGTGTG","CGGGTGTG","GGGGTGTG","TGGGTGTG","ATGGTGTG","CTGGTGTG","GTGGTGTG","TTGGTGTG",
+ "AATGTGTG","CATGTGTG","GATGTGTG","TATGTGTG","ACTGTGTG","CCTGTGTG","GCTGTGTG","TCTGTGTG",
+ "AGTGTGTG","CGTGTGTG","GGTGTGTG","TGTGTGTG","ATTGTGTG","CTTGTGTG","GTTGTGTG","TTTGTGTG",
+ "AAATTGTG","CAATTGTG","GAATTGTG","TAATTGTG","ACATTGTG","CCATTGTG","GCATTGTG","TCATTGTG",
+ "AGATTGTG","CGATTGTG","GGATTGTG","TGATTGTG","ATATTGTG","CTATTGTG","GTATTGTG","TTATTGTG",
+ "AACTTGTG","CACTTGTG","GACTTGTG","TACTTGTG","ACCTTGTG","CCCTTGTG","GCCTTGTG","TCCTTGTG",
+ "AGCTTGTG","CGCTTGTG","GGCTTGTG","TGCTTGTG","ATCTTGTG","CTCTTGTG","GTCTTGTG","TTCTTGTG",
+ "AAGTTGTG","CAGTTGTG","GAGTTGTG","TAGTTGTG","ACGTTGTG","CCGTTGTG","GCGTTGTG","TCGTTGTG",
+ "AGGTTGTG","CGGTTGTG","GGGTTGTG","TGGTTGTG","ATGTTGTG","CTGTTGTG","GTGTTGTG","TTGTTGTG",
+ "AATTTGTG","CATTTGTG","GATTTGTG","TATTTGTG","ACTTTGTG","CCTTTGTG","GCTTTGTG","TCTTTGTG",
+ "AGTTTGTG","CGTTTGTG","GGTTTGTG","TGTTTGTG","ATTTTGTG","CTTTTGTG","GTTTTGTG","TTTTTGTG",
+ "AAAAATTG","CAAAATTG","GAAAATTG","TAAAATTG","ACAAATTG","CCAAATTG","GCAAATTG","TCAAATTG",
+ "AGAAATTG","CGAAATTG","GGAAATTG","TGAAATTG","ATAAATTG","CTAAATTG","GTAAATTG","TTAAATTG",
+ "AACAATTG","CACAATTG","GACAATTG","TACAATTG","ACCAATTG","CCCAATTG","GCCAATTG","TCCAATTG",
+ "AGCAATTG","CGCAATTG","GGCAATTG","TGCAATTG","ATCAATTG","CTCAATTG","GTCAATTG","TTCAATTG",
+ "AAGAATTG","CAGAATTG","GAGAATTG","TAGAATTG","ACGAATTG","CCGAATTG","GCGAATTG","TCGAATTG",
+ "AGGAATTG","CGGAATTG","GGGAATTG","TGGAATTG","ATGAATTG","CTGAATTG","GTGAATTG","TTGAATTG",
+ "AATAATTG","CATAATTG","GATAATTG","TATAATTG","ACTAATTG","CCTAATTG","GCTAATTG","TCTAATTG",
+ "AGTAATTG","CGTAATTG","GGTAATTG","TGTAATTG","ATTAATTG","CTTAATTG","GTTAATTG","TTTAATTG",
+ "AAACATTG","CAACATTG","GAACATTG","TAACATTG","ACACATTG","CCACATTG","GCACATTG","TCACATTG",
+ "AGACATTG","CGACATTG","GGACATTG","TGACATTG","ATACATTG","CTACATTG","GTACATTG","TTACATTG",
+ "AACCATTG","CACCATTG","GACCATTG","TACCATTG","ACCCATTG","CCCCATTG","GCCCATTG","TCCCATTG",
+ "AGCCATTG","CGCCATTG","GGCCATTG","TGCCATTG","ATCCATTG","CTCCATTG","GTCCATTG","TTCCATTG",
+ "AAGCATTG","CAGCATTG","GAGCATTG","TAGCATTG","ACGCATTG","CCGCATTG","GCGCATTG","TCGCATTG",
+ "AGGCATTG","CGGCATTG","GGGCATTG","TGGCATTG","ATGCATTG","CTGCATTG","GTGCATTG","TTGCATTG",
+ "AATCATTG","CATCATTG","GATCATTG","TATCATTG","ACTCATTG","CCTCATTG","GCTCATTG","TCTCATTG",
+ "AGTCATTG","CGTCATTG","GGTCATTG","TGTCATTG","ATTCATTG","CTTCATTG","GTTCATTG","TTTCATTG",
+ "AAAGATTG","CAAGATTG","GAAGATTG","TAAGATTG","ACAGATTG","CCAGATTG","GCAGATTG","TCAGATTG",
+ "AGAGATTG","CGAGATTG","GGAGATTG","TGAGATTG","ATAGATTG","CTAGATTG","GTAGATTG","TTAGATTG",
+ "AACGATTG","CACGATTG","GACGATTG","TACGATTG","ACCGATTG","CCCGATTG","GCCGATTG","TCCGATTG",
+ "AGCGATTG","CGCGATTG","GGCGATTG","TGCGATTG","ATCGATTG","CTCGATTG","GTCGATTG","TTCGATTG",
+ "AAGGATTG","CAGGATTG","GAGGATTG","TAGGATTG","ACGGATTG","CCGGATTG","GCGGATTG","TCGGATTG",
+ "AGGGATTG","CGGGATTG","GGGGATTG","TGGGATTG","ATGGATTG","CTGGATTG","GTGGATTG","TTGGATTG",
+ "AATGATTG","CATGATTG","GATGATTG","TATGATTG","ACTGATTG","CCTGATTG","GCTGATTG","TCTGATTG",
+ "AGTGATTG","CGTGATTG","GGTGATTG","TGTGATTG","ATTGATTG","CTTGATTG","GTTGATTG","TTTGATTG",
+ "AAATATTG","CAATATTG","GAATATTG","TAATATTG","ACATATTG","CCATATTG","GCATATTG","TCATATTG",
+ "AGATATTG","CGATATTG","GGATATTG","TGATATTG","ATATATTG","CTATATTG","GTATATTG","TTATATTG",
+ "AACTATTG","CACTATTG","GACTATTG","TACTATTG","ACCTATTG","CCCTATTG","GCCTATTG","TCCTATTG",
+ "AGCTATTG","CGCTATTG","GGCTATTG","TGCTATTG","ATCTATTG","CTCTATTG","GTCTATTG","TTCTATTG",
+ "AAGTATTG","CAGTATTG","GAGTATTG","TAGTATTG","ACGTATTG","CCGTATTG","GCGTATTG","TCGTATTG",
+ "AGGTATTG","CGGTATTG","GGGTATTG","TGGTATTG","ATGTATTG","CTGTATTG","GTGTATTG","TTGTATTG",
+ "AATTATTG","CATTATTG","GATTATTG","TATTATTG","ACTTATTG","CCTTATTG","GCTTATTG","TCTTATTG",
+ "AGTTATTG","CGTTATTG","GGTTATTG","TGTTATTG","ATTTATTG","CTTTATTG","GTTTATTG","TTTTATTG",
+ "AAAACTTG","CAAACTTG","GAAACTTG","TAAACTTG","ACAACTTG","CCAACTTG","GCAACTTG","TCAACTTG",
+ "AGAACTTG","CGAACTTG","GGAACTTG","TGAACTTG","ATAACTTG","CTAACTTG","GTAACTTG","TTAACTTG",
+ "AACACTTG","CACACTTG","GACACTTG","TACACTTG","ACCACTTG","CCCACTTG","GCCACTTG","TCCACTTG",
+ "AGCACTTG","CGCACTTG","GGCACTTG","TGCACTTG","ATCACTTG","CTCACTTG","GTCACTTG","TTCACTTG",
+ "AAGACTTG","CAGACTTG","GAGACTTG","TAGACTTG","ACGACTTG","CCGACTTG","GCGACTTG","TCGACTTG",
+ "AGGACTTG","CGGACTTG","GGGACTTG","TGGACTTG","ATGACTTG","CTGACTTG","GTGACTTG","TTGACTTG",
+ "AATACTTG","CATACTTG","GATACTTG","TATACTTG","ACTACTTG","CCTACTTG","GCTACTTG","TCTACTTG",
+ "AGTACTTG","CGTACTTG","GGTACTTG","TGTACTTG","ATTACTTG","CTTACTTG","GTTACTTG","TTTACTTG",
+ "AAACCTTG","CAACCTTG","GAACCTTG","TAACCTTG","ACACCTTG","CCACCTTG","GCACCTTG","TCACCTTG",
+ "AGACCTTG","CGACCTTG","GGACCTTG","TGACCTTG","ATACCTTG","CTACCTTG","GTACCTTG","TTACCTTG",
+ "AACCCTTG","CACCCTTG","GACCCTTG","TACCCTTG","ACCCCTTG","CCCCCTTG","GCCCCTTG","TCCCCTTG",
+ "AGCCCTTG","CGCCCTTG","GGCCCTTG","TGCCCTTG","ATCCCTTG","CTCCCTTG","GTCCCTTG","TTCCCTTG",
+ "AAGCCTTG","CAGCCTTG","GAGCCTTG","TAGCCTTG","ACGCCTTG","CCGCCTTG","GCGCCTTG","TCGCCTTG",
+ "AGGCCTTG","CGGCCTTG","GGGCCTTG","TGGCCTTG","ATGCCTTG","CTGCCTTG","GTGCCTTG","TTGCCTTG",
+ "AATCCTTG","CATCCTTG","GATCCTTG","TATCCTTG","ACTCCTTG","CCTCCTTG","GCTCCTTG","TCTCCTTG",
+ "AGTCCTTG","CGTCCTTG","GGTCCTTG","TGTCCTTG","ATTCCTTG","CTTCCTTG","GTTCCTTG","TTTCCTTG",
+ "AAAGCTTG","CAAGCTTG","GAAGCTTG","TAAGCTTG","ACAGCTTG","CCAGCTTG","GCAGCTTG","TCAGCTTG",
+ "AGAGCTTG","CGAGCTTG","GGAGCTTG","TGAGCTTG","ATAGCTTG","CTAGCTTG","GTAGCTTG","TTAGCTTG",
+ "AACGCTTG","CACGCTTG","GACGCTTG","TACGCTTG","ACCGCTTG","CCCGCTTG","GCCGCTTG","TCCGCTTG",
+ "AGCGCTTG","CGCGCTTG","GGCGCTTG","TGCGCTTG","ATCGCTTG","CTCGCTTG","GTCGCTTG","TTCGCTTG",
+ "AAGGCTTG","CAGGCTTG","GAGGCTTG","TAGGCTTG","ACGGCTTG","CCGGCTTG","GCGGCTTG","TCGGCTTG",
+ "AGGGCTTG","CGGGCTTG","GGGGCTTG","TGGGCTTG","ATGGCTTG","CTGGCTTG","GTGGCTTG","TTGGCTTG",
+ "AATGCTTG","CATGCTTG","GATGCTTG","TATGCTTG","ACTGCTTG","CCTGCTTG","GCTGCTTG","TCTGCTTG",
+ "AGTGCTTG","CGTGCTTG","GGTGCTTG","TGTGCTTG","ATTGCTTG","CTTGCTTG","GTTGCTTG","TTTGCTTG",
+ "AAATCTTG","CAATCTTG","GAATCTTG","TAATCTTG","ACATCTTG","CCATCTTG","GCATCTTG","TCATCTTG",
+ "AGATCTTG","CGATCTTG","GGATCTTG","TGATCTTG","ATATCTTG","CTATCTTG","GTATCTTG","TTATCTTG",
+ "AACTCTTG","CACTCTTG","GACTCTTG","TACTCTTG","ACCTCTTG","CCCTCTTG","GCCTCTTG","TCCTCTTG",
+ "AGCTCTTG","CGCTCTTG","GGCTCTTG","TGCTCTTG","ATCTCTTG","CTCTCTTG","GTCTCTTG","TTCTCTTG",
+ "AAGTCTTG","CAGTCTTG","GAGTCTTG","TAGTCTTG","ACGTCTTG","CCGTCTTG","GCGTCTTG","TCGTCTTG",
+ "AGGTCTTG","CGGTCTTG","GGGTCTTG","TGGTCTTG","ATGTCTTG","CTGTCTTG","GTGTCTTG","TTGTCTTG",
+ "AATTCTTG","CATTCTTG","GATTCTTG","TATTCTTG","ACTTCTTG","CCTTCTTG","GCTTCTTG","TCTTCTTG",
+ "AGTTCTTG","CGTTCTTG","GGTTCTTG","TGTTCTTG","ATTTCTTG","CTTTCTTG","GTTTCTTG","TTTTCTTG",
+ "AAAAGTTG","CAAAGTTG","GAAAGTTG","TAAAGTTG","ACAAGTTG","CCAAGTTG","GCAAGTTG","TCAAGTTG",
+ "AGAAGTTG","CGAAGTTG","GGAAGTTG","TGAAGTTG","ATAAGTTG","CTAAGTTG","GTAAGTTG","TTAAGTTG",
+ "AACAGTTG","CACAGTTG","GACAGTTG","TACAGTTG","ACCAGTTG","CCCAGTTG","GCCAGTTG","TCCAGTTG",
+ "AGCAGTTG","CGCAGTTG","GGCAGTTG","TGCAGTTG","ATCAGTTG","CTCAGTTG","GTCAGTTG","TTCAGTTG",
+ "AAGAGTTG","CAGAGTTG","GAGAGTTG","TAGAGTTG","ACGAGTTG","CCGAGTTG","GCGAGTTG","TCGAGTTG",
+ "AGGAGTTG","CGGAGTTG","GGGAGTTG","TGGAGTTG","ATGAGTTG","CTGAGTTG","GTGAGTTG","TTGAGTTG",
+ "AATAGTTG","CATAGTTG","GATAGTTG","TATAGTTG","ACTAGTTG","CCTAGTTG","GCTAGTTG","TCTAGTTG",
+ "AGTAGTTG","CGTAGTTG","GGTAGTTG","TGTAGTTG","ATTAGTTG","CTTAGTTG","GTTAGTTG","TTTAGTTG",
+ "AAACGTTG","CAACGTTG","GAACGTTG","TAACGTTG","ACACGTTG","CCACGTTG","GCACGTTG","TCACGTTG",
+ "AGACGTTG","CGACGTTG","GGACGTTG","TGACGTTG","ATACGTTG","CTACGTTG","GTACGTTG","TTACGTTG",
+ "AACCGTTG","CACCGTTG","GACCGTTG","TACCGTTG","ACCCGTTG","CCCCGTTG","GCCCGTTG","TCCCGTTG",
+ "AGCCGTTG","CGCCGTTG","GGCCGTTG","TGCCGTTG","ATCCGTTG","CTCCGTTG","GTCCGTTG","TTCCGTTG",
+ "AAGCGTTG","CAGCGTTG","GAGCGTTG","TAGCGTTG","ACGCGTTG","CCGCGTTG","GCGCGTTG","TCGCGTTG",
+ "AGGCGTTG","CGGCGTTG","GGGCGTTG","TGGCGTTG","ATGCGTTG","CTGCGTTG","GTGCGTTG","TTGCGTTG",
+ "AATCGTTG","CATCGTTG","GATCGTTG","TATCGTTG","ACTCGTTG","CCTCGTTG","GCTCGTTG","TCTCGTTG",
+ "AGTCGTTG","CGTCGTTG","GGTCGTTG","TGTCGTTG","ATTCGTTG","CTTCGTTG","GTTCGTTG","TTTCGTTG",
+ "AAAGGTTG","CAAGGTTG","GAAGGTTG","TAAGGTTG","ACAGGTTG","CCAGGTTG","GCAGGTTG","TCAGGTTG",
+ "AGAGGTTG","CGAGGTTG","GGAGGTTG","TGAGGTTG","ATAGGTTG","CTAGGTTG","GTAGGTTG","TTAGGTTG",
+ "AACGGTTG","CACGGTTG","GACGGTTG","TACGGTTG","ACCGGTTG","CCCGGTTG","GCCGGTTG","TCCGGTTG",
+ "AGCGGTTG","CGCGGTTG","GGCGGTTG","TGCGGTTG","ATCGGTTG","CTCGGTTG","GTCGGTTG","TTCGGTTG",
+ "AAGGGTTG","CAGGGTTG","GAGGGTTG","TAGGGTTG","ACGGGTTG","CCGGGTTG","GCGGGTTG","TCGGGTTG",
+ "AGGGGTTG","CGGGGTTG","GGGGGTTG","TGGGGTTG","ATGGGTTG","CTGGGTTG","GTGGGTTG","TTGGGTTG",
+ "AATGGTTG","CATGGTTG","GATGGTTG","TATGGTTG","ACTGGTTG","CCTGGTTG","GCTGGTTG","TCTGGTTG",
+ "AGTGGTTG","CGTGGTTG","GGTGGTTG","TGTGGTTG","ATTGGTTG","CTTGGTTG","GTTGGTTG","TTTGGTTG",
+ "AAATGTTG","CAATGTTG","GAATGTTG","TAATGTTG","ACATGTTG","CCATGTTG","GCATGTTG","TCATGTTG",
+ "AGATGTTG","CGATGTTG","GGATGTTG","TGATGTTG","ATATGTTG","CTATGTTG","GTATGTTG","TTATGTTG",
+ "AACTGTTG","CACTGTTG","GACTGTTG","TACTGTTG","ACCTGTTG","CCCTGTTG","GCCTGTTG","TCCTGTTG",
+ "AGCTGTTG","CGCTGTTG","GGCTGTTG","TGCTGTTG","ATCTGTTG","CTCTGTTG","GTCTGTTG","TTCTGTTG",
+ "AAGTGTTG","CAGTGTTG","GAGTGTTG","TAGTGTTG","ACGTGTTG","CCGTGTTG","GCGTGTTG","TCGTGTTG",
+ "AGGTGTTG","CGGTGTTG","GGGTGTTG","TGGTGTTG","ATGTGTTG","CTGTGTTG","GTGTGTTG","TTGTGTTG",
+ "AATTGTTG","CATTGTTG","GATTGTTG","TATTGTTG","ACTTGTTG","CCTTGTTG","GCTTGTTG","TCTTGTTG",
+ "AGTTGTTG","CGTTGTTG","GGTTGTTG","TGTTGTTG","ATTTGTTG","CTTTGTTG","GTTTGTTG","TTTTGTTG",
+ "AAAATTTG","CAAATTTG","GAAATTTG","TAAATTTG","ACAATTTG","CCAATTTG","GCAATTTG","TCAATTTG",
+ "AGAATTTG","CGAATTTG","GGAATTTG","TGAATTTG","ATAATTTG","CTAATTTG","GTAATTTG","TTAATTTG",
+ "AACATTTG","CACATTTG","GACATTTG","TACATTTG","ACCATTTG","CCCATTTG","GCCATTTG","TCCATTTG",
+ "AGCATTTG","CGCATTTG","GGCATTTG","TGCATTTG","ATCATTTG","CTCATTTG","GTCATTTG","TTCATTTG",
+ "AAGATTTG","CAGATTTG","GAGATTTG","TAGATTTG","ACGATTTG","CCGATTTG","GCGATTTG","TCGATTTG",
+ "AGGATTTG","CGGATTTG","GGGATTTG","TGGATTTG","ATGATTTG","CTGATTTG","GTGATTTG","TTGATTTG",
+ "AATATTTG","CATATTTG","GATATTTG","TATATTTG","ACTATTTG","CCTATTTG","GCTATTTG","TCTATTTG",
+ "AGTATTTG","CGTATTTG","GGTATTTG","TGTATTTG","ATTATTTG","CTTATTTG","GTTATTTG","TTTATTTG",
+ "AAACTTTG","CAACTTTG","GAACTTTG","TAACTTTG","ACACTTTG","CCACTTTG","GCACTTTG","TCACTTTG",
+ "AGACTTTG","CGACTTTG","GGACTTTG","TGACTTTG","ATACTTTG","CTACTTTG","GTACTTTG","TTACTTTG",
+ "AACCTTTG","CACCTTTG","GACCTTTG","TACCTTTG","ACCCTTTG","CCCCTTTG","GCCCTTTG","TCCCTTTG",
+ "AGCCTTTG","CGCCTTTG","GGCCTTTG","TGCCTTTG","ATCCTTTG","CTCCTTTG","GTCCTTTG","TTCCTTTG",
+ "AAGCTTTG","CAGCTTTG","GAGCTTTG","TAGCTTTG","ACGCTTTG","CCGCTTTG","GCGCTTTG","TCGCTTTG",
+ "AGGCTTTG","CGGCTTTG","GGGCTTTG","TGGCTTTG","ATGCTTTG","CTGCTTTG","GTGCTTTG","TTGCTTTG",
+ "AATCTTTG","CATCTTTG","GATCTTTG","TATCTTTG","ACTCTTTG","CCTCTTTG","GCTCTTTG","TCTCTTTG",
+ "AGTCTTTG","CGTCTTTG","GGTCTTTG","TGTCTTTG","ATTCTTTG","CTTCTTTG","GTTCTTTG","TTTCTTTG",
+ "AAAGTTTG","CAAGTTTG","GAAGTTTG","TAAGTTTG","ACAGTTTG","CCAGTTTG","GCAGTTTG","TCAGTTTG",
+ "AGAGTTTG","CGAGTTTG","GGAGTTTG","TGAGTTTG","ATAGTTTG","CTAGTTTG","GTAGTTTG","TTAGTTTG",
+ "AACGTTTG","CACGTTTG","GACGTTTG","TACGTTTG","ACCGTTTG","CCCGTTTG","GCCGTTTG","TCCGTTTG",
+ "AGCGTTTG","CGCGTTTG","GGCGTTTG","TGCGTTTG","ATCGTTTG","CTCGTTTG","GTCGTTTG","TTCGTTTG",
+ "AAGGTTTG","CAGGTTTG","GAGGTTTG","TAGGTTTG","ACGGTTTG","CCGGTTTG","GCGGTTTG","TCGGTTTG",
+ "AGGGTTTG","CGGGTTTG","GGGGTTTG","TGGGTTTG","ATGGTTTG","CTGGTTTG","GTGGTTTG","TTGGTTTG",
+ "AATGTTTG","CATGTTTG","GATGTTTG","TATGTTTG","ACTGTTTG","CCTGTTTG","GCTGTTTG","TCTGTTTG",
+ "AGTGTTTG","CGTGTTTG","GGTGTTTG","TGTGTTTG","ATTGTTTG","CTTGTTTG","GTTGTTTG","TTTGTTTG",
+ "AAATTTTG","CAATTTTG","GAATTTTG","TAATTTTG","ACATTTTG","CCATTTTG","GCATTTTG","TCATTTTG",
+ "AGATTTTG","CGATTTTG","GGATTTTG","TGATTTTG","ATATTTTG","CTATTTTG","GTATTTTG","TTATTTTG",
+ "AACTTTTG","CACTTTTG","GACTTTTG","TACTTTTG","ACCTTTTG","CCCTTTTG","GCCTTTTG","TCCTTTTG",
+ "AGCTTTTG","CGCTTTTG","GGCTTTTG","TGCTTTTG","ATCTTTTG","CTCTTTTG","GTCTTTTG","TTCTTTTG",
+ "AAGTTTTG","CAGTTTTG","GAGTTTTG","TAGTTTTG","ACGTTTTG","CCGTTTTG","GCGTTTTG","TCGTTTTG",
+ "AGGTTTTG","CGGTTTTG","GGGTTTTG","TGGTTTTG","ATGTTTTG","CTGTTTTG","GTGTTTTG","TTGTTTTG",
+ "AATTTTTG","CATTTTTG","GATTTTTG","TATTTTTG","ACTTTTTG","CCTTTTTG","GCTTTTTG","TCTTTTTG",
+ "AGTTTTTG","CGTTTTTG","GGTTTTTG","TGTTTTTG","ATTTTTTG","CTTTTTTG","GTTTTTTG","TTTTTTTG",
+ "AAAAAAAT","CAAAAAAT","GAAAAAAT","TAAAAAAT","ACAAAAAT","CCAAAAAT","GCAAAAAT","TCAAAAAT",
+ "AGAAAAAT","CGAAAAAT","GGAAAAAT","TGAAAAAT","ATAAAAAT","CTAAAAAT","GTAAAAAT","TTAAAAAT",
+ "AACAAAAT","CACAAAAT","GACAAAAT","TACAAAAT","ACCAAAAT","CCCAAAAT","GCCAAAAT","TCCAAAAT",
+ "AGCAAAAT","CGCAAAAT","GGCAAAAT","TGCAAAAT","ATCAAAAT","CTCAAAAT","GTCAAAAT","TTCAAAAT",
+ "AAGAAAAT","CAGAAAAT","GAGAAAAT","TAGAAAAT","ACGAAAAT","CCGAAAAT","GCGAAAAT","TCGAAAAT",
+ "AGGAAAAT","CGGAAAAT","GGGAAAAT","TGGAAAAT","ATGAAAAT","CTGAAAAT","GTGAAAAT","TTGAAAAT",
+ "AATAAAAT","CATAAAAT","GATAAAAT","TATAAAAT","ACTAAAAT","CCTAAAAT","GCTAAAAT","TCTAAAAT",
+ "AGTAAAAT","CGTAAAAT","GGTAAAAT","TGTAAAAT","ATTAAAAT","CTTAAAAT","GTTAAAAT","TTTAAAAT",
+ "AAACAAAT","CAACAAAT","GAACAAAT","TAACAAAT","ACACAAAT","CCACAAAT","GCACAAAT","TCACAAAT",
+ "AGACAAAT","CGACAAAT","GGACAAAT","TGACAAAT","ATACAAAT","CTACAAAT","GTACAAAT","TTACAAAT",
+ "AACCAAAT","CACCAAAT","GACCAAAT","TACCAAAT","ACCCAAAT","CCCCAAAT","GCCCAAAT","TCCCAAAT",
+ "AGCCAAAT","CGCCAAAT","GGCCAAAT","TGCCAAAT","ATCCAAAT","CTCCAAAT","GTCCAAAT","TTCCAAAT",
+ "AAGCAAAT","CAGCAAAT","GAGCAAAT","TAGCAAAT","ACGCAAAT","CCGCAAAT","GCGCAAAT","TCGCAAAT",
+ "AGGCAAAT","CGGCAAAT","GGGCAAAT","TGGCAAAT","ATGCAAAT","CTGCAAAT","GTGCAAAT","TTGCAAAT",
+ "AATCAAAT","CATCAAAT","GATCAAAT","TATCAAAT","ACTCAAAT","CCTCAAAT","GCTCAAAT","TCTCAAAT",
+ "AGTCAAAT","CGTCAAAT","GGTCAAAT","TGTCAAAT","ATTCAAAT","CTTCAAAT","GTTCAAAT","TTTCAAAT",
+ "AAAGAAAT","CAAGAAAT","GAAGAAAT","TAAGAAAT","ACAGAAAT","CCAGAAAT","GCAGAAAT","TCAGAAAT",
+ "AGAGAAAT","CGAGAAAT","GGAGAAAT","TGAGAAAT","ATAGAAAT","CTAGAAAT","GTAGAAAT","TTAGAAAT",
+ "AACGAAAT","CACGAAAT","GACGAAAT","TACGAAAT","ACCGAAAT","CCCGAAAT","GCCGAAAT","TCCGAAAT",
+ "AGCGAAAT","CGCGAAAT","GGCGAAAT","TGCGAAAT","ATCGAAAT","CTCGAAAT","GTCGAAAT","TTCGAAAT",
+ "AAGGAAAT","CAGGAAAT","GAGGAAAT","TAGGAAAT","ACGGAAAT","CCGGAAAT","GCGGAAAT","TCGGAAAT",
+ "AGGGAAAT","CGGGAAAT","GGGGAAAT","TGGGAAAT","ATGGAAAT","CTGGAAAT","GTGGAAAT","TTGGAAAT",
+ "AATGAAAT","CATGAAAT","GATGAAAT","TATGAAAT","ACTGAAAT","CCTGAAAT","GCTGAAAT","TCTGAAAT",
+ "AGTGAAAT","CGTGAAAT","GGTGAAAT","TGTGAAAT","ATTGAAAT","CTTGAAAT","GTTGAAAT","TTTGAAAT",
+ "AAATAAAT","CAATAAAT","GAATAAAT","TAATAAAT","ACATAAAT","CCATAAAT","GCATAAAT","TCATAAAT",
+ "AGATAAAT","CGATAAAT","GGATAAAT","TGATAAAT","ATATAAAT","CTATAAAT","GTATAAAT","TTATAAAT",
+ "AACTAAAT","CACTAAAT","GACTAAAT","TACTAAAT","ACCTAAAT","CCCTAAAT","GCCTAAAT","TCCTAAAT",
+ "AGCTAAAT","CGCTAAAT","GGCTAAAT","TGCTAAAT","ATCTAAAT","CTCTAAAT","GTCTAAAT","TTCTAAAT",
+ "AAGTAAAT","CAGTAAAT","GAGTAAAT","TAGTAAAT","ACGTAAAT","CCGTAAAT","GCGTAAAT","TCGTAAAT",
+ "AGGTAAAT","CGGTAAAT","GGGTAAAT","TGGTAAAT","ATGTAAAT","CTGTAAAT","GTGTAAAT","TTGTAAAT",
+ "AATTAAAT","CATTAAAT","GATTAAAT","TATTAAAT","ACTTAAAT","CCTTAAAT","GCTTAAAT","TCTTAAAT",
+ "AGTTAAAT","CGTTAAAT","GGTTAAAT","TGTTAAAT","ATTTAAAT","CTTTAAAT","GTTTAAAT","TTTTAAAT",
+ "AAAACAAT","CAAACAAT","GAAACAAT","TAAACAAT","ACAACAAT","CCAACAAT","GCAACAAT","TCAACAAT",
+ "AGAACAAT","CGAACAAT","GGAACAAT","TGAACAAT","ATAACAAT","CTAACAAT","GTAACAAT","TTAACAAT",
+ "AACACAAT","CACACAAT","GACACAAT","TACACAAT","ACCACAAT","CCCACAAT","GCCACAAT","TCCACAAT",
+ "AGCACAAT","CGCACAAT","GGCACAAT","TGCACAAT","ATCACAAT","CTCACAAT","GTCACAAT","TTCACAAT",
+ "AAGACAAT","CAGACAAT","GAGACAAT","TAGACAAT","ACGACAAT","CCGACAAT","GCGACAAT","TCGACAAT",
+ "AGGACAAT","CGGACAAT","GGGACAAT","TGGACAAT","ATGACAAT","CTGACAAT","GTGACAAT","TTGACAAT",
+ "AATACAAT","CATACAAT","GATACAAT","TATACAAT","ACTACAAT","CCTACAAT","GCTACAAT","TCTACAAT",
+ "AGTACAAT","CGTACAAT","GGTACAAT","TGTACAAT","ATTACAAT","CTTACAAT","GTTACAAT","TTTACAAT",
+ "AAACCAAT","CAACCAAT","GAACCAAT","TAACCAAT","ACACCAAT","CCACCAAT","GCACCAAT","TCACCAAT",
+ "AGACCAAT","CGACCAAT","GGACCAAT","TGACCAAT","ATACCAAT","CTACCAAT","GTACCAAT","TTACCAAT",
+ "AACCCAAT","CACCCAAT","GACCCAAT","TACCCAAT","ACCCCAAT","CCCCCAAT","GCCCCAAT","TCCCCAAT",
+ "AGCCCAAT","CGCCCAAT","GGCCCAAT","TGCCCAAT","ATCCCAAT","CTCCCAAT","GTCCCAAT","TTCCCAAT",
+ "AAGCCAAT","CAGCCAAT","GAGCCAAT","TAGCCAAT","ACGCCAAT","CCGCCAAT","GCGCCAAT","TCGCCAAT",
+ "AGGCCAAT","CGGCCAAT","GGGCCAAT","TGGCCAAT","ATGCCAAT","CTGCCAAT","GTGCCAAT","TTGCCAAT",
+ "AATCCAAT","CATCCAAT","GATCCAAT","TATCCAAT","ACTCCAAT","CCTCCAAT","GCTCCAAT","TCTCCAAT",
+ "AGTCCAAT","CGTCCAAT","GGTCCAAT","TGTCCAAT","ATTCCAAT","CTTCCAAT","GTTCCAAT","TTTCCAAT",
+ "AAAGCAAT","CAAGCAAT","GAAGCAAT","TAAGCAAT","ACAGCAAT","CCAGCAAT","GCAGCAAT","TCAGCAAT",
+ "AGAGCAAT","CGAGCAAT","GGAGCAAT","TGAGCAAT","ATAGCAAT","CTAGCAAT","GTAGCAAT","TTAGCAAT",
+ "AACGCAAT","CACGCAAT","GACGCAAT","TACGCAAT","ACCGCAAT","CCCGCAAT","GCCGCAAT","TCCGCAAT",
+ "AGCGCAAT","CGCGCAAT","GGCGCAAT","TGCGCAAT","ATCGCAAT","CTCGCAAT","GTCGCAAT","TTCGCAAT",
+ "AAGGCAAT","CAGGCAAT","GAGGCAAT","TAGGCAAT","ACGGCAAT","CCGGCAAT","GCGGCAAT","TCGGCAAT",
+ "AGGGCAAT","CGGGCAAT","GGGGCAAT","TGGGCAAT","ATGGCAAT","CTGGCAAT","GTGGCAAT","TTGGCAAT",
+ "AATGCAAT","CATGCAAT","GATGCAAT","TATGCAAT","ACTGCAAT","CCTGCAAT","GCTGCAAT","TCTGCAAT",
+ "AGTGCAAT","CGTGCAAT","GGTGCAAT","TGTGCAAT","ATTGCAAT","CTTGCAAT","GTTGCAAT","TTTGCAAT",
+ "AAATCAAT","CAATCAAT","GAATCAAT","TAATCAAT","ACATCAAT","CCATCAAT","GCATCAAT","TCATCAAT",
+ "AGATCAAT","CGATCAAT","GGATCAAT","TGATCAAT","ATATCAAT","CTATCAAT","GTATCAAT","TTATCAAT",
+ "AACTCAAT","CACTCAAT","GACTCAAT","TACTCAAT","ACCTCAAT","CCCTCAAT","GCCTCAAT","TCCTCAAT",
+ "AGCTCAAT","CGCTCAAT","GGCTCAAT","TGCTCAAT","ATCTCAAT","CTCTCAAT","GTCTCAAT","TTCTCAAT",
+ "AAGTCAAT","CAGTCAAT","GAGTCAAT","TAGTCAAT","ACGTCAAT","CCGTCAAT","GCGTCAAT","TCGTCAAT",
+ "AGGTCAAT","CGGTCAAT","GGGTCAAT","TGGTCAAT","ATGTCAAT","CTGTCAAT","GTGTCAAT","TTGTCAAT",
+ "AATTCAAT","CATTCAAT","GATTCAAT","TATTCAAT","ACTTCAAT","CCTTCAAT","GCTTCAAT","TCTTCAAT",
+ "AGTTCAAT","CGTTCAAT","GGTTCAAT","TGTTCAAT","ATTTCAAT","CTTTCAAT","GTTTCAAT","TTTTCAAT",
+ "AAAAGAAT","CAAAGAAT","GAAAGAAT","TAAAGAAT","ACAAGAAT","CCAAGAAT","GCAAGAAT","TCAAGAAT",
+ "AGAAGAAT","CGAAGAAT","GGAAGAAT","TGAAGAAT","ATAAGAAT","CTAAGAAT","GTAAGAAT","TTAAGAAT",
+ "AACAGAAT","CACAGAAT","GACAGAAT","TACAGAAT","ACCAGAAT","CCCAGAAT","GCCAGAAT","TCCAGAAT",
+ "AGCAGAAT","CGCAGAAT","GGCAGAAT","TGCAGAAT","ATCAGAAT","CTCAGAAT","GTCAGAAT","TTCAGAAT",
+ "AAGAGAAT","CAGAGAAT","GAGAGAAT","TAGAGAAT","ACGAGAAT","CCGAGAAT","GCGAGAAT","TCGAGAAT",
+ "AGGAGAAT","CGGAGAAT","GGGAGAAT","TGGAGAAT","ATGAGAAT","CTGAGAAT","GTGAGAAT","TTGAGAAT",
+ "AATAGAAT","CATAGAAT","GATAGAAT","TATAGAAT","ACTAGAAT","CCTAGAAT","GCTAGAAT","TCTAGAAT",
+ "AGTAGAAT","CGTAGAAT","GGTAGAAT","TGTAGAAT","ATTAGAAT","CTTAGAAT","GTTAGAAT","TTTAGAAT",
+ "AAACGAAT","CAACGAAT","GAACGAAT","TAACGAAT","ACACGAAT","CCACGAAT","GCACGAAT","TCACGAAT",
+ "AGACGAAT","CGACGAAT","GGACGAAT","TGACGAAT","ATACGAAT","CTACGAAT","GTACGAAT","TTACGAAT",
+ "AACCGAAT","CACCGAAT","GACCGAAT","TACCGAAT","ACCCGAAT","CCCCGAAT","GCCCGAAT","TCCCGAAT",
+ "AGCCGAAT","CGCCGAAT","GGCCGAAT","TGCCGAAT","ATCCGAAT","CTCCGAAT","GTCCGAAT","TTCCGAAT",
+ "AAGCGAAT","CAGCGAAT","GAGCGAAT","TAGCGAAT","ACGCGAAT","CCGCGAAT","GCGCGAAT","TCGCGAAT",
+ "AGGCGAAT","CGGCGAAT","GGGCGAAT","TGGCGAAT","ATGCGAAT","CTGCGAAT","GTGCGAAT","TTGCGAAT",
+ "AATCGAAT","CATCGAAT","GATCGAAT","TATCGAAT","ACTCGAAT","CCTCGAAT","GCTCGAAT","TCTCGAAT",
+ "AGTCGAAT","CGTCGAAT","GGTCGAAT","TGTCGAAT","ATTCGAAT","CTTCGAAT","GTTCGAAT","TTTCGAAT",
+ "AAAGGAAT","CAAGGAAT","GAAGGAAT","TAAGGAAT","ACAGGAAT","CCAGGAAT","GCAGGAAT","TCAGGAAT",
+ "AGAGGAAT","CGAGGAAT","GGAGGAAT","TGAGGAAT","ATAGGAAT","CTAGGAAT","GTAGGAAT","TTAGGAAT",
+ "AACGGAAT","CACGGAAT","GACGGAAT","TACGGAAT","ACCGGAAT","CCCGGAAT","GCCGGAAT","TCCGGAAT",
+ "AGCGGAAT","CGCGGAAT","GGCGGAAT","TGCGGAAT","ATCGGAAT","CTCGGAAT","GTCGGAAT","TTCGGAAT",
+ "AAGGGAAT","CAGGGAAT","GAGGGAAT","TAGGGAAT","ACGGGAAT","CCGGGAAT","GCGGGAAT","TCGGGAAT",
+ "AGGGGAAT","CGGGGAAT","GGGGGAAT","TGGGGAAT","ATGGGAAT","CTGGGAAT","GTGGGAAT","TTGGGAAT",
+ "AATGGAAT","CATGGAAT","GATGGAAT","TATGGAAT","ACTGGAAT","CCTGGAAT","GCTGGAAT","TCTGGAAT",
+ "AGTGGAAT","CGTGGAAT","GGTGGAAT","TGTGGAAT","ATTGGAAT","CTTGGAAT","GTTGGAAT","TTTGGAAT",
+ "AAATGAAT","CAATGAAT","GAATGAAT","TAATGAAT","ACATGAAT","CCATGAAT","GCATGAAT","TCATGAAT",
+ "AGATGAAT","CGATGAAT","GGATGAAT","TGATGAAT","ATATGAAT","CTATGAAT","GTATGAAT","TTATGAAT",
+ "AACTGAAT","CACTGAAT","GACTGAAT","TACTGAAT","ACCTGAAT","CCCTGAAT","GCCTGAAT","TCCTGAAT",
+ "AGCTGAAT","CGCTGAAT","GGCTGAAT","TGCTGAAT","ATCTGAAT","CTCTGAAT","GTCTGAAT","TTCTGAAT",
+ "AAGTGAAT","CAGTGAAT","GAGTGAAT","TAGTGAAT","ACGTGAAT","CCGTGAAT","GCGTGAAT","TCGTGAAT",
+ "AGGTGAAT","CGGTGAAT","GGGTGAAT","TGGTGAAT","ATGTGAAT","CTGTGAAT","GTGTGAAT","TTGTGAAT",
+ "AATTGAAT","CATTGAAT","GATTGAAT","TATTGAAT","ACTTGAAT","CCTTGAAT","GCTTGAAT","TCTTGAAT",
+ "AGTTGAAT","CGTTGAAT","GGTTGAAT","TGTTGAAT","ATTTGAAT","CTTTGAAT","GTTTGAAT","TTTTGAAT",
+ "AAAATAAT","CAAATAAT","GAAATAAT","TAAATAAT","ACAATAAT","CCAATAAT","GCAATAAT","TCAATAAT",
+ "AGAATAAT","CGAATAAT","GGAATAAT","TGAATAAT","ATAATAAT","CTAATAAT","GTAATAAT","TTAATAAT",
+ "AACATAAT","CACATAAT","GACATAAT","TACATAAT","ACCATAAT","CCCATAAT","GCCATAAT","TCCATAAT",
+ "AGCATAAT","CGCATAAT","GGCATAAT","TGCATAAT","ATCATAAT","CTCATAAT","GTCATAAT","TTCATAAT",
+ "AAGATAAT","CAGATAAT","GAGATAAT","TAGATAAT","ACGATAAT","CCGATAAT","GCGATAAT","TCGATAAT",
+ "AGGATAAT","CGGATAAT","GGGATAAT","TGGATAAT","ATGATAAT","CTGATAAT","GTGATAAT","TTGATAAT",
+ "AATATAAT","CATATAAT","GATATAAT","TATATAAT","ACTATAAT","CCTATAAT","GCTATAAT","TCTATAAT",
+ "AGTATAAT","CGTATAAT","GGTATAAT","TGTATAAT","ATTATAAT","CTTATAAT","GTTATAAT","TTTATAAT",
+ "AAACTAAT","CAACTAAT","GAACTAAT","TAACTAAT","ACACTAAT","CCACTAAT","GCACTAAT","TCACTAAT",
+ "AGACTAAT","CGACTAAT","GGACTAAT","TGACTAAT","ATACTAAT","CTACTAAT","GTACTAAT","TTACTAAT",
+ "AACCTAAT","CACCTAAT","GACCTAAT","TACCTAAT","ACCCTAAT","CCCCTAAT","GCCCTAAT","TCCCTAAT",
+ "AGCCTAAT","CGCCTAAT","GGCCTAAT","TGCCTAAT","ATCCTAAT","CTCCTAAT","GTCCTAAT","TTCCTAAT",
+ "AAGCTAAT","CAGCTAAT","GAGCTAAT","TAGCTAAT","ACGCTAAT","CCGCTAAT","GCGCTAAT","TCGCTAAT",
+ "AGGCTAAT","CGGCTAAT","GGGCTAAT","TGGCTAAT","ATGCTAAT","CTGCTAAT","GTGCTAAT","TTGCTAAT",
+ "AATCTAAT","CATCTAAT","GATCTAAT","TATCTAAT","ACTCTAAT","CCTCTAAT","GCTCTAAT","TCTCTAAT",
+ "AGTCTAAT","CGTCTAAT","GGTCTAAT","TGTCTAAT","ATTCTAAT","CTTCTAAT","GTTCTAAT","TTTCTAAT",
+ "AAAGTAAT","CAAGTAAT","GAAGTAAT","TAAGTAAT","ACAGTAAT","CCAGTAAT","GCAGTAAT","TCAGTAAT",
+ "AGAGTAAT","CGAGTAAT","GGAGTAAT","TGAGTAAT","ATAGTAAT","CTAGTAAT","GTAGTAAT","TTAGTAAT",
+ "AACGTAAT","CACGTAAT","GACGTAAT","TACGTAAT","ACCGTAAT","CCCGTAAT","GCCGTAAT","TCCGTAAT",
+ "AGCGTAAT","CGCGTAAT","GGCGTAAT","TGCGTAAT","ATCGTAAT","CTCGTAAT","GTCGTAAT","TTCGTAAT",
+ "AAGGTAAT","CAGGTAAT","GAGGTAAT","TAGGTAAT","ACGGTAAT","CCGGTAAT","GCGGTAAT","TCGGTAAT",
+ "AGGGTAAT","CGGGTAAT","GGGGTAAT","TGGGTAAT","ATGGTAAT","CTGGTAAT","GTGGTAAT","TTGGTAAT",
+ "AATGTAAT","CATGTAAT","GATGTAAT","TATGTAAT","ACTGTAAT","CCTGTAAT","GCTGTAAT","TCTGTAAT",
+ "AGTGTAAT","CGTGTAAT","GGTGTAAT","TGTGTAAT","ATTGTAAT","CTTGTAAT","GTTGTAAT","TTTGTAAT",
+ "AAATTAAT","CAATTAAT","GAATTAAT","TAATTAAT","ACATTAAT","CCATTAAT","GCATTAAT","TCATTAAT",
+ "AGATTAAT","CGATTAAT","GGATTAAT","TGATTAAT","ATATTAAT","CTATTAAT","GTATTAAT","TTATTAAT",
+ "AACTTAAT","CACTTAAT","GACTTAAT","TACTTAAT","ACCTTAAT","CCCTTAAT","GCCTTAAT","TCCTTAAT",
+ "AGCTTAAT","CGCTTAAT","GGCTTAAT","TGCTTAAT","ATCTTAAT","CTCTTAAT","GTCTTAAT","TTCTTAAT",
+ "AAGTTAAT","CAGTTAAT","GAGTTAAT","TAGTTAAT","ACGTTAAT","CCGTTAAT","GCGTTAAT","TCGTTAAT",
+ "AGGTTAAT","CGGTTAAT","GGGTTAAT","TGGTTAAT","ATGTTAAT","CTGTTAAT","GTGTTAAT","TTGTTAAT",
+ "AATTTAAT","CATTTAAT","GATTTAAT","TATTTAAT","ACTTTAAT","CCTTTAAT","GCTTTAAT","TCTTTAAT",
+ "AGTTTAAT","CGTTTAAT","GGTTTAAT","TGTTTAAT","ATTTTAAT","CTTTTAAT","GTTTTAAT","TTTTTAAT",
+ "AAAAACAT","CAAAACAT","GAAAACAT","TAAAACAT","ACAAACAT","CCAAACAT","GCAAACAT","TCAAACAT",
+ "AGAAACAT","CGAAACAT","GGAAACAT","TGAAACAT","ATAAACAT","CTAAACAT","GTAAACAT","TTAAACAT",
+ "AACAACAT","CACAACAT","GACAACAT","TACAACAT","ACCAACAT","CCCAACAT","GCCAACAT","TCCAACAT",
+ "AGCAACAT","CGCAACAT","GGCAACAT","TGCAACAT","ATCAACAT","CTCAACAT","GTCAACAT","TTCAACAT",
+ "AAGAACAT","CAGAACAT","GAGAACAT","TAGAACAT","ACGAACAT","CCGAACAT","GCGAACAT","TCGAACAT",
+ "AGGAACAT","CGGAACAT","GGGAACAT","TGGAACAT","ATGAACAT","CTGAACAT","GTGAACAT","TTGAACAT",
+ "AATAACAT","CATAACAT","GATAACAT","TATAACAT","ACTAACAT","CCTAACAT","GCTAACAT","TCTAACAT",
+ "AGTAACAT","CGTAACAT","GGTAACAT","TGTAACAT","ATTAACAT","CTTAACAT","GTTAACAT","TTTAACAT",
+ "AAACACAT","CAACACAT","GAACACAT","TAACACAT","ACACACAT","CCACACAT","GCACACAT","TCACACAT",
+ "AGACACAT","CGACACAT","GGACACAT","TGACACAT","ATACACAT","CTACACAT","GTACACAT","TTACACAT",
+ "AACCACAT","CACCACAT","GACCACAT","TACCACAT","ACCCACAT","CCCCACAT","GCCCACAT","TCCCACAT",
+ "AGCCACAT","CGCCACAT","GGCCACAT","TGCCACAT","ATCCACAT","CTCCACAT","GTCCACAT","TTCCACAT",
+ "AAGCACAT","CAGCACAT","GAGCACAT","TAGCACAT","ACGCACAT","CCGCACAT","GCGCACAT","TCGCACAT",
+ "AGGCACAT","CGGCACAT","GGGCACAT","TGGCACAT","ATGCACAT","CTGCACAT","GTGCACAT","TTGCACAT",
+ "AATCACAT","CATCACAT","GATCACAT","TATCACAT","ACTCACAT","CCTCACAT","GCTCACAT","TCTCACAT",
+ "AGTCACAT","CGTCACAT","GGTCACAT","TGTCACAT","ATTCACAT","CTTCACAT","GTTCACAT","TTTCACAT",
+ "AAAGACAT","CAAGACAT","GAAGACAT","TAAGACAT","ACAGACAT","CCAGACAT","GCAGACAT","TCAGACAT",
+ "AGAGACAT","CGAGACAT","GGAGACAT","TGAGACAT","ATAGACAT","CTAGACAT","GTAGACAT","TTAGACAT",
+ "AACGACAT","CACGACAT","GACGACAT","TACGACAT","ACCGACAT","CCCGACAT","GCCGACAT","TCCGACAT",
+ "AGCGACAT","CGCGACAT","GGCGACAT","TGCGACAT","ATCGACAT","CTCGACAT","GTCGACAT","TTCGACAT",
+ "AAGGACAT","CAGGACAT","GAGGACAT","TAGGACAT","ACGGACAT","CCGGACAT","GCGGACAT","TCGGACAT",
+ "AGGGACAT","CGGGACAT","GGGGACAT","TGGGACAT","ATGGACAT","CTGGACAT","GTGGACAT","TTGGACAT",
+ "AATGACAT","CATGACAT","GATGACAT","TATGACAT","ACTGACAT","CCTGACAT","GCTGACAT","TCTGACAT",
+ "AGTGACAT","CGTGACAT","GGTGACAT","TGTGACAT","ATTGACAT","CTTGACAT","GTTGACAT","TTTGACAT",
+ "AAATACAT","CAATACAT","GAATACAT","TAATACAT","ACATACAT","CCATACAT","GCATACAT","TCATACAT",
+ "AGATACAT","CGATACAT","GGATACAT","TGATACAT","ATATACAT","CTATACAT","GTATACAT","TTATACAT",
+ "AACTACAT","CACTACAT","GACTACAT","TACTACAT","ACCTACAT","CCCTACAT","GCCTACAT","TCCTACAT",
+ "AGCTACAT","CGCTACAT","GGCTACAT","TGCTACAT","ATCTACAT","CTCTACAT","GTCTACAT","TTCTACAT",
+ "AAGTACAT","CAGTACAT","GAGTACAT","TAGTACAT","ACGTACAT","CCGTACAT","GCGTACAT","TCGTACAT",
+ "AGGTACAT","CGGTACAT","GGGTACAT","TGGTACAT","ATGTACAT","CTGTACAT","GTGTACAT","TTGTACAT",
+ "AATTACAT","CATTACAT","GATTACAT","TATTACAT","ACTTACAT","CCTTACAT","GCTTACAT","TCTTACAT",
+ "AGTTACAT","CGTTACAT","GGTTACAT","TGTTACAT","ATTTACAT","CTTTACAT","GTTTACAT","TTTTACAT",
+ "AAAACCAT","CAAACCAT","GAAACCAT","TAAACCAT","ACAACCAT","CCAACCAT","GCAACCAT","TCAACCAT",
+ "AGAACCAT","CGAACCAT","GGAACCAT","TGAACCAT","ATAACCAT","CTAACCAT","GTAACCAT","TTAACCAT",
+ "AACACCAT","CACACCAT","GACACCAT","TACACCAT","ACCACCAT","CCCACCAT","GCCACCAT","TCCACCAT",
+ "AGCACCAT","CGCACCAT","GGCACCAT","TGCACCAT","ATCACCAT","CTCACCAT","GTCACCAT","TTCACCAT",
+ "AAGACCAT","CAGACCAT","GAGACCAT","TAGACCAT","ACGACCAT","CCGACCAT","GCGACCAT","TCGACCAT",
+ "AGGACCAT","CGGACCAT","GGGACCAT","TGGACCAT","ATGACCAT","CTGACCAT","GTGACCAT","TTGACCAT",
+ "AATACCAT","CATACCAT","GATACCAT","TATACCAT","ACTACCAT","CCTACCAT","GCTACCAT","TCTACCAT",
+ "AGTACCAT","CGTACCAT","GGTACCAT","TGTACCAT","ATTACCAT","CTTACCAT","GTTACCAT","TTTACCAT",
+ "AAACCCAT","CAACCCAT","GAACCCAT","TAACCCAT","ACACCCAT","CCACCCAT","GCACCCAT","TCACCCAT",
+ "AGACCCAT","CGACCCAT","GGACCCAT","TGACCCAT","ATACCCAT","CTACCCAT","GTACCCAT","TTACCCAT",
+ "AACCCCAT","CACCCCAT","GACCCCAT","TACCCCAT","ACCCCCAT","CCCCCCAT","GCCCCCAT","TCCCCCAT",
+ "AGCCCCAT","CGCCCCAT","GGCCCCAT","TGCCCCAT","ATCCCCAT","CTCCCCAT","GTCCCCAT","TTCCCCAT",
+ "AAGCCCAT","CAGCCCAT","GAGCCCAT","TAGCCCAT","ACGCCCAT","CCGCCCAT","GCGCCCAT","TCGCCCAT",
+ "AGGCCCAT","CGGCCCAT","GGGCCCAT","TGGCCCAT","ATGCCCAT","CTGCCCAT","GTGCCCAT","TTGCCCAT",
+ "AATCCCAT","CATCCCAT","GATCCCAT","TATCCCAT","ACTCCCAT","CCTCCCAT","GCTCCCAT","TCTCCCAT",
+ "AGTCCCAT","CGTCCCAT","GGTCCCAT","TGTCCCAT","ATTCCCAT","CTTCCCAT","GTTCCCAT","TTTCCCAT",
+ "AAAGCCAT","CAAGCCAT","GAAGCCAT","TAAGCCAT","ACAGCCAT","CCAGCCAT","GCAGCCAT","TCAGCCAT",
+ "AGAGCCAT","CGAGCCAT","GGAGCCAT","TGAGCCAT","ATAGCCAT","CTAGCCAT","GTAGCCAT","TTAGCCAT",
+ "AACGCCAT","CACGCCAT","GACGCCAT","TACGCCAT","ACCGCCAT","CCCGCCAT","GCCGCCAT","TCCGCCAT",
+ "AGCGCCAT","CGCGCCAT","GGCGCCAT","TGCGCCAT","ATCGCCAT","CTCGCCAT","GTCGCCAT","TTCGCCAT",
+ "AAGGCCAT","CAGGCCAT","GAGGCCAT","TAGGCCAT","ACGGCCAT","CCGGCCAT","GCGGCCAT","TCGGCCAT",
+ "AGGGCCAT","CGGGCCAT","GGGGCCAT","TGGGCCAT","ATGGCCAT","CTGGCCAT","GTGGCCAT","TTGGCCAT",
+ "AATGCCAT","CATGCCAT","GATGCCAT","TATGCCAT","ACTGCCAT","CCTGCCAT","GCTGCCAT","TCTGCCAT",
+ "AGTGCCAT","CGTGCCAT","GGTGCCAT","TGTGCCAT","ATTGCCAT","CTTGCCAT","GTTGCCAT","TTTGCCAT",
+ "AAATCCAT","CAATCCAT","GAATCCAT","TAATCCAT","ACATCCAT","CCATCCAT","GCATCCAT","TCATCCAT",
+ "AGATCCAT","CGATCCAT","GGATCCAT","TGATCCAT","ATATCCAT","CTATCCAT","GTATCCAT","TTATCCAT",
+ "AACTCCAT","CACTCCAT","GACTCCAT","TACTCCAT","ACCTCCAT","CCCTCCAT","GCCTCCAT","TCCTCCAT",
+ "AGCTCCAT","CGCTCCAT","GGCTCCAT","TGCTCCAT","ATCTCCAT","CTCTCCAT","GTCTCCAT","TTCTCCAT",
+ "AAGTCCAT","CAGTCCAT","GAGTCCAT","TAGTCCAT","ACGTCCAT","CCGTCCAT","GCGTCCAT","TCGTCCAT",
+ "AGGTCCAT","CGGTCCAT","GGGTCCAT","TGGTCCAT","ATGTCCAT","CTGTCCAT","GTGTCCAT","TTGTCCAT",
+ "AATTCCAT","CATTCCAT","GATTCCAT","TATTCCAT","ACTTCCAT","CCTTCCAT","GCTTCCAT","TCTTCCAT",
+ "AGTTCCAT","CGTTCCAT","GGTTCCAT","TGTTCCAT","ATTTCCAT","CTTTCCAT","GTTTCCAT","TTTTCCAT",
+ "AAAAGCAT","CAAAGCAT","GAAAGCAT","TAAAGCAT","ACAAGCAT","CCAAGCAT","GCAAGCAT","TCAAGCAT",
+ "AGAAGCAT","CGAAGCAT","GGAAGCAT","TGAAGCAT","ATAAGCAT","CTAAGCAT","GTAAGCAT","TTAAGCAT",
+ "AACAGCAT","CACAGCAT","GACAGCAT","TACAGCAT","ACCAGCAT","CCCAGCAT","GCCAGCAT","TCCAGCAT",
+ "AGCAGCAT","CGCAGCAT","GGCAGCAT","TGCAGCAT","ATCAGCAT","CTCAGCAT","GTCAGCAT","TTCAGCAT",
+ "AAGAGCAT","CAGAGCAT","GAGAGCAT","TAGAGCAT","ACGAGCAT","CCGAGCAT","GCGAGCAT","TCGAGCAT",
+ "AGGAGCAT","CGGAGCAT","GGGAGCAT","TGGAGCAT","ATGAGCAT","CTGAGCAT","GTGAGCAT","TTGAGCAT",
+ "AATAGCAT","CATAGCAT","GATAGCAT","TATAGCAT","ACTAGCAT","CCTAGCAT","GCTAGCAT","TCTAGCAT",
+ "AGTAGCAT","CGTAGCAT","GGTAGCAT","TGTAGCAT","ATTAGCAT","CTTAGCAT","GTTAGCAT","TTTAGCAT",
+ "AAACGCAT","CAACGCAT","GAACGCAT","TAACGCAT","ACACGCAT","CCACGCAT","GCACGCAT","TCACGCAT",
+ "AGACGCAT","CGACGCAT","GGACGCAT","TGACGCAT","ATACGCAT","CTACGCAT","GTACGCAT","TTACGCAT",
+ "AACCGCAT","CACCGCAT","GACCGCAT","TACCGCAT","ACCCGCAT","CCCCGCAT","GCCCGCAT","TCCCGCAT",
+ "AGCCGCAT","CGCCGCAT","GGCCGCAT","TGCCGCAT","ATCCGCAT","CTCCGCAT","GTCCGCAT","TTCCGCAT",
+ "AAGCGCAT","CAGCGCAT","GAGCGCAT","TAGCGCAT","ACGCGCAT","CCGCGCAT","GCGCGCAT","TCGCGCAT",
+ "AGGCGCAT","CGGCGCAT","GGGCGCAT","TGGCGCAT","ATGCGCAT","CTGCGCAT","GTGCGCAT","TTGCGCAT",
+ "AATCGCAT","CATCGCAT","GATCGCAT","TATCGCAT","ACTCGCAT","CCTCGCAT","GCTCGCAT","TCTCGCAT",
+ "AGTCGCAT","CGTCGCAT","GGTCGCAT","TGTCGCAT","ATTCGCAT","CTTCGCAT","GTTCGCAT","TTTCGCAT",
+ "AAAGGCAT","CAAGGCAT","GAAGGCAT","TAAGGCAT","ACAGGCAT","CCAGGCAT","GCAGGCAT","TCAGGCAT",
+ "AGAGGCAT","CGAGGCAT","GGAGGCAT","TGAGGCAT","ATAGGCAT","CTAGGCAT","GTAGGCAT","TTAGGCAT",
+ "AACGGCAT","CACGGCAT","GACGGCAT","TACGGCAT","ACCGGCAT","CCCGGCAT","GCCGGCAT","TCCGGCAT",
+ "AGCGGCAT","CGCGGCAT","GGCGGCAT","TGCGGCAT","ATCGGCAT","CTCGGCAT","GTCGGCAT","TTCGGCAT",
+ "AAGGGCAT","CAGGGCAT","GAGGGCAT","TAGGGCAT","ACGGGCAT","CCGGGCAT","GCGGGCAT","TCGGGCAT",
+ "AGGGGCAT","CGGGGCAT","GGGGGCAT","TGGGGCAT","ATGGGCAT","CTGGGCAT","GTGGGCAT","TTGGGCAT",
+ "AATGGCAT","CATGGCAT","GATGGCAT","TATGGCAT","ACTGGCAT","CCTGGCAT","GCTGGCAT","TCTGGCAT",
+ "AGTGGCAT","CGTGGCAT","GGTGGCAT","TGTGGCAT","ATTGGCAT","CTTGGCAT","GTTGGCAT","TTTGGCAT",
+ "AAATGCAT","CAATGCAT","GAATGCAT","TAATGCAT","ACATGCAT","CCATGCAT","GCATGCAT","TCATGCAT",
+ "AGATGCAT","CGATGCAT","GGATGCAT","TGATGCAT","ATATGCAT","CTATGCAT","GTATGCAT","TTATGCAT",
+ "AACTGCAT","CACTGCAT","GACTGCAT","TACTGCAT","ACCTGCAT","CCCTGCAT","GCCTGCAT","TCCTGCAT",
+ "AGCTGCAT","CGCTGCAT","GGCTGCAT","TGCTGCAT","ATCTGCAT","CTCTGCAT","GTCTGCAT","TTCTGCAT",
+ "AAGTGCAT","CAGTGCAT","GAGTGCAT","TAGTGCAT","ACGTGCAT","CCGTGCAT","GCGTGCAT","TCGTGCAT",
+ "AGGTGCAT","CGGTGCAT","GGGTGCAT","TGGTGCAT","ATGTGCAT","CTGTGCAT","GTGTGCAT","TTGTGCAT",
+ "AATTGCAT","CATTGCAT","GATTGCAT","TATTGCAT","ACTTGCAT","CCTTGCAT","GCTTGCAT","TCTTGCAT",
+ "AGTTGCAT","CGTTGCAT","GGTTGCAT","TGTTGCAT","ATTTGCAT","CTTTGCAT","GTTTGCAT","TTTTGCAT",
+ "AAAATCAT","CAAATCAT","GAAATCAT","TAAATCAT","ACAATCAT","CCAATCAT","GCAATCAT","TCAATCAT",
+ "AGAATCAT","CGAATCAT","GGAATCAT","TGAATCAT","ATAATCAT","CTAATCAT","GTAATCAT","TTAATCAT",
+ "AACATCAT","CACATCAT","GACATCAT","TACATCAT","ACCATCAT","CCCATCAT","GCCATCAT","TCCATCAT",
+ "AGCATCAT","CGCATCAT","GGCATCAT","TGCATCAT","ATCATCAT","CTCATCAT","GTCATCAT","TTCATCAT",
+ "AAGATCAT","CAGATCAT","GAGATCAT","TAGATCAT","ACGATCAT","CCGATCAT","GCGATCAT","TCGATCAT",
+ "AGGATCAT","CGGATCAT","GGGATCAT","TGGATCAT","ATGATCAT","CTGATCAT","GTGATCAT","TTGATCAT",
+ "AATATCAT","CATATCAT","GATATCAT","TATATCAT","ACTATCAT","CCTATCAT","GCTATCAT","TCTATCAT",
+ "AGTATCAT","CGTATCAT","GGTATCAT","TGTATCAT","ATTATCAT","CTTATCAT","GTTATCAT","TTTATCAT",
+ "AAACTCAT","CAACTCAT","GAACTCAT","TAACTCAT","ACACTCAT","CCACTCAT","GCACTCAT","TCACTCAT",
+ "AGACTCAT","CGACTCAT","GGACTCAT","TGACTCAT","ATACTCAT","CTACTCAT","GTACTCAT","TTACTCAT",
+ "AACCTCAT","CACCTCAT","GACCTCAT","TACCTCAT","ACCCTCAT","CCCCTCAT","GCCCTCAT","TCCCTCAT",
+ "AGCCTCAT","CGCCTCAT","GGCCTCAT","TGCCTCAT","ATCCTCAT","CTCCTCAT","GTCCTCAT","TTCCTCAT",
+ "AAGCTCAT","CAGCTCAT","GAGCTCAT","TAGCTCAT","ACGCTCAT","CCGCTCAT","GCGCTCAT","TCGCTCAT",
+ "AGGCTCAT","CGGCTCAT","GGGCTCAT","TGGCTCAT","ATGCTCAT","CTGCTCAT","GTGCTCAT","TTGCTCAT",
+ "AATCTCAT","CATCTCAT","GATCTCAT","TATCTCAT","ACTCTCAT","CCTCTCAT","GCTCTCAT","TCTCTCAT",
+ "AGTCTCAT","CGTCTCAT","GGTCTCAT","TGTCTCAT","ATTCTCAT","CTTCTCAT","GTTCTCAT","TTTCTCAT",
+ "AAAGTCAT","CAAGTCAT","GAAGTCAT","TAAGTCAT","ACAGTCAT","CCAGTCAT","GCAGTCAT","TCAGTCAT",
+ "AGAGTCAT","CGAGTCAT","GGAGTCAT","TGAGTCAT","ATAGTCAT","CTAGTCAT","GTAGTCAT","TTAGTCAT",
+ "AACGTCAT","CACGTCAT","GACGTCAT","TACGTCAT","ACCGTCAT","CCCGTCAT","GCCGTCAT","TCCGTCAT",
+ "AGCGTCAT","CGCGTCAT","GGCGTCAT","TGCGTCAT","ATCGTCAT","CTCGTCAT","GTCGTCAT","TTCGTCAT",
+ "AAGGTCAT","CAGGTCAT","GAGGTCAT","TAGGTCAT","ACGGTCAT","CCGGTCAT","GCGGTCAT","TCGGTCAT",
+ "AGGGTCAT","CGGGTCAT","GGGGTCAT","TGGGTCAT","ATGGTCAT","CTGGTCAT","GTGGTCAT","TTGGTCAT",
+ "AATGTCAT","CATGTCAT","GATGTCAT","TATGTCAT","ACTGTCAT","CCTGTCAT","GCTGTCAT","TCTGTCAT",
+ "AGTGTCAT","CGTGTCAT","GGTGTCAT","TGTGTCAT","ATTGTCAT","CTTGTCAT","GTTGTCAT","TTTGTCAT",
+ "AAATTCAT","CAATTCAT","GAATTCAT","TAATTCAT","ACATTCAT","CCATTCAT","GCATTCAT","TCATTCAT",
+ "AGATTCAT","CGATTCAT","GGATTCAT","TGATTCAT","ATATTCAT","CTATTCAT","GTATTCAT","TTATTCAT",
+ "AACTTCAT","CACTTCAT","GACTTCAT","TACTTCAT","ACCTTCAT","CCCTTCAT","GCCTTCAT","TCCTTCAT",
+ "AGCTTCAT","CGCTTCAT","GGCTTCAT","TGCTTCAT","ATCTTCAT","CTCTTCAT","GTCTTCAT","TTCTTCAT",
+ "AAGTTCAT","CAGTTCAT","GAGTTCAT","TAGTTCAT","ACGTTCAT","CCGTTCAT","GCGTTCAT","TCGTTCAT",
+ "AGGTTCAT","CGGTTCAT","GGGTTCAT","TGGTTCAT","ATGTTCAT","CTGTTCAT","GTGTTCAT","TTGTTCAT",
+ "AATTTCAT","CATTTCAT","GATTTCAT","TATTTCAT","ACTTTCAT","CCTTTCAT","GCTTTCAT","TCTTTCAT",
+ "AGTTTCAT","CGTTTCAT","GGTTTCAT","TGTTTCAT","ATTTTCAT","CTTTTCAT","GTTTTCAT","TTTTTCAT",
+ "AAAAAGAT","CAAAAGAT","GAAAAGAT","TAAAAGAT","ACAAAGAT","CCAAAGAT","GCAAAGAT","TCAAAGAT",
+ "AGAAAGAT","CGAAAGAT","GGAAAGAT","TGAAAGAT","ATAAAGAT","CTAAAGAT","GTAAAGAT","TTAAAGAT",
+ "AACAAGAT","CACAAGAT","GACAAGAT","TACAAGAT","ACCAAGAT","CCCAAGAT","GCCAAGAT","TCCAAGAT",
+ "AGCAAGAT","CGCAAGAT","GGCAAGAT","TGCAAGAT","ATCAAGAT","CTCAAGAT","GTCAAGAT","TTCAAGAT",
+ "AAGAAGAT","CAGAAGAT","GAGAAGAT","TAGAAGAT","ACGAAGAT","CCGAAGAT","GCGAAGAT","TCGAAGAT",
+ "AGGAAGAT","CGGAAGAT","GGGAAGAT","TGGAAGAT","ATGAAGAT","CTGAAGAT","GTGAAGAT","TTGAAGAT",
+ "AATAAGAT","CATAAGAT","GATAAGAT","TATAAGAT","ACTAAGAT","CCTAAGAT","GCTAAGAT","TCTAAGAT",
+ "AGTAAGAT","CGTAAGAT","GGTAAGAT","TGTAAGAT","ATTAAGAT","CTTAAGAT","GTTAAGAT","TTTAAGAT",
+ "AAACAGAT","CAACAGAT","GAACAGAT","TAACAGAT","ACACAGAT","CCACAGAT","GCACAGAT","TCACAGAT",
+ "AGACAGAT","CGACAGAT","GGACAGAT","TGACAGAT","ATACAGAT","CTACAGAT","GTACAGAT","TTACAGAT",
+ "AACCAGAT","CACCAGAT","GACCAGAT","TACCAGAT","ACCCAGAT","CCCCAGAT","GCCCAGAT","TCCCAGAT",
+ "AGCCAGAT","CGCCAGAT","GGCCAGAT","TGCCAGAT","ATCCAGAT","CTCCAGAT","GTCCAGAT","TTCCAGAT",
+ "AAGCAGAT","CAGCAGAT","GAGCAGAT","TAGCAGAT","ACGCAGAT","CCGCAGAT","GCGCAGAT","TCGCAGAT",
+ "AGGCAGAT","CGGCAGAT","GGGCAGAT","TGGCAGAT","ATGCAGAT","CTGCAGAT","GTGCAGAT","TTGCAGAT",
+ "AATCAGAT","CATCAGAT","GATCAGAT","TATCAGAT","ACTCAGAT","CCTCAGAT","GCTCAGAT","TCTCAGAT",
+ "AGTCAGAT","CGTCAGAT","GGTCAGAT","TGTCAGAT","ATTCAGAT","CTTCAGAT","GTTCAGAT","TTTCAGAT",
+ "AAAGAGAT","CAAGAGAT","GAAGAGAT","TAAGAGAT","ACAGAGAT","CCAGAGAT","GCAGAGAT","TCAGAGAT",
+ "AGAGAGAT","CGAGAGAT","GGAGAGAT","TGAGAGAT","ATAGAGAT","CTAGAGAT","GTAGAGAT","TTAGAGAT",
+ "AACGAGAT","CACGAGAT","GACGAGAT","TACGAGAT","ACCGAGAT","CCCGAGAT","GCCGAGAT","TCCGAGAT",
+ "AGCGAGAT","CGCGAGAT","GGCGAGAT","TGCGAGAT","ATCGAGAT","CTCGAGAT","GTCGAGAT","TTCGAGAT",
+ "AAGGAGAT","CAGGAGAT","GAGGAGAT","TAGGAGAT","ACGGAGAT","CCGGAGAT","GCGGAGAT","TCGGAGAT",
+ "AGGGAGAT","CGGGAGAT","GGGGAGAT","TGGGAGAT","ATGGAGAT","CTGGAGAT","GTGGAGAT","TTGGAGAT",
+ "AATGAGAT","CATGAGAT","GATGAGAT","TATGAGAT","ACTGAGAT","CCTGAGAT","GCTGAGAT","TCTGAGAT",
+ "AGTGAGAT","CGTGAGAT","GGTGAGAT","TGTGAGAT","ATTGAGAT","CTTGAGAT","GTTGAGAT","TTTGAGAT",
+ "AAATAGAT","CAATAGAT","GAATAGAT","TAATAGAT","ACATAGAT","CCATAGAT","GCATAGAT","TCATAGAT",
+ "AGATAGAT","CGATAGAT","GGATAGAT","TGATAGAT","ATATAGAT","CTATAGAT","GTATAGAT","TTATAGAT",
+ "AACTAGAT","CACTAGAT","GACTAGAT","TACTAGAT","ACCTAGAT","CCCTAGAT","GCCTAGAT","TCCTAGAT",
+ "AGCTAGAT","CGCTAGAT","GGCTAGAT","TGCTAGAT","ATCTAGAT","CTCTAGAT","GTCTAGAT","TTCTAGAT",
+ "AAGTAGAT","CAGTAGAT","GAGTAGAT","TAGTAGAT","ACGTAGAT","CCGTAGAT","GCGTAGAT","TCGTAGAT",
+ "AGGTAGAT","CGGTAGAT","GGGTAGAT","TGGTAGAT","ATGTAGAT","CTGTAGAT","GTGTAGAT","TTGTAGAT",
+ "AATTAGAT","CATTAGAT","GATTAGAT","TATTAGAT","ACTTAGAT","CCTTAGAT","GCTTAGAT","TCTTAGAT",
+ "AGTTAGAT","CGTTAGAT","GGTTAGAT","TGTTAGAT","ATTTAGAT","CTTTAGAT","GTTTAGAT","TTTTAGAT",
+ "AAAACGAT","CAAACGAT","GAAACGAT","TAAACGAT","ACAACGAT","CCAACGAT","GCAACGAT","TCAACGAT",
+ "AGAACGAT","CGAACGAT","GGAACGAT","TGAACGAT","ATAACGAT","CTAACGAT","GTAACGAT","TTAACGAT",
+ "AACACGAT","CACACGAT","GACACGAT","TACACGAT","ACCACGAT","CCCACGAT","GCCACGAT","TCCACGAT",
+ "AGCACGAT","CGCACGAT","GGCACGAT","TGCACGAT","ATCACGAT","CTCACGAT","GTCACGAT","TTCACGAT",
+ "AAGACGAT","CAGACGAT","GAGACGAT","TAGACGAT","ACGACGAT","CCGACGAT","GCGACGAT","TCGACGAT",
+ "AGGACGAT","CGGACGAT","GGGACGAT","TGGACGAT","ATGACGAT","CTGACGAT","GTGACGAT","TTGACGAT",
+ "AATACGAT","CATACGAT","GATACGAT","TATACGAT","ACTACGAT","CCTACGAT","GCTACGAT","TCTACGAT",
+ "AGTACGAT","CGTACGAT","GGTACGAT","TGTACGAT","ATTACGAT","CTTACGAT","GTTACGAT","TTTACGAT",
+ "AAACCGAT","CAACCGAT","GAACCGAT","TAACCGAT","ACACCGAT","CCACCGAT","GCACCGAT","TCACCGAT",
+ "AGACCGAT","CGACCGAT","GGACCGAT","TGACCGAT","ATACCGAT","CTACCGAT","GTACCGAT","TTACCGAT",
+ "AACCCGAT","CACCCGAT","GACCCGAT","TACCCGAT","ACCCCGAT","CCCCCGAT","GCCCCGAT","TCCCCGAT",
+ "AGCCCGAT","CGCCCGAT","GGCCCGAT","TGCCCGAT","ATCCCGAT","CTCCCGAT","GTCCCGAT","TTCCCGAT",
+ "AAGCCGAT","CAGCCGAT","GAGCCGAT","TAGCCGAT","ACGCCGAT","CCGCCGAT","GCGCCGAT","TCGCCGAT",
+ "AGGCCGAT","CGGCCGAT","GGGCCGAT","TGGCCGAT","ATGCCGAT","CTGCCGAT","GTGCCGAT","TTGCCGAT",
+ "AATCCGAT","CATCCGAT","GATCCGAT","TATCCGAT","ACTCCGAT","CCTCCGAT","GCTCCGAT","TCTCCGAT",
+ "AGTCCGAT","CGTCCGAT","GGTCCGAT","TGTCCGAT","ATTCCGAT","CTTCCGAT","GTTCCGAT","TTTCCGAT",
+ "AAAGCGAT","CAAGCGAT","GAAGCGAT","TAAGCGAT","ACAGCGAT","CCAGCGAT","GCAGCGAT","TCAGCGAT",
+ "AGAGCGAT","CGAGCGAT","GGAGCGAT","TGAGCGAT","ATAGCGAT","CTAGCGAT","GTAGCGAT","TTAGCGAT",
+ "AACGCGAT","CACGCGAT","GACGCGAT","TACGCGAT","ACCGCGAT","CCCGCGAT","GCCGCGAT","TCCGCGAT",
+ "AGCGCGAT","CGCGCGAT","GGCGCGAT","TGCGCGAT","ATCGCGAT","CTCGCGAT","GTCGCGAT","TTCGCGAT",
+ "AAGGCGAT","CAGGCGAT","GAGGCGAT","TAGGCGAT","ACGGCGAT","CCGGCGAT","GCGGCGAT","TCGGCGAT",
+ "AGGGCGAT","CGGGCGAT","GGGGCGAT","TGGGCGAT","ATGGCGAT","CTGGCGAT","GTGGCGAT","TTGGCGAT",
+ "AATGCGAT","CATGCGAT","GATGCGAT","TATGCGAT","ACTGCGAT","CCTGCGAT","GCTGCGAT","TCTGCGAT",
+ "AGTGCGAT","CGTGCGAT","GGTGCGAT","TGTGCGAT","ATTGCGAT","CTTGCGAT","GTTGCGAT","TTTGCGAT",
+ "AAATCGAT","CAATCGAT","GAATCGAT","TAATCGAT","ACATCGAT","CCATCGAT","GCATCGAT","TCATCGAT",
+ "AGATCGAT","CGATCGAT","GGATCGAT","TGATCGAT","ATATCGAT","CTATCGAT","GTATCGAT","TTATCGAT",
+ "AACTCGAT","CACTCGAT","GACTCGAT","TACTCGAT","ACCTCGAT","CCCTCGAT","GCCTCGAT","TCCTCGAT",
+ "AGCTCGAT","CGCTCGAT","GGCTCGAT","TGCTCGAT","ATCTCGAT","CTCTCGAT","GTCTCGAT","TTCTCGAT",
+ "AAGTCGAT","CAGTCGAT","GAGTCGAT","TAGTCGAT","ACGTCGAT","CCGTCGAT","GCGTCGAT","TCGTCGAT",
+ "AGGTCGAT","CGGTCGAT","GGGTCGAT","TGGTCGAT","ATGTCGAT","CTGTCGAT","GTGTCGAT","TTGTCGAT",
+ "AATTCGAT","CATTCGAT","GATTCGAT","TATTCGAT","ACTTCGAT","CCTTCGAT","GCTTCGAT","TCTTCGAT",
+ "AGTTCGAT","CGTTCGAT","GGTTCGAT","TGTTCGAT","ATTTCGAT","CTTTCGAT","GTTTCGAT","TTTTCGAT",
+ "AAAAGGAT","CAAAGGAT","GAAAGGAT","TAAAGGAT","ACAAGGAT","CCAAGGAT","GCAAGGAT","TCAAGGAT",
+ "AGAAGGAT","CGAAGGAT","GGAAGGAT","TGAAGGAT","ATAAGGAT","CTAAGGAT","GTAAGGAT","TTAAGGAT",
+ "AACAGGAT","CACAGGAT","GACAGGAT","TACAGGAT","ACCAGGAT","CCCAGGAT","GCCAGGAT","TCCAGGAT",
+ "AGCAGGAT","CGCAGGAT","GGCAGGAT","TGCAGGAT","ATCAGGAT","CTCAGGAT","GTCAGGAT","TTCAGGAT",
+ "AAGAGGAT","CAGAGGAT","GAGAGGAT","TAGAGGAT","ACGAGGAT","CCGAGGAT","GCGAGGAT","TCGAGGAT",
+ "AGGAGGAT","CGGAGGAT","GGGAGGAT","TGGAGGAT","ATGAGGAT","CTGAGGAT","GTGAGGAT","TTGAGGAT",
+ "AATAGGAT","CATAGGAT","GATAGGAT","TATAGGAT","ACTAGGAT","CCTAGGAT","GCTAGGAT","TCTAGGAT",
+ "AGTAGGAT","CGTAGGAT","GGTAGGAT","TGTAGGAT","ATTAGGAT","CTTAGGAT","GTTAGGAT","TTTAGGAT",
+ "AAACGGAT","CAACGGAT","GAACGGAT","TAACGGAT","ACACGGAT","CCACGGAT","GCACGGAT","TCACGGAT",
+ "AGACGGAT","CGACGGAT","GGACGGAT","TGACGGAT","ATACGGAT","CTACGGAT","GTACGGAT","TTACGGAT",
+ "AACCGGAT","CACCGGAT","GACCGGAT","TACCGGAT","ACCCGGAT","CCCCGGAT","GCCCGGAT","TCCCGGAT",
+ "AGCCGGAT","CGCCGGAT","GGCCGGAT","TGCCGGAT","ATCCGGAT","CTCCGGAT","GTCCGGAT","TTCCGGAT",
+ "AAGCGGAT","CAGCGGAT","GAGCGGAT","TAGCGGAT","ACGCGGAT","CCGCGGAT","GCGCGGAT","TCGCGGAT",
+ "AGGCGGAT","CGGCGGAT","GGGCGGAT","TGGCGGAT","ATGCGGAT","CTGCGGAT","GTGCGGAT","TTGCGGAT",
+ "AATCGGAT","CATCGGAT","GATCGGAT","TATCGGAT","ACTCGGAT","CCTCGGAT","GCTCGGAT","TCTCGGAT",
+ "AGTCGGAT","CGTCGGAT","GGTCGGAT","TGTCGGAT","ATTCGGAT","CTTCGGAT","GTTCGGAT","TTTCGGAT",
+ "AAAGGGAT","CAAGGGAT","GAAGGGAT","TAAGGGAT","ACAGGGAT","CCAGGGAT","GCAGGGAT","TCAGGGAT",
+ "AGAGGGAT","CGAGGGAT","GGAGGGAT","TGAGGGAT","ATAGGGAT","CTAGGGAT","GTAGGGAT","TTAGGGAT",
+ "AACGGGAT","CACGGGAT","GACGGGAT","TACGGGAT","ACCGGGAT","CCCGGGAT","GCCGGGAT","TCCGGGAT",
+ "AGCGGGAT","CGCGGGAT","GGCGGGAT","TGCGGGAT","ATCGGGAT","CTCGGGAT","GTCGGGAT","TTCGGGAT",
+ "AAGGGGAT","CAGGGGAT","GAGGGGAT","TAGGGGAT","ACGGGGAT","CCGGGGAT","GCGGGGAT","TCGGGGAT",
+ "AGGGGGAT","CGGGGGAT","GGGGGGAT","TGGGGGAT","ATGGGGAT","CTGGGGAT","GTGGGGAT","TTGGGGAT",
+ "AATGGGAT","CATGGGAT","GATGGGAT","TATGGGAT","ACTGGGAT","CCTGGGAT","GCTGGGAT","TCTGGGAT",
+ "AGTGGGAT","CGTGGGAT","GGTGGGAT","TGTGGGAT","ATTGGGAT","CTTGGGAT","GTTGGGAT","TTTGGGAT",
+ "AAATGGAT","CAATGGAT","GAATGGAT","TAATGGAT","ACATGGAT","CCATGGAT","GCATGGAT","TCATGGAT",
+ "AGATGGAT","CGATGGAT","GGATGGAT","TGATGGAT","ATATGGAT","CTATGGAT","GTATGGAT","TTATGGAT",
+ "AACTGGAT","CACTGGAT","GACTGGAT","TACTGGAT","ACCTGGAT","CCCTGGAT","GCCTGGAT","TCCTGGAT",
+ "AGCTGGAT","CGCTGGAT","GGCTGGAT","TGCTGGAT","ATCTGGAT","CTCTGGAT","GTCTGGAT","TTCTGGAT",
+ "AAGTGGAT","CAGTGGAT","GAGTGGAT","TAGTGGAT","ACGTGGAT","CCGTGGAT","GCGTGGAT","TCGTGGAT",
+ "AGGTGGAT","CGGTGGAT","GGGTGGAT","TGGTGGAT","ATGTGGAT","CTGTGGAT","GTGTGGAT","TTGTGGAT",
+ "AATTGGAT","CATTGGAT","GATTGGAT","TATTGGAT","ACTTGGAT","CCTTGGAT","GCTTGGAT","TCTTGGAT",
+ "AGTTGGAT","CGTTGGAT","GGTTGGAT","TGTTGGAT","ATTTGGAT","CTTTGGAT","GTTTGGAT","TTTTGGAT",
+ "AAAATGAT","CAAATGAT","GAAATGAT","TAAATGAT","ACAATGAT","CCAATGAT","GCAATGAT","TCAATGAT",
+ "AGAATGAT","CGAATGAT","GGAATGAT","TGAATGAT","ATAATGAT","CTAATGAT","GTAATGAT","TTAATGAT",
+ "AACATGAT","CACATGAT","GACATGAT","TACATGAT","ACCATGAT","CCCATGAT","GCCATGAT","TCCATGAT",
+ "AGCATGAT","CGCATGAT","GGCATGAT","TGCATGAT","ATCATGAT","CTCATGAT","GTCATGAT","TTCATGAT",
+ "AAGATGAT","CAGATGAT","GAGATGAT","TAGATGAT","ACGATGAT","CCGATGAT","GCGATGAT","TCGATGAT",
+ "AGGATGAT","CGGATGAT","GGGATGAT","TGGATGAT","ATGATGAT","CTGATGAT","GTGATGAT","TTGATGAT",
+ "AATATGAT","CATATGAT","GATATGAT","TATATGAT","ACTATGAT","CCTATGAT","GCTATGAT","TCTATGAT",
+ "AGTATGAT","CGTATGAT","GGTATGAT","TGTATGAT","ATTATGAT","CTTATGAT","GTTATGAT","TTTATGAT",
+ "AAACTGAT","CAACTGAT","GAACTGAT","TAACTGAT","ACACTGAT","CCACTGAT","GCACTGAT","TCACTGAT",
+ "AGACTGAT","CGACTGAT","GGACTGAT","TGACTGAT","ATACTGAT","CTACTGAT","GTACTGAT","TTACTGAT",
+ "AACCTGAT","CACCTGAT","GACCTGAT","TACCTGAT","ACCCTGAT","CCCCTGAT","GCCCTGAT","TCCCTGAT",
+ "AGCCTGAT","CGCCTGAT","GGCCTGAT","TGCCTGAT","ATCCTGAT","CTCCTGAT","GTCCTGAT","TTCCTGAT",
+ "AAGCTGAT","CAGCTGAT","GAGCTGAT","TAGCTGAT","ACGCTGAT","CCGCTGAT","GCGCTGAT","TCGCTGAT",
+ "AGGCTGAT","CGGCTGAT","GGGCTGAT","TGGCTGAT","ATGCTGAT","CTGCTGAT","GTGCTGAT","TTGCTGAT",
+ "AATCTGAT","CATCTGAT","GATCTGAT","TATCTGAT","ACTCTGAT","CCTCTGAT","GCTCTGAT","TCTCTGAT",
+ "AGTCTGAT","CGTCTGAT","GGTCTGAT","TGTCTGAT","ATTCTGAT","CTTCTGAT","GTTCTGAT","TTTCTGAT",
+ "AAAGTGAT","CAAGTGAT","GAAGTGAT","TAAGTGAT","ACAGTGAT","CCAGTGAT","GCAGTGAT","TCAGTGAT",
+ "AGAGTGAT","CGAGTGAT","GGAGTGAT","TGAGTGAT","ATAGTGAT","CTAGTGAT","GTAGTGAT","TTAGTGAT",
+ "AACGTGAT","CACGTGAT","GACGTGAT","TACGTGAT","ACCGTGAT","CCCGTGAT","GCCGTGAT","TCCGTGAT",
+ "AGCGTGAT","CGCGTGAT","GGCGTGAT","TGCGTGAT","ATCGTGAT","CTCGTGAT","GTCGTGAT","TTCGTGAT",
+ "AAGGTGAT","CAGGTGAT","GAGGTGAT","TAGGTGAT","ACGGTGAT","CCGGTGAT","GCGGTGAT","TCGGTGAT",
+ "AGGGTGAT","CGGGTGAT","GGGGTGAT","TGGGTGAT","ATGGTGAT","CTGGTGAT","GTGGTGAT","TTGGTGAT",
+ "AATGTGAT","CATGTGAT","GATGTGAT","TATGTGAT","ACTGTGAT","CCTGTGAT","GCTGTGAT","TCTGTGAT",
+ "AGTGTGAT","CGTGTGAT","GGTGTGAT","TGTGTGAT","ATTGTGAT","CTTGTGAT","GTTGTGAT","TTTGTGAT",
+ "AAATTGAT","CAATTGAT","GAATTGAT","TAATTGAT","ACATTGAT","CCATTGAT","GCATTGAT","TCATTGAT",
+ "AGATTGAT","CGATTGAT","GGATTGAT","TGATTGAT","ATATTGAT","CTATTGAT","GTATTGAT","TTATTGAT",
+ "AACTTGAT","CACTTGAT","GACTTGAT","TACTTGAT","ACCTTGAT","CCCTTGAT","GCCTTGAT","TCCTTGAT",
+ "AGCTTGAT","CGCTTGAT","GGCTTGAT","TGCTTGAT","ATCTTGAT","CTCTTGAT","GTCTTGAT","TTCTTGAT",
+ "AAGTTGAT","CAGTTGAT","GAGTTGAT","TAGTTGAT","ACGTTGAT","CCGTTGAT","GCGTTGAT","TCGTTGAT",
+ "AGGTTGAT","CGGTTGAT","GGGTTGAT","TGGTTGAT","ATGTTGAT","CTGTTGAT","GTGTTGAT","TTGTTGAT",
+ "AATTTGAT","CATTTGAT","GATTTGAT","TATTTGAT","ACTTTGAT","CCTTTGAT","GCTTTGAT","TCTTTGAT",
+ "AGTTTGAT","CGTTTGAT","GGTTTGAT","TGTTTGAT","ATTTTGAT","CTTTTGAT","GTTTTGAT","TTTTTGAT",
+ "AAAAATAT","CAAAATAT","GAAAATAT","TAAAATAT","ACAAATAT","CCAAATAT","GCAAATAT","TCAAATAT",
+ "AGAAATAT","CGAAATAT","GGAAATAT","TGAAATAT","ATAAATAT","CTAAATAT","GTAAATAT","TTAAATAT",
+ "AACAATAT","CACAATAT","GACAATAT","TACAATAT","ACCAATAT","CCCAATAT","GCCAATAT","TCCAATAT",
+ "AGCAATAT","CGCAATAT","GGCAATAT","TGCAATAT","ATCAATAT","CTCAATAT","GTCAATAT","TTCAATAT",
+ "AAGAATAT","CAGAATAT","GAGAATAT","TAGAATAT","ACGAATAT","CCGAATAT","GCGAATAT","TCGAATAT",
+ "AGGAATAT","CGGAATAT","GGGAATAT","TGGAATAT","ATGAATAT","CTGAATAT","GTGAATAT","TTGAATAT",
+ "AATAATAT","CATAATAT","GATAATAT","TATAATAT","ACTAATAT","CCTAATAT","GCTAATAT","TCTAATAT",
+ "AGTAATAT","CGTAATAT","GGTAATAT","TGTAATAT","ATTAATAT","CTTAATAT","GTTAATAT","TTTAATAT",
+ "AAACATAT","CAACATAT","GAACATAT","TAACATAT","ACACATAT","CCACATAT","GCACATAT","TCACATAT",
+ "AGACATAT","CGACATAT","GGACATAT","TGACATAT","ATACATAT","CTACATAT","GTACATAT","TTACATAT",
+ "AACCATAT","CACCATAT","GACCATAT","TACCATAT","ACCCATAT","CCCCATAT","GCCCATAT","TCCCATAT",
+ "AGCCATAT","CGCCATAT","GGCCATAT","TGCCATAT","ATCCATAT","CTCCATAT","GTCCATAT","TTCCATAT",
+ "AAGCATAT","CAGCATAT","GAGCATAT","TAGCATAT","ACGCATAT","CCGCATAT","GCGCATAT","TCGCATAT",
+ "AGGCATAT","CGGCATAT","GGGCATAT","TGGCATAT","ATGCATAT","CTGCATAT","GTGCATAT","TTGCATAT",
+ "AATCATAT","CATCATAT","GATCATAT","TATCATAT","ACTCATAT","CCTCATAT","GCTCATAT","TCTCATAT",
+ "AGTCATAT","CGTCATAT","GGTCATAT","TGTCATAT","ATTCATAT","CTTCATAT","GTTCATAT","TTTCATAT",
+ "AAAGATAT","CAAGATAT","GAAGATAT","TAAGATAT","ACAGATAT","CCAGATAT","GCAGATAT","TCAGATAT",
+ "AGAGATAT","CGAGATAT","GGAGATAT","TGAGATAT","ATAGATAT","CTAGATAT","GTAGATAT","TTAGATAT",
+ "AACGATAT","CACGATAT","GACGATAT","TACGATAT","ACCGATAT","CCCGATAT","GCCGATAT","TCCGATAT",
+ "AGCGATAT","CGCGATAT","GGCGATAT","TGCGATAT","ATCGATAT","CTCGATAT","GTCGATAT","TTCGATAT",
+ "AAGGATAT","CAGGATAT","GAGGATAT","TAGGATAT","ACGGATAT","CCGGATAT","GCGGATAT","TCGGATAT",
+ "AGGGATAT","CGGGATAT","GGGGATAT","TGGGATAT","ATGGATAT","CTGGATAT","GTGGATAT","TTGGATAT",
+ "AATGATAT","CATGATAT","GATGATAT","TATGATAT","ACTGATAT","CCTGATAT","GCTGATAT","TCTGATAT",
+ "AGTGATAT","CGTGATAT","GGTGATAT","TGTGATAT","ATTGATAT","CTTGATAT","GTTGATAT","TTTGATAT",
+ "AAATATAT","CAATATAT","GAATATAT","TAATATAT","ACATATAT","CCATATAT","GCATATAT","TCATATAT",
+ "AGATATAT","CGATATAT","GGATATAT","TGATATAT","ATATATAT","CTATATAT","GTATATAT","TTATATAT",
+ "AACTATAT","CACTATAT","GACTATAT","TACTATAT","ACCTATAT","CCCTATAT","GCCTATAT","TCCTATAT",
+ "AGCTATAT","CGCTATAT","GGCTATAT","TGCTATAT","ATCTATAT","CTCTATAT","GTCTATAT","TTCTATAT",
+ "AAGTATAT","CAGTATAT","GAGTATAT","TAGTATAT","ACGTATAT","CCGTATAT","GCGTATAT","TCGTATAT",
+ "AGGTATAT","CGGTATAT","GGGTATAT","TGGTATAT","ATGTATAT","CTGTATAT","GTGTATAT","TTGTATAT",
+ "AATTATAT","CATTATAT","GATTATAT","TATTATAT","ACTTATAT","CCTTATAT","GCTTATAT","TCTTATAT",
+ "AGTTATAT","CGTTATAT","GGTTATAT","TGTTATAT","ATTTATAT","CTTTATAT","GTTTATAT","TTTTATAT",
+ "AAAACTAT","CAAACTAT","GAAACTAT","TAAACTAT","ACAACTAT","CCAACTAT","GCAACTAT","TCAACTAT",
+ "AGAACTAT","CGAACTAT","GGAACTAT","TGAACTAT","ATAACTAT","CTAACTAT","GTAACTAT","TTAACTAT",
+ "AACACTAT","CACACTAT","GACACTAT","TACACTAT","ACCACTAT","CCCACTAT","GCCACTAT","TCCACTAT",
+ "AGCACTAT","CGCACTAT","GGCACTAT","TGCACTAT","ATCACTAT","CTCACTAT","GTCACTAT","TTCACTAT",
+ "AAGACTAT","CAGACTAT","GAGACTAT","TAGACTAT","ACGACTAT","CCGACTAT","GCGACTAT","TCGACTAT",
+ "AGGACTAT","CGGACTAT","GGGACTAT","TGGACTAT","ATGACTAT","CTGACTAT","GTGACTAT","TTGACTAT",
+ "AATACTAT","CATACTAT","GATACTAT","TATACTAT","ACTACTAT","CCTACTAT","GCTACTAT","TCTACTAT",
+ "AGTACTAT","CGTACTAT","GGTACTAT","TGTACTAT","ATTACTAT","CTTACTAT","GTTACTAT","TTTACTAT",
+ "AAACCTAT","CAACCTAT","GAACCTAT","TAACCTAT","ACACCTAT","CCACCTAT","GCACCTAT","TCACCTAT",
+ "AGACCTAT","CGACCTAT","GGACCTAT","TGACCTAT","ATACCTAT","CTACCTAT","GTACCTAT","TTACCTAT",
+ "AACCCTAT","CACCCTAT","GACCCTAT","TACCCTAT","ACCCCTAT","CCCCCTAT","GCCCCTAT","TCCCCTAT",
+ "AGCCCTAT","CGCCCTAT","GGCCCTAT","TGCCCTAT","ATCCCTAT","CTCCCTAT","GTCCCTAT","TTCCCTAT",
+ "AAGCCTAT","CAGCCTAT","GAGCCTAT","TAGCCTAT","ACGCCTAT","CCGCCTAT","GCGCCTAT","TCGCCTAT",
+ "AGGCCTAT","CGGCCTAT","GGGCCTAT","TGGCCTAT","ATGCCTAT","CTGCCTAT","GTGCCTAT","TTGCCTAT",
+ "AATCCTAT","CATCCTAT","GATCCTAT","TATCCTAT","ACTCCTAT","CCTCCTAT","GCTCCTAT","TCTCCTAT",
+ "AGTCCTAT","CGTCCTAT","GGTCCTAT","TGTCCTAT","ATTCCTAT","CTTCCTAT","GTTCCTAT","TTTCCTAT",
+ "AAAGCTAT","CAAGCTAT","GAAGCTAT","TAAGCTAT","ACAGCTAT","CCAGCTAT","GCAGCTAT","TCAGCTAT",
+ "AGAGCTAT","CGAGCTAT","GGAGCTAT","TGAGCTAT","ATAGCTAT","CTAGCTAT","GTAGCTAT","TTAGCTAT",
+ "AACGCTAT","CACGCTAT","GACGCTAT","TACGCTAT","ACCGCTAT","CCCGCTAT","GCCGCTAT","TCCGCTAT",
+ "AGCGCTAT","CGCGCTAT","GGCGCTAT","TGCGCTAT","ATCGCTAT","CTCGCTAT","GTCGCTAT","TTCGCTAT",
+ "AAGGCTAT","CAGGCTAT","GAGGCTAT","TAGGCTAT","ACGGCTAT","CCGGCTAT","GCGGCTAT","TCGGCTAT",
+ "AGGGCTAT","CGGGCTAT","GGGGCTAT","TGGGCTAT","ATGGCTAT","CTGGCTAT","GTGGCTAT","TTGGCTAT",
+ "AATGCTAT","CATGCTAT","GATGCTAT","TATGCTAT","ACTGCTAT","CCTGCTAT","GCTGCTAT","TCTGCTAT",
+ "AGTGCTAT","CGTGCTAT","GGTGCTAT","TGTGCTAT","ATTGCTAT","CTTGCTAT","GTTGCTAT","TTTGCTAT",
+ "AAATCTAT","CAATCTAT","GAATCTAT","TAATCTAT","ACATCTAT","CCATCTAT","GCATCTAT","TCATCTAT",
+ "AGATCTAT","CGATCTAT","GGATCTAT","TGATCTAT","ATATCTAT","CTATCTAT","GTATCTAT","TTATCTAT",
+ "AACTCTAT","CACTCTAT","GACTCTAT","TACTCTAT","ACCTCTAT","CCCTCTAT","GCCTCTAT","TCCTCTAT",
+ "AGCTCTAT","CGCTCTAT","GGCTCTAT","TGCTCTAT","ATCTCTAT","CTCTCTAT","GTCTCTAT","TTCTCTAT",
+ "AAGTCTAT","CAGTCTAT","GAGTCTAT","TAGTCTAT","ACGTCTAT","CCGTCTAT","GCGTCTAT","TCGTCTAT",
+ "AGGTCTAT","CGGTCTAT","GGGTCTAT","TGGTCTAT","ATGTCTAT","CTGTCTAT","GTGTCTAT","TTGTCTAT",
+ "AATTCTAT","CATTCTAT","GATTCTAT","TATTCTAT","ACTTCTAT","CCTTCTAT","GCTTCTAT","TCTTCTAT",
+ "AGTTCTAT","CGTTCTAT","GGTTCTAT","TGTTCTAT","ATTTCTAT","CTTTCTAT","GTTTCTAT","TTTTCTAT",
+ "AAAAGTAT","CAAAGTAT","GAAAGTAT","TAAAGTAT","ACAAGTAT","CCAAGTAT","GCAAGTAT","TCAAGTAT",
+ "AGAAGTAT","CGAAGTAT","GGAAGTAT","TGAAGTAT","ATAAGTAT","CTAAGTAT","GTAAGTAT","TTAAGTAT",
+ "AACAGTAT","CACAGTAT","GACAGTAT","TACAGTAT","ACCAGTAT","CCCAGTAT","GCCAGTAT","TCCAGTAT",
+ "AGCAGTAT","CGCAGTAT","GGCAGTAT","TGCAGTAT","ATCAGTAT","CTCAGTAT","GTCAGTAT","TTCAGTAT",
+ "AAGAGTAT","CAGAGTAT","GAGAGTAT","TAGAGTAT","ACGAGTAT","CCGAGTAT","GCGAGTAT","TCGAGTAT",
+ "AGGAGTAT","CGGAGTAT","GGGAGTAT","TGGAGTAT","ATGAGTAT","CTGAGTAT","GTGAGTAT","TTGAGTAT",
+ "AATAGTAT","CATAGTAT","GATAGTAT","TATAGTAT","ACTAGTAT","CCTAGTAT","GCTAGTAT","TCTAGTAT",
+ "AGTAGTAT","CGTAGTAT","GGTAGTAT","TGTAGTAT","ATTAGTAT","CTTAGTAT","GTTAGTAT","TTTAGTAT",
+ "AAACGTAT","CAACGTAT","GAACGTAT","TAACGTAT","ACACGTAT","CCACGTAT","GCACGTAT","TCACGTAT",
+ "AGACGTAT","CGACGTAT","GGACGTAT","TGACGTAT","ATACGTAT","CTACGTAT","GTACGTAT","TTACGTAT",
+ "AACCGTAT","CACCGTAT","GACCGTAT","TACCGTAT","ACCCGTAT","CCCCGTAT","GCCCGTAT","TCCCGTAT",
+ "AGCCGTAT","CGCCGTAT","GGCCGTAT","TGCCGTAT","ATCCGTAT","CTCCGTAT","GTCCGTAT","TTCCGTAT",
+ "AAGCGTAT","CAGCGTAT","GAGCGTAT","TAGCGTAT","ACGCGTAT","CCGCGTAT","GCGCGTAT","TCGCGTAT",
+ "AGGCGTAT","CGGCGTAT","GGGCGTAT","TGGCGTAT","ATGCGTAT","CTGCGTAT","GTGCGTAT","TTGCGTAT",
+ "AATCGTAT","CATCGTAT","GATCGTAT","TATCGTAT","ACTCGTAT","CCTCGTAT","GCTCGTAT","TCTCGTAT",
+ "AGTCGTAT","CGTCGTAT","GGTCGTAT","TGTCGTAT","ATTCGTAT","CTTCGTAT","GTTCGTAT","TTTCGTAT",
+ "AAAGGTAT","CAAGGTAT","GAAGGTAT","TAAGGTAT","ACAGGTAT","CCAGGTAT","GCAGGTAT","TCAGGTAT",
+ "AGAGGTAT","CGAGGTAT","GGAGGTAT","TGAGGTAT","ATAGGTAT","CTAGGTAT","GTAGGTAT","TTAGGTAT",
+ "AACGGTAT","CACGGTAT","GACGGTAT","TACGGTAT","ACCGGTAT","CCCGGTAT","GCCGGTAT","TCCGGTAT",
+ "AGCGGTAT","CGCGGTAT","GGCGGTAT","TGCGGTAT","ATCGGTAT","CTCGGTAT","GTCGGTAT","TTCGGTAT",
+ "AAGGGTAT","CAGGGTAT","GAGGGTAT","TAGGGTAT","ACGGGTAT","CCGGGTAT","GCGGGTAT","TCGGGTAT",
+ "AGGGGTAT","CGGGGTAT","GGGGGTAT","TGGGGTAT","ATGGGTAT","CTGGGTAT","GTGGGTAT","TTGGGTAT",
+ "AATGGTAT","CATGGTAT","GATGGTAT","TATGGTAT","ACTGGTAT","CCTGGTAT","GCTGGTAT","TCTGGTAT",
+ "AGTGGTAT","CGTGGTAT","GGTGGTAT","TGTGGTAT","ATTGGTAT","CTTGGTAT","GTTGGTAT","TTTGGTAT",
+ "AAATGTAT","CAATGTAT","GAATGTAT","TAATGTAT","ACATGTAT","CCATGTAT","GCATGTAT","TCATGTAT",
+ "AGATGTAT","CGATGTAT","GGATGTAT","TGATGTAT","ATATGTAT","CTATGTAT","GTATGTAT","TTATGTAT",
+ "AACTGTAT","CACTGTAT","GACTGTAT","TACTGTAT","ACCTGTAT","CCCTGTAT","GCCTGTAT","TCCTGTAT",
+ "AGCTGTAT","CGCTGTAT","GGCTGTAT","TGCTGTAT","ATCTGTAT","CTCTGTAT","GTCTGTAT","TTCTGTAT",
+ "AAGTGTAT","CAGTGTAT","GAGTGTAT","TAGTGTAT","ACGTGTAT","CCGTGTAT","GCGTGTAT","TCGTGTAT",
+ "AGGTGTAT","CGGTGTAT","GGGTGTAT","TGGTGTAT","ATGTGTAT","CTGTGTAT","GTGTGTAT","TTGTGTAT",
+ "AATTGTAT","CATTGTAT","GATTGTAT","TATTGTAT","ACTTGTAT","CCTTGTAT","GCTTGTAT","TCTTGTAT",
+ "AGTTGTAT","CGTTGTAT","GGTTGTAT","TGTTGTAT","ATTTGTAT","CTTTGTAT","GTTTGTAT","TTTTGTAT",
+ "AAAATTAT","CAAATTAT","GAAATTAT","TAAATTAT","ACAATTAT","CCAATTAT","GCAATTAT","TCAATTAT",
+ "AGAATTAT","CGAATTAT","GGAATTAT","TGAATTAT","ATAATTAT","CTAATTAT","GTAATTAT","TTAATTAT",
+ "AACATTAT","CACATTAT","GACATTAT","TACATTAT","ACCATTAT","CCCATTAT","GCCATTAT","TCCATTAT",
+ "AGCATTAT","CGCATTAT","GGCATTAT","TGCATTAT","ATCATTAT","CTCATTAT","GTCATTAT","TTCATTAT",
+ "AAGATTAT","CAGATTAT","GAGATTAT","TAGATTAT","ACGATTAT","CCGATTAT","GCGATTAT","TCGATTAT",
+ "AGGATTAT","CGGATTAT","GGGATTAT","TGGATTAT","ATGATTAT","CTGATTAT","GTGATTAT","TTGATTAT",
+ "AATATTAT","CATATTAT","GATATTAT","TATATTAT","ACTATTAT","CCTATTAT","GCTATTAT","TCTATTAT",
+ "AGTATTAT","CGTATTAT","GGTATTAT","TGTATTAT","ATTATTAT","CTTATTAT","GTTATTAT","TTTATTAT",
+ "AAACTTAT","CAACTTAT","GAACTTAT","TAACTTAT","ACACTTAT","CCACTTAT","GCACTTAT","TCACTTAT",
+ "AGACTTAT","CGACTTAT","GGACTTAT","TGACTTAT","ATACTTAT","CTACTTAT","GTACTTAT","TTACTTAT",
+ "AACCTTAT","CACCTTAT","GACCTTAT","TACCTTAT","ACCCTTAT","CCCCTTAT","GCCCTTAT","TCCCTTAT",
+ "AGCCTTAT","CGCCTTAT","GGCCTTAT","TGCCTTAT","ATCCTTAT","CTCCTTAT","GTCCTTAT","TTCCTTAT",
+ "AAGCTTAT","CAGCTTAT","GAGCTTAT","TAGCTTAT","ACGCTTAT","CCGCTTAT","GCGCTTAT","TCGCTTAT",
+ "AGGCTTAT","CGGCTTAT","GGGCTTAT","TGGCTTAT","ATGCTTAT","CTGCTTAT","GTGCTTAT","TTGCTTAT",
+ "AATCTTAT","CATCTTAT","GATCTTAT","TATCTTAT","ACTCTTAT","CCTCTTAT","GCTCTTAT","TCTCTTAT",
+ "AGTCTTAT","CGTCTTAT","GGTCTTAT","TGTCTTAT","ATTCTTAT","CTTCTTAT","GTTCTTAT","TTTCTTAT",
+ "AAAGTTAT","CAAGTTAT","GAAGTTAT","TAAGTTAT","ACAGTTAT","CCAGTTAT","GCAGTTAT","TCAGTTAT",
+ "AGAGTTAT","CGAGTTAT","GGAGTTAT","TGAGTTAT","ATAGTTAT","CTAGTTAT","GTAGTTAT","TTAGTTAT",
+ "AACGTTAT","CACGTTAT","GACGTTAT","TACGTTAT","ACCGTTAT","CCCGTTAT","GCCGTTAT","TCCGTTAT",
+ "AGCGTTAT","CGCGTTAT","GGCGTTAT","TGCGTTAT","ATCGTTAT","CTCGTTAT","GTCGTTAT","TTCGTTAT",
+ "AAGGTTAT","CAGGTTAT","GAGGTTAT","TAGGTTAT","ACGGTTAT","CCGGTTAT","GCGGTTAT","TCGGTTAT",
+ "AGGGTTAT","CGGGTTAT","GGGGTTAT","TGGGTTAT","ATGGTTAT","CTGGTTAT","GTGGTTAT","TTGGTTAT",
+ "AATGTTAT","CATGTTAT","GATGTTAT","TATGTTAT","ACTGTTAT","CCTGTTAT","GCTGTTAT","TCTGTTAT",
+ "AGTGTTAT","CGTGTTAT","GGTGTTAT","TGTGTTAT","ATTGTTAT","CTTGTTAT","GTTGTTAT","TTTGTTAT",
+ "AAATTTAT","CAATTTAT","GAATTTAT","TAATTTAT","ACATTTAT","CCATTTAT","GCATTTAT","TCATTTAT",
+ "AGATTTAT","CGATTTAT","GGATTTAT","TGATTTAT","ATATTTAT","CTATTTAT","GTATTTAT","TTATTTAT",
+ "AACTTTAT","CACTTTAT","GACTTTAT","TACTTTAT","ACCTTTAT","CCCTTTAT","GCCTTTAT","TCCTTTAT",
+ "AGCTTTAT","CGCTTTAT","GGCTTTAT","TGCTTTAT","ATCTTTAT","CTCTTTAT","GTCTTTAT","TTCTTTAT",
+ "AAGTTTAT","CAGTTTAT","GAGTTTAT","TAGTTTAT","ACGTTTAT","CCGTTTAT","GCGTTTAT","TCGTTTAT",
+ "AGGTTTAT","CGGTTTAT","GGGTTTAT","TGGTTTAT","ATGTTTAT","CTGTTTAT","GTGTTTAT","TTGTTTAT",
+ "AATTTTAT","CATTTTAT","GATTTTAT","TATTTTAT","ACTTTTAT","CCTTTTAT","GCTTTTAT","TCTTTTAT",
+ "AGTTTTAT","CGTTTTAT","GGTTTTAT","TGTTTTAT","ATTTTTAT","CTTTTTAT","GTTTTTAT","TTTTTTAT",
+ "AAAAAACT","CAAAAACT","GAAAAACT","TAAAAACT","ACAAAACT","CCAAAACT","GCAAAACT","TCAAAACT",
+ "AGAAAACT","CGAAAACT","GGAAAACT","TGAAAACT","ATAAAACT","CTAAAACT","GTAAAACT","TTAAAACT",
+ "AACAAACT","CACAAACT","GACAAACT","TACAAACT","ACCAAACT","CCCAAACT","GCCAAACT","TCCAAACT",
+ "AGCAAACT","CGCAAACT","GGCAAACT","TGCAAACT","ATCAAACT","CTCAAACT","GTCAAACT","TTCAAACT",
+ "AAGAAACT","CAGAAACT","GAGAAACT","TAGAAACT","ACGAAACT","CCGAAACT","GCGAAACT","TCGAAACT",
+ "AGGAAACT","CGGAAACT","GGGAAACT","TGGAAACT","ATGAAACT","CTGAAACT","GTGAAACT","TTGAAACT",
+ "AATAAACT","CATAAACT","GATAAACT","TATAAACT","ACTAAACT","CCTAAACT","GCTAAACT","TCTAAACT",
+ "AGTAAACT","CGTAAACT","GGTAAACT","TGTAAACT","ATTAAACT","CTTAAACT","GTTAAACT","TTTAAACT",
+ "AAACAACT","CAACAACT","GAACAACT","TAACAACT","ACACAACT","CCACAACT","GCACAACT","TCACAACT",
+ "AGACAACT","CGACAACT","GGACAACT","TGACAACT","ATACAACT","CTACAACT","GTACAACT","TTACAACT",
+ "AACCAACT","CACCAACT","GACCAACT","TACCAACT","ACCCAACT","CCCCAACT","GCCCAACT","TCCCAACT",
+ "AGCCAACT","CGCCAACT","GGCCAACT","TGCCAACT","ATCCAACT","CTCCAACT","GTCCAACT","TTCCAACT",
+ "AAGCAACT","CAGCAACT","GAGCAACT","TAGCAACT","ACGCAACT","CCGCAACT","GCGCAACT","TCGCAACT",
+ "AGGCAACT","CGGCAACT","GGGCAACT","TGGCAACT","ATGCAACT","CTGCAACT","GTGCAACT","TTGCAACT",
+ "AATCAACT","CATCAACT","GATCAACT","TATCAACT","ACTCAACT","CCTCAACT","GCTCAACT","TCTCAACT",
+ "AGTCAACT","CGTCAACT","GGTCAACT","TGTCAACT","ATTCAACT","CTTCAACT","GTTCAACT","TTTCAACT",
+ "AAAGAACT","CAAGAACT","GAAGAACT","TAAGAACT","ACAGAACT","CCAGAACT","GCAGAACT","TCAGAACT",
+ "AGAGAACT","CGAGAACT","GGAGAACT","TGAGAACT","ATAGAACT","CTAGAACT","GTAGAACT","TTAGAACT",
+ "AACGAACT","CACGAACT","GACGAACT","TACGAACT","ACCGAACT","CCCGAACT","GCCGAACT","TCCGAACT",
+ "AGCGAACT","CGCGAACT","GGCGAACT","TGCGAACT","ATCGAACT","CTCGAACT","GTCGAACT","TTCGAACT",
+ "AAGGAACT","CAGGAACT","GAGGAACT","TAGGAACT","ACGGAACT","CCGGAACT","GCGGAACT","TCGGAACT",
+ "AGGGAACT","CGGGAACT","GGGGAACT","TGGGAACT","ATGGAACT","CTGGAACT","GTGGAACT","TTGGAACT",
+ "AATGAACT","CATGAACT","GATGAACT","TATGAACT","ACTGAACT","CCTGAACT","GCTGAACT","TCTGAACT",
+ "AGTGAACT","CGTGAACT","GGTGAACT","TGTGAACT","ATTGAACT","CTTGAACT","GTTGAACT","TTTGAACT",
+ "AAATAACT","CAATAACT","GAATAACT","TAATAACT","ACATAACT","CCATAACT","GCATAACT","TCATAACT",
+ "AGATAACT","CGATAACT","GGATAACT","TGATAACT","ATATAACT","CTATAACT","GTATAACT","TTATAACT",
+ "AACTAACT","CACTAACT","GACTAACT","TACTAACT","ACCTAACT","CCCTAACT","GCCTAACT","TCCTAACT",
+ "AGCTAACT","CGCTAACT","GGCTAACT","TGCTAACT","ATCTAACT","CTCTAACT","GTCTAACT","TTCTAACT",
+ "AAGTAACT","CAGTAACT","GAGTAACT","TAGTAACT","ACGTAACT","CCGTAACT","GCGTAACT","TCGTAACT",
+ "AGGTAACT","CGGTAACT","GGGTAACT","TGGTAACT","ATGTAACT","CTGTAACT","GTGTAACT","TTGTAACT",
+ "AATTAACT","CATTAACT","GATTAACT","TATTAACT","ACTTAACT","CCTTAACT","GCTTAACT","TCTTAACT",
+ "AGTTAACT","CGTTAACT","GGTTAACT","TGTTAACT","ATTTAACT","CTTTAACT","GTTTAACT","TTTTAACT",
+ "AAAACACT","CAAACACT","GAAACACT","TAAACACT","ACAACACT","CCAACACT","GCAACACT","TCAACACT",
+ "AGAACACT","CGAACACT","GGAACACT","TGAACACT","ATAACACT","CTAACACT","GTAACACT","TTAACACT",
+ "AACACACT","CACACACT","GACACACT","TACACACT","ACCACACT","CCCACACT","GCCACACT","TCCACACT",
+ "AGCACACT","CGCACACT","GGCACACT","TGCACACT","ATCACACT","CTCACACT","GTCACACT","TTCACACT",
+ "AAGACACT","CAGACACT","GAGACACT","TAGACACT","ACGACACT","CCGACACT","GCGACACT","TCGACACT",
+ "AGGACACT","CGGACACT","GGGACACT","TGGACACT","ATGACACT","CTGACACT","GTGACACT","TTGACACT",
+ "AATACACT","CATACACT","GATACACT","TATACACT","ACTACACT","CCTACACT","GCTACACT","TCTACACT",
+ "AGTACACT","CGTACACT","GGTACACT","TGTACACT","ATTACACT","CTTACACT","GTTACACT","TTTACACT",
+ "AAACCACT","CAACCACT","GAACCACT","TAACCACT","ACACCACT","CCACCACT","GCACCACT","TCACCACT",
+ "AGACCACT","CGACCACT","GGACCACT","TGACCACT","ATACCACT","CTACCACT","GTACCACT","TTACCACT",
+ "AACCCACT","CACCCACT","GACCCACT","TACCCACT","ACCCCACT","CCCCCACT","GCCCCACT","TCCCCACT",
+ "AGCCCACT","CGCCCACT","GGCCCACT","TGCCCACT","ATCCCACT","CTCCCACT","GTCCCACT","TTCCCACT",
+ "AAGCCACT","CAGCCACT","GAGCCACT","TAGCCACT","ACGCCACT","CCGCCACT","GCGCCACT","TCGCCACT",
+ "AGGCCACT","CGGCCACT","GGGCCACT","TGGCCACT","ATGCCACT","CTGCCACT","GTGCCACT","TTGCCACT",
+ "AATCCACT","CATCCACT","GATCCACT","TATCCACT","ACTCCACT","CCTCCACT","GCTCCACT","TCTCCACT",
+ "AGTCCACT","CGTCCACT","GGTCCACT","TGTCCACT","ATTCCACT","CTTCCACT","GTTCCACT","TTTCCACT",
+ "AAAGCACT","CAAGCACT","GAAGCACT","TAAGCACT","ACAGCACT","CCAGCACT","GCAGCACT","TCAGCACT",
+ "AGAGCACT","CGAGCACT","GGAGCACT","TGAGCACT","ATAGCACT","CTAGCACT","GTAGCACT","TTAGCACT",
+ "AACGCACT","CACGCACT","GACGCACT","TACGCACT","ACCGCACT","CCCGCACT","GCCGCACT","TCCGCACT",
+ "AGCGCACT","CGCGCACT","GGCGCACT","TGCGCACT","ATCGCACT","CTCGCACT","GTCGCACT","TTCGCACT",
+ "AAGGCACT","CAGGCACT","GAGGCACT","TAGGCACT","ACGGCACT","CCGGCACT","GCGGCACT","TCGGCACT",
+ "AGGGCACT","CGGGCACT","GGGGCACT","TGGGCACT","ATGGCACT","CTGGCACT","GTGGCACT","TTGGCACT",
+ "AATGCACT","CATGCACT","GATGCACT","TATGCACT","ACTGCACT","CCTGCACT","GCTGCACT","TCTGCACT",
+ "AGTGCACT","CGTGCACT","GGTGCACT","TGTGCACT","ATTGCACT","CTTGCACT","GTTGCACT","TTTGCACT",
+ "AAATCACT","CAATCACT","GAATCACT","TAATCACT","ACATCACT","CCATCACT","GCATCACT","TCATCACT",
+ "AGATCACT","CGATCACT","GGATCACT","TGATCACT","ATATCACT","CTATCACT","GTATCACT","TTATCACT",
+ "AACTCACT","CACTCACT","GACTCACT","TACTCACT","ACCTCACT","CCCTCACT","GCCTCACT","TCCTCACT",
+ "AGCTCACT","CGCTCACT","GGCTCACT","TGCTCACT","ATCTCACT","CTCTCACT","GTCTCACT","TTCTCACT",
+ "AAGTCACT","CAGTCACT","GAGTCACT","TAGTCACT","ACGTCACT","CCGTCACT","GCGTCACT","TCGTCACT",
+ "AGGTCACT","CGGTCACT","GGGTCACT","TGGTCACT","ATGTCACT","CTGTCACT","GTGTCACT","TTGTCACT",
+ "AATTCACT","CATTCACT","GATTCACT","TATTCACT","ACTTCACT","CCTTCACT","GCTTCACT","TCTTCACT",
+ "AGTTCACT","CGTTCACT","GGTTCACT","TGTTCACT","ATTTCACT","CTTTCACT","GTTTCACT","TTTTCACT",
+ "AAAAGACT","CAAAGACT","GAAAGACT","TAAAGACT","ACAAGACT","CCAAGACT","GCAAGACT","TCAAGACT",
+ "AGAAGACT","CGAAGACT","GGAAGACT","TGAAGACT","ATAAGACT","CTAAGACT","GTAAGACT","TTAAGACT",
+ "AACAGACT","CACAGACT","GACAGACT","TACAGACT","ACCAGACT","CCCAGACT","GCCAGACT","TCCAGACT",
+ "AGCAGACT","CGCAGACT","GGCAGACT","TGCAGACT","ATCAGACT","CTCAGACT","GTCAGACT","TTCAGACT",
+ "AAGAGACT","CAGAGACT","GAGAGACT","TAGAGACT","ACGAGACT","CCGAGACT","GCGAGACT","TCGAGACT",
+ "AGGAGACT","CGGAGACT","GGGAGACT","TGGAGACT","ATGAGACT","CTGAGACT","GTGAGACT","TTGAGACT",
+ "AATAGACT","CATAGACT","GATAGACT","TATAGACT","ACTAGACT","CCTAGACT","GCTAGACT","TCTAGACT",
+ "AGTAGACT","CGTAGACT","GGTAGACT","TGTAGACT","ATTAGACT","CTTAGACT","GTTAGACT","TTTAGACT",
+ "AAACGACT","CAACGACT","GAACGACT","TAACGACT","ACACGACT","CCACGACT","GCACGACT","TCACGACT",
+ "AGACGACT","CGACGACT","GGACGACT","TGACGACT","ATACGACT","CTACGACT","GTACGACT","TTACGACT",
+ "AACCGACT","CACCGACT","GACCGACT","TACCGACT","ACCCGACT","CCCCGACT","GCCCGACT","TCCCGACT",
+ "AGCCGACT","CGCCGACT","GGCCGACT","TGCCGACT","ATCCGACT","CTCCGACT","GTCCGACT","TTCCGACT",
+ "AAGCGACT","CAGCGACT","GAGCGACT","TAGCGACT","ACGCGACT","CCGCGACT","GCGCGACT","TCGCGACT",
+ "AGGCGACT","CGGCGACT","GGGCGACT","TGGCGACT","ATGCGACT","CTGCGACT","GTGCGACT","TTGCGACT",
+ "AATCGACT","CATCGACT","GATCGACT","TATCGACT","ACTCGACT","CCTCGACT","GCTCGACT","TCTCGACT",
+ "AGTCGACT","CGTCGACT","GGTCGACT","TGTCGACT","ATTCGACT","CTTCGACT","GTTCGACT","TTTCGACT",
+ "AAAGGACT","CAAGGACT","GAAGGACT","TAAGGACT","ACAGGACT","CCAGGACT","GCAGGACT","TCAGGACT",
+ "AGAGGACT","CGAGGACT","GGAGGACT","TGAGGACT","ATAGGACT","CTAGGACT","GTAGGACT","TTAGGACT",
+ "AACGGACT","CACGGACT","GACGGACT","TACGGACT","ACCGGACT","CCCGGACT","GCCGGACT","TCCGGACT",
+ "AGCGGACT","CGCGGACT","GGCGGACT","TGCGGACT","ATCGGACT","CTCGGACT","GTCGGACT","TTCGGACT",
+ "AAGGGACT","CAGGGACT","GAGGGACT","TAGGGACT","ACGGGACT","CCGGGACT","GCGGGACT","TCGGGACT",
+ "AGGGGACT","CGGGGACT","GGGGGACT","TGGGGACT","ATGGGACT","CTGGGACT","GTGGGACT","TTGGGACT",
+ "AATGGACT","CATGGACT","GATGGACT","TATGGACT","ACTGGACT","CCTGGACT","GCTGGACT","TCTGGACT",
+ "AGTGGACT","CGTGGACT","GGTGGACT","TGTGGACT","ATTGGACT","CTTGGACT","GTTGGACT","TTTGGACT",
+ "AAATGACT","CAATGACT","GAATGACT","TAATGACT","ACATGACT","CCATGACT","GCATGACT","TCATGACT",
+ "AGATGACT","CGATGACT","GGATGACT","TGATGACT","ATATGACT","CTATGACT","GTATGACT","TTATGACT",
+ "AACTGACT","CACTGACT","GACTGACT","TACTGACT","ACCTGACT","CCCTGACT","GCCTGACT","TCCTGACT",
+ "AGCTGACT","CGCTGACT","GGCTGACT","TGCTGACT","ATCTGACT","CTCTGACT","GTCTGACT","TTCTGACT",
+ "AAGTGACT","CAGTGACT","GAGTGACT","TAGTGACT","ACGTGACT","CCGTGACT","GCGTGACT","TCGTGACT",
+ "AGGTGACT","CGGTGACT","GGGTGACT","TGGTGACT","ATGTGACT","CTGTGACT","GTGTGACT","TTGTGACT",
+ "AATTGACT","CATTGACT","GATTGACT","TATTGACT","ACTTGACT","CCTTGACT","GCTTGACT","TCTTGACT",
+ "AGTTGACT","CGTTGACT","GGTTGACT","TGTTGACT","ATTTGACT","CTTTGACT","GTTTGACT","TTTTGACT",
+ "AAAATACT","CAAATACT","GAAATACT","TAAATACT","ACAATACT","CCAATACT","GCAATACT","TCAATACT",
+ "AGAATACT","CGAATACT","GGAATACT","TGAATACT","ATAATACT","CTAATACT","GTAATACT","TTAATACT",
+ "AACATACT","CACATACT","GACATACT","TACATACT","ACCATACT","CCCATACT","GCCATACT","TCCATACT",
+ "AGCATACT","CGCATACT","GGCATACT","TGCATACT","ATCATACT","CTCATACT","GTCATACT","TTCATACT",
+ "AAGATACT","CAGATACT","GAGATACT","TAGATACT","ACGATACT","CCGATACT","GCGATACT","TCGATACT",
+ "AGGATACT","CGGATACT","GGGATACT","TGGATACT","ATGATACT","CTGATACT","GTGATACT","TTGATACT",
+ "AATATACT","CATATACT","GATATACT","TATATACT","ACTATACT","CCTATACT","GCTATACT","TCTATACT",
+ "AGTATACT","CGTATACT","GGTATACT","TGTATACT","ATTATACT","CTTATACT","GTTATACT","TTTATACT",
+ "AAACTACT","CAACTACT","GAACTACT","TAACTACT","ACACTACT","CCACTACT","GCACTACT","TCACTACT",
+ "AGACTACT","CGACTACT","GGACTACT","TGACTACT","ATACTACT","CTACTACT","GTACTACT","TTACTACT",
+ "AACCTACT","CACCTACT","GACCTACT","TACCTACT","ACCCTACT","CCCCTACT","GCCCTACT","TCCCTACT",
+ "AGCCTACT","CGCCTACT","GGCCTACT","TGCCTACT","ATCCTACT","CTCCTACT","GTCCTACT","TTCCTACT",
+ "AAGCTACT","CAGCTACT","GAGCTACT","TAGCTACT","ACGCTACT","CCGCTACT","GCGCTACT","TCGCTACT",
+ "AGGCTACT","CGGCTACT","GGGCTACT","TGGCTACT","ATGCTACT","CTGCTACT","GTGCTACT","TTGCTACT",
+ "AATCTACT","CATCTACT","GATCTACT","TATCTACT","ACTCTACT","CCTCTACT","GCTCTACT","TCTCTACT",
+ "AGTCTACT","CGTCTACT","GGTCTACT","TGTCTACT","ATTCTACT","CTTCTACT","GTTCTACT","TTTCTACT",
+ "AAAGTACT","CAAGTACT","GAAGTACT","TAAGTACT","ACAGTACT","CCAGTACT","GCAGTACT","TCAGTACT",
+ "AGAGTACT","CGAGTACT","GGAGTACT","TGAGTACT","ATAGTACT","CTAGTACT","GTAGTACT","TTAGTACT",
+ "AACGTACT","CACGTACT","GACGTACT","TACGTACT","ACCGTACT","CCCGTACT","GCCGTACT","TCCGTACT",
+ "AGCGTACT","CGCGTACT","GGCGTACT","TGCGTACT","ATCGTACT","CTCGTACT","GTCGTACT","TTCGTACT",
+ "AAGGTACT","CAGGTACT","GAGGTACT","TAGGTACT","ACGGTACT","CCGGTACT","GCGGTACT","TCGGTACT",
+ "AGGGTACT","CGGGTACT","GGGGTACT","TGGGTACT","ATGGTACT","CTGGTACT","GTGGTACT","TTGGTACT",
+ "AATGTACT","CATGTACT","GATGTACT","TATGTACT","ACTGTACT","CCTGTACT","GCTGTACT","TCTGTACT",
+ "AGTGTACT","CGTGTACT","GGTGTACT","TGTGTACT","ATTGTACT","CTTGTACT","GTTGTACT","TTTGTACT",
+ "AAATTACT","CAATTACT","GAATTACT","TAATTACT","ACATTACT","CCATTACT","GCATTACT","TCATTACT",
+ "AGATTACT","CGATTACT","GGATTACT","TGATTACT","ATATTACT","CTATTACT","GTATTACT","TTATTACT",
+ "AACTTACT","CACTTACT","GACTTACT","TACTTACT","ACCTTACT","CCCTTACT","GCCTTACT","TCCTTACT",
+ "AGCTTACT","CGCTTACT","GGCTTACT","TGCTTACT","ATCTTACT","CTCTTACT","GTCTTACT","TTCTTACT",
+ "AAGTTACT","CAGTTACT","GAGTTACT","TAGTTACT","ACGTTACT","CCGTTACT","GCGTTACT","TCGTTACT",
+ "AGGTTACT","CGGTTACT","GGGTTACT","TGGTTACT","ATGTTACT","CTGTTACT","GTGTTACT","TTGTTACT",
+ "AATTTACT","CATTTACT","GATTTACT","TATTTACT","ACTTTACT","CCTTTACT","GCTTTACT","TCTTTACT",
+ "AGTTTACT","CGTTTACT","GGTTTACT","TGTTTACT","ATTTTACT","CTTTTACT","GTTTTACT","TTTTTACT",
+ "AAAAACCT","CAAAACCT","GAAAACCT","TAAAACCT","ACAAACCT","CCAAACCT","GCAAACCT","TCAAACCT",
+ "AGAAACCT","CGAAACCT","GGAAACCT","TGAAACCT","ATAAACCT","CTAAACCT","GTAAACCT","TTAAACCT",
+ "AACAACCT","CACAACCT","GACAACCT","TACAACCT","ACCAACCT","CCCAACCT","GCCAACCT","TCCAACCT",
+ "AGCAACCT","CGCAACCT","GGCAACCT","TGCAACCT","ATCAACCT","CTCAACCT","GTCAACCT","TTCAACCT",
+ "AAGAACCT","CAGAACCT","GAGAACCT","TAGAACCT","ACGAACCT","CCGAACCT","GCGAACCT","TCGAACCT",
+ "AGGAACCT","CGGAACCT","GGGAACCT","TGGAACCT","ATGAACCT","CTGAACCT","GTGAACCT","TTGAACCT",
+ "AATAACCT","CATAACCT","GATAACCT","TATAACCT","ACTAACCT","CCTAACCT","GCTAACCT","TCTAACCT",
+ "AGTAACCT","CGTAACCT","GGTAACCT","TGTAACCT","ATTAACCT","CTTAACCT","GTTAACCT","TTTAACCT",
+ "AAACACCT","CAACACCT","GAACACCT","TAACACCT","ACACACCT","CCACACCT","GCACACCT","TCACACCT",
+ "AGACACCT","CGACACCT","GGACACCT","TGACACCT","ATACACCT","CTACACCT","GTACACCT","TTACACCT",
+ "AACCACCT","CACCACCT","GACCACCT","TACCACCT","ACCCACCT","CCCCACCT","GCCCACCT","TCCCACCT",
+ "AGCCACCT","CGCCACCT","GGCCACCT","TGCCACCT","ATCCACCT","CTCCACCT","GTCCACCT","TTCCACCT",
+ "AAGCACCT","CAGCACCT","GAGCACCT","TAGCACCT","ACGCACCT","CCGCACCT","GCGCACCT","TCGCACCT",
+ "AGGCACCT","CGGCACCT","GGGCACCT","TGGCACCT","ATGCACCT","CTGCACCT","GTGCACCT","TTGCACCT",
+ "AATCACCT","CATCACCT","GATCACCT","TATCACCT","ACTCACCT","CCTCACCT","GCTCACCT","TCTCACCT",
+ "AGTCACCT","CGTCACCT","GGTCACCT","TGTCACCT","ATTCACCT","CTTCACCT","GTTCACCT","TTTCACCT",
+ "AAAGACCT","CAAGACCT","GAAGACCT","TAAGACCT","ACAGACCT","CCAGACCT","GCAGACCT","TCAGACCT",
+ "AGAGACCT","CGAGACCT","GGAGACCT","TGAGACCT","ATAGACCT","CTAGACCT","GTAGACCT","TTAGACCT",
+ "AACGACCT","CACGACCT","GACGACCT","TACGACCT","ACCGACCT","CCCGACCT","GCCGACCT","TCCGACCT",
+ "AGCGACCT","CGCGACCT","GGCGACCT","TGCGACCT","ATCGACCT","CTCGACCT","GTCGACCT","TTCGACCT",
+ "AAGGACCT","CAGGACCT","GAGGACCT","TAGGACCT","ACGGACCT","CCGGACCT","GCGGACCT","TCGGACCT",
+ "AGGGACCT","CGGGACCT","GGGGACCT","TGGGACCT","ATGGACCT","CTGGACCT","GTGGACCT","TTGGACCT",
+ "AATGACCT","CATGACCT","GATGACCT","TATGACCT","ACTGACCT","CCTGACCT","GCTGACCT","TCTGACCT",
+ "AGTGACCT","CGTGACCT","GGTGACCT","TGTGACCT","ATTGACCT","CTTGACCT","GTTGACCT","TTTGACCT",
+ "AAATACCT","CAATACCT","GAATACCT","TAATACCT","ACATACCT","CCATACCT","GCATACCT","TCATACCT",
+ "AGATACCT","CGATACCT","GGATACCT","TGATACCT","ATATACCT","CTATACCT","GTATACCT","TTATACCT",
+ "AACTACCT","CACTACCT","GACTACCT","TACTACCT","ACCTACCT","CCCTACCT","GCCTACCT","TCCTACCT",
+ "AGCTACCT","CGCTACCT","GGCTACCT","TGCTACCT","ATCTACCT","CTCTACCT","GTCTACCT","TTCTACCT",
+ "AAGTACCT","CAGTACCT","GAGTACCT","TAGTACCT","ACGTACCT","CCGTACCT","GCGTACCT","TCGTACCT",
+ "AGGTACCT","CGGTACCT","GGGTACCT","TGGTACCT","ATGTACCT","CTGTACCT","GTGTACCT","TTGTACCT",
+ "AATTACCT","CATTACCT","GATTACCT","TATTACCT","ACTTACCT","CCTTACCT","GCTTACCT","TCTTACCT",
+ "AGTTACCT","CGTTACCT","GGTTACCT","TGTTACCT","ATTTACCT","CTTTACCT","GTTTACCT","TTTTACCT",
+ "AAAACCCT","CAAACCCT","GAAACCCT","TAAACCCT","ACAACCCT","CCAACCCT","GCAACCCT","TCAACCCT",
+ "AGAACCCT","CGAACCCT","GGAACCCT","TGAACCCT","ATAACCCT","CTAACCCT","GTAACCCT","TTAACCCT",
+ "AACACCCT","CACACCCT","GACACCCT","TACACCCT","ACCACCCT","CCCACCCT","GCCACCCT","TCCACCCT",
+ "AGCACCCT","CGCACCCT","GGCACCCT","TGCACCCT","ATCACCCT","CTCACCCT","GTCACCCT","TTCACCCT",
+ "AAGACCCT","CAGACCCT","GAGACCCT","TAGACCCT","ACGACCCT","CCGACCCT","GCGACCCT","TCGACCCT",
+ "AGGACCCT","CGGACCCT","GGGACCCT","TGGACCCT","ATGACCCT","CTGACCCT","GTGACCCT","TTGACCCT",
+ "AATACCCT","CATACCCT","GATACCCT","TATACCCT","ACTACCCT","CCTACCCT","GCTACCCT","TCTACCCT",
+ "AGTACCCT","CGTACCCT","GGTACCCT","TGTACCCT","ATTACCCT","CTTACCCT","GTTACCCT","TTTACCCT",
+ "AAACCCCT","CAACCCCT","GAACCCCT","TAACCCCT","ACACCCCT","CCACCCCT","GCACCCCT","TCACCCCT",
+ "AGACCCCT","CGACCCCT","GGACCCCT","TGACCCCT","ATACCCCT","CTACCCCT","GTACCCCT","TTACCCCT",
+ "AACCCCCT","CACCCCCT","GACCCCCT","TACCCCCT","ACCCCCCT","CCCCCCCT","GCCCCCCT","TCCCCCCT",
+ "AGCCCCCT","CGCCCCCT","GGCCCCCT","TGCCCCCT","ATCCCCCT","CTCCCCCT","GTCCCCCT","TTCCCCCT",
+ "AAGCCCCT","CAGCCCCT","GAGCCCCT","TAGCCCCT","ACGCCCCT","CCGCCCCT","GCGCCCCT","TCGCCCCT",
+ "AGGCCCCT","CGGCCCCT","GGGCCCCT","TGGCCCCT","ATGCCCCT","CTGCCCCT","GTGCCCCT","TTGCCCCT",
+ "AATCCCCT","CATCCCCT","GATCCCCT","TATCCCCT","ACTCCCCT","CCTCCCCT","GCTCCCCT","TCTCCCCT",
+ "AGTCCCCT","CGTCCCCT","GGTCCCCT","TGTCCCCT","ATTCCCCT","CTTCCCCT","GTTCCCCT","TTTCCCCT",
+ "AAAGCCCT","CAAGCCCT","GAAGCCCT","TAAGCCCT","ACAGCCCT","CCAGCCCT","GCAGCCCT","TCAGCCCT",
+ "AGAGCCCT","CGAGCCCT","GGAGCCCT","TGAGCCCT","ATAGCCCT","CTAGCCCT","GTAGCCCT","TTAGCCCT",
+ "AACGCCCT","CACGCCCT","GACGCCCT","TACGCCCT","ACCGCCCT","CCCGCCCT","GCCGCCCT","TCCGCCCT",
+ "AGCGCCCT","CGCGCCCT","GGCGCCCT","TGCGCCCT","ATCGCCCT","CTCGCCCT","GTCGCCCT","TTCGCCCT",
+ "AAGGCCCT","CAGGCCCT","GAGGCCCT","TAGGCCCT","ACGGCCCT","CCGGCCCT","GCGGCCCT","TCGGCCCT",
+ "AGGGCCCT","CGGGCCCT","GGGGCCCT","TGGGCCCT","ATGGCCCT","CTGGCCCT","GTGGCCCT","TTGGCCCT",
+ "AATGCCCT","CATGCCCT","GATGCCCT","TATGCCCT","ACTGCCCT","CCTGCCCT","GCTGCCCT","TCTGCCCT",
+ "AGTGCCCT","CGTGCCCT","GGTGCCCT","TGTGCCCT","ATTGCCCT","CTTGCCCT","GTTGCCCT","TTTGCCCT",
+ "AAATCCCT","CAATCCCT","GAATCCCT","TAATCCCT","ACATCCCT","CCATCCCT","GCATCCCT","TCATCCCT",
+ "AGATCCCT","CGATCCCT","GGATCCCT","TGATCCCT","ATATCCCT","CTATCCCT","GTATCCCT","TTATCCCT",
+ "AACTCCCT","CACTCCCT","GACTCCCT","TACTCCCT","ACCTCCCT","CCCTCCCT","GCCTCCCT","TCCTCCCT",
+ "AGCTCCCT","CGCTCCCT","GGCTCCCT","TGCTCCCT","ATCTCCCT","CTCTCCCT","GTCTCCCT","TTCTCCCT",
+ "AAGTCCCT","CAGTCCCT","GAGTCCCT","TAGTCCCT","ACGTCCCT","CCGTCCCT","GCGTCCCT","TCGTCCCT",
+ "AGGTCCCT","CGGTCCCT","GGGTCCCT","TGGTCCCT","ATGTCCCT","CTGTCCCT","GTGTCCCT","TTGTCCCT",
+ "AATTCCCT","CATTCCCT","GATTCCCT","TATTCCCT","ACTTCCCT","CCTTCCCT","GCTTCCCT","TCTTCCCT",
+ "AGTTCCCT","CGTTCCCT","GGTTCCCT","TGTTCCCT","ATTTCCCT","CTTTCCCT","GTTTCCCT","TTTTCCCT",
+ "AAAAGCCT","CAAAGCCT","GAAAGCCT","TAAAGCCT","ACAAGCCT","CCAAGCCT","GCAAGCCT","TCAAGCCT",
+ "AGAAGCCT","CGAAGCCT","GGAAGCCT","TGAAGCCT","ATAAGCCT","CTAAGCCT","GTAAGCCT","TTAAGCCT",
+ "AACAGCCT","CACAGCCT","GACAGCCT","TACAGCCT","ACCAGCCT","CCCAGCCT","GCCAGCCT","TCCAGCCT",
+ "AGCAGCCT","CGCAGCCT","GGCAGCCT","TGCAGCCT","ATCAGCCT","CTCAGCCT","GTCAGCCT","TTCAGCCT",
+ "AAGAGCCT","CAGAGCCT","GAGAGCCT","TAGAGCCT","ACGAGCCT","CCGAGCCT","GCGAGCCT","TCGAGCCT",
+ "AGGAGCCT","CGGAGCCT","GGGAGCCT","TGGAGCCT","ATGAGCCT","CTGAGCCT","GTGAGCCT","TTGAGCCT",
+ "AATAGCCT","CATAGCCT","GATAGCCT","TATAGCCT","ACTAGCCT","CCTAGCCT","GCTAGCCT","TCTAGCCT",
+ "AGTAGCCT","CGTAGCCT","GGTAGCCT","TGTAGCCT","ATTAGCCT","CTTAGCCT","GTTAGCCT","TTTAGCCT",
+ "AAACGCCT","CAACGCCT","GAACGCCT","TAACGCCT","ACACGCCT","CCACGCCT","GCACGCCT","TCACGCCT",
+ "AGACGCCT","CGACGCCT","GGACGCCT","TGACGCCT","ATACGCCT","CTACGCCT","GTACGCCT","TTACGCCT",
+ "AACCGCCT","CACCGCCT","GACCGCCT","TACCGCCT","ACCCGCCT","CCCCGCCT","GCCCGCCT","TCCCGCCT",
+ "AGCCGCCT","CGCCGCCT","GGCCGCCT","TGCCGCCT","ATCCGCCT","CTCCGCCT","GTCCGCCT","TTCCGCCT",
+ "AAGCGCCT","CAGCGCCT","GAGCGCCT","TAGCGCCT","ACGCGCCT","CCGCGCCT","GCGCGCCT","TCGCGCCT",
+ "AGGCGCCT","CGGCGCCT","GGGCGCCT","TGGCGCCT","ATGCGCCT","CTGCGCCT","GTGCGCCT","TTGCGCCT",
+ "AATCGCCT","CATCGCCT","GATCGCCT","TATCGCCT","ACTCGCCT","CCTCGCCT","GCTCGCCT","TCTCGCCT",
+ "AGTCGCCT","CGTCGCCT","GGTCGCCT","TGTCGCCT","ATTCGCCT","CTTCGCCT","GTTCGCCT","TTTCGCCT",
+ "AAAGGCCT","CAAGGCCT","GAAGGCCT","TAAGGCCT","ACAGGCCT","CCAGGCCT","GCAGGCCT","TCAGGCCT",
+ "AGAGGCCT","CGAGGCCT","GGAGGCCT","TGAGGCCT","ATAGGCCT","CTAGGCCT","GTAGGCCT","TTAGGCCT",
+ "AACGGCCT","CACGGCCT","GACGGCCT","TACGGCCT","ACCGGCCT","CCCGGCCT","GCCGGCCT","TCCGGCCT",
+ "AGCGGCCT","CGCGGCCT","GGCGGCCT","TGCGGCCT","ATCGGCCT","CTCGGCCT","GTCGGCCT","TTCGGCCT",
+ "AAGGGCCT","CAGGGCCT","GAGGGCCT","TAGGGCCT","ACGGGCCT","CCGGGCCT","GCGGGCCT","TCGGGCCT",
+ "AGGGGCCT","CGGGGCCT","GGGGGCCT","TGGGGCCT","ATGGGCCT","CTGGGCCT","GTGGGCCT","TTGGGCCT",
+ "AATGGCCT","CATGGCCT","GATGGCCT","TATGGCCT","ACTGGCCT","CCTGGCCT","GCTGGCCT","TCTGGCCT",
+ "AGTGGCCT","CGTGGCCT","GGTGGCCT","TGTGGCCT","ATTGGCCT","CTTGGCCT","GTTGGCCT","TTTGGCCT",
+ "AAATGCCT","CAATGCCT","GAATGCCT","TAATGCCT","ACATGCCT","CCATGCCT","GCATGCCT","TCATGCCT",
+ "AGATGCCT","CGATGCCT","GGATGCCT","TGATGCCT","ATATGCCT","CTATGCCT","GTATGCCT","TTATGCCT",
+ "AACTGCCT","CACTGCCT","GACTGCCT","TACTGCCT","ACCTGCCT","CCCTGCCT","GCCTGCCT","TCCTGCCT",
+ "AGCTGCCT","CGCTGCCT","GGCTGCCT","TGCTGCCT","ATCTGCCT","CTCTGCCT","GTCTGCCT","TTCTGCCT",
+ "AAGTGCCT","CAGTGCCT","GAGTGCCT","TAGTGCCT","ACGTGCCT","CCGTGCCT","GCGTGCCT","TCGTGCCT",
+ "AGGTGCCT","CGGTGCCT","GGGTGCCT","TGGTGCCT","ATGTGCCT","CTGTGCCT","GTGTGCCT","TTGTGCCT",
+ "AATTGCCT","CATTGCCT","GATTGCCT","TATTGCCT","ACTTGCCT","CCTTGCCT","GCTTGCCT","TCTTGCCT",
+ "AGTTGCCT","CGTTGCCT","GGTTGCCT","TGTTGCCT","ATTTGCCT","CTTTGCCT","GTTTGCCT","TTTTGCCT",
+ "AAAATCCT","CAAATCCT","GAAATCCT","TAAATCCT","ACAATCCT","CCAATCCT","GCAATCCT","TCAATCCT",
+ "AGAATCCT","CGAATCCT","GGAATCCT","TGAATCCT","ATAATCCT","CTAATCCT","GTAATCCT","TTAATCCT",
+ "AACATCCT","CACATCCT","GACATCCT","TACATCCT","ACCATCCT","CCCATCCT","GCCATCCT","TCCATCCT",
+ "AGCATCCT","CGCATCCT","GGCATCCT","TGCATCCT","ATCATCCT","CTCATCCT","GTCATCCT","TTCATCCT",
+ "AAGATCCT","CAGATCCT","GAGATCCT","TAGATCCT","ACGATCCT","CCGATCCT","GCGATCCT","TCGATCCT",
+ "AGGATCCT","CGGATCCT","GGGATCCT","TGGATCCT","ATGATCCT","CTGATCCT","GTGATCCT","TTGATCCT",
+ "AATATCCT","CATATCCT","GATATCCT","TATATCCT","ACTATCCT","CCTATCCT","GCTATCCT","TCTATCCT",
+ "AGTATCCT","CGTATCCT","GGTATCCT","TGTATCCT","ATTATCCT","CTTATCCT","GTTATCCT","TTTATCCT",
+ "AAACTCCT","CAACTCCT","GAACTCCT","TAACTCCT","ACACTCCT","CCACTCCT","GCACTCCT","TCACTCCT",
+ "AGACTCCT","CGACTCCT","GGACTCCT","TGACTCCT","ATACTCCT","CTACTCCT","GTACTCCT","TTACTCCT",
+ "AACCTCCT","CACCTCCT","GACCTCCT","TACCTCCT","ACCCTCCT","CCCCTCCT","GCCCTCCT","TCCCTCCT",
+ "AGCCTCCT","CGCCTCCT","GGCCTCCT","TGCCTCCT","ATCCTCCT","CTCCTCCT","GTCCTCCT","TTCCTCCT",
+ "AAGCTCCT","CAGCTCCT","GAGCTCCT","TAGCTCCT","ACGCTCCT","CCGCTCCT","GCGCTCCT","TCGCTCCT",
+ "AGGCTCCT","CGGCTCCT","GGGCTCCT","TGGCTCCT","ATGCTCCT","CTGCTCCT","GTGCTCCT","TTGCTCCT",
+ "AATCTCCT","CATCTCCT","GATCTCCT","TATCTCCT","ACTCTCCT","CCTCTCCT","GCTCTCCT","TCTCTCCT",
+ "AGTCTCCT","CGTCTCCT","GGTCTCCT","TGTCTCCT","ATTCTCCT","CTTCTCCT","GTTCTCCT","TTTCTCCT",
+ "AAAGTCCT","CAAGTCCT","GAAGTCCT","TAAGTCCT","ACAGTCCT","CCAGTCCT","GCAGTCCT","TCAGTCCT",
+ "AGAGTCCT","CGAGTCCT","GGAGTCCT","TGAGTCCT","ATAGTCCT","CTAGTCCT","GTAGTCCT","TTAGTCCT",
+ "AACGTCCT","CACGTCCT","GACGTCCT","TACGTCCT","ACCGTCCT","CCCGTCCT","GCCGTCCT","TCCGTCCT",
+ "AGCGTCCT","CGCGTCCT","GGCGTCCT","TGCGTCCT","ATCGTCCT","CTCGTCCT","GTCGTCCT","TTCGTCCT",
+ "AAGGTCCT","CAGGTCCT","GAGGTCCT","TAGGTCCT","ACGGTCCT","CCGGTCCT","GCGGTCCT","TCGGTCCT",
+ "AGGGTCCT","CGGGTCCT","GGGGTCCT","TGGGTCCT","ATGGTCCT","CTGGTCCT","GTGGTCCT","TTGGTCCT",
+ "AATGTCCT","CATGTCCT","GATGTCCT","TATGTCCT","ACTGTCCT","CCTGTCCT","GCTGTCCT","TCTGTCCT",
+ "AGTGTCCT","CGTGTCCT","GGTGTCCT","TGTGTCCT","ATTGTCCT","CTTGTCCT","GTTGTCCT","TTTGTCCT",
+ "AAATTCCT","CAATTCCT","GAATTCCT","TAATTCCT","ACATTCCT","CCATTCCT","GCATTCCT","TCATTCCT",
+ "AGATTCCT","CGATTCCT","GGATTCCT","TGATTCCT","ATATTCCT","CTATTCCT","GTATTCCT","TTATTCCT",
+ "AACTTCCT","CACTTCCT","GACTTCCT","TACTTCCT","ACCTTCCT","CCCTTCCT","GCCTTCCT","TCCTTCCT",
+ "AGCTTCCT","CGCTTCCT","GGCTTCCT","TGCTTCCT","ATCTTCCT","CTCTTCCT","GTCTTCCT","TTCTTCCT",
+ "AAGTTCCT","CAGTTCCT","GAGTTCCT","TAGTTCCT","ACGTTCCT","CCGTTCCT","GCGTTCCT","TCGTTCCT",
+ "AGGTTCCT","CGGTTCCT","GGGTTCCT","TGGTTCCT","ATGTTCCT","CTGTTCCT","GTGTTCCT","TTGTTCCT",
+ "AATTTCCT","CATTTCCT","GATTTCCT","TATTTCCT","ACTTTCCT","CCTTTCCT","GCTTTCCT","TCTTTCCT",
+ "AGTTTCCT","CGTTTCCT","GGTTTCCT","TGTTTCCT","ATTTTCCT","CTTTTCCT","GTTTTCCT","TTTTTCCT",
+ "AAAAAGCT","CAAAAGCT","GAAAAGCT","TAAAAGCT","ACAAAGCT","CCAAAGCT","GCAAAGCT","TCAAAGCT",
+ "AGAAAGCT","CGAAAGCT","GGAAAGCT","TGAAAGCT","ATAAAGCT","CTAAAGCT","GTAAAGCT","TTAAAGCT",
+ "AACAAGCT","CACAAGCT","GACAAGCT","TACAAGCT","ACCAAGCT","CCCAAGCT","GCCAAGCT","TCCAAGCT",
+ "AGCAAGCT","CGCAAGCT","GGCAAGCT","TGCAAGCT","ATCAAGCT","CTCAAGCT","GTCAAGCT","TTCAAGCT",
+ "AAGAAGCT","CAGAAGCT","GAGAAGCT","TAGAAGCT","ACGAAGCT","CCGAAGCT","GCGAAGCT","TCGAAGCT",
+ "AGGAAGCT","CGGAAGCT","GGGAAGCT","TGGAAGCT","ATGAAGCT","CTGAAGCT","GTGAAGCT","TTGAAGCT",
+ "AATAAGCT","CATAAGCT","GATAAGCT","TATAAGCT","ACTAAGCT","CCTAAGCT","GCTAAGCT","TCTAAGCT",
+ "AGTAAGCT","CGTAAGCT","GGTAAGCT","TGTAAGCT","ATTAAGCT","CTTAAGCT","GTTAAGCT","TTTAAGCT",
+ "AAACAGCT","CAACAGCT","GAACAGCT","TAACAGCT","ACACAGCT","CCACAGCT","GCACAGCT","TCACAGCT",
+ "AGACAGCT","CGACAGCT","GGACAGCT","TGACAGCT","ATACAGCT","CTACAGCT","GTACAGCT","TTACAGCT",
+ "AACCAGCT","CACCAGCT","GACCAGCT","TACCAGCT","ACCCAGCT","CCCCAGCT","GCCCAGCT","TCCCAGCT",
+ "AGCCAGCT","CGCCAGCT","GGCCAGCT","TGCCAGCT","ATCCAGCT","CTCCAGCT","GTCCAGCT","TTCCAGCT",
+ "AAGCAGCT","CAGCAGCT","GAGCAGCT","TAGCAGCT","ACGCAGCT","CCGCAGCT","GCGCAGCT","TCGCAGCT",
+ "AGGCAGCT","CGGCAGCT","GGGCAGCT","TGGCAGCT","ATGCAGCT","CTGCAGCT","GTGCAGCT","TTGCAGCT",
+ "AATCAGCT","CATCAGCT","GATCAGCT","TATCAGCT","ACTCAGCT","CCTCAGCT","GCTCAGCT","TCTCAGCT",
+ "AGTCAGCT","CGTCAGCT","GGTCAGCT","TGTCAGCT","ATTCAGCT","CTTCAGCT","GTTCAGCT","TTTCAGCT",
+ "AAAGAGCT","CAAGAGCT","GAAGAGCT","TAAGAGCT","ACAGAGCT","CCAGAGCT","GCAGAGCT","TCAGAGCT",
+ "AGAGAGCT","CGAGAGCT","GGAGAGCT","TGAGAGCT","ATAGAGCT","CTAGAGCT","GTAGAGCT","TTAGAGCT",
+ "AACGAGCT","CACGAGCT","GACGAGCT","TACGAGCT","ACCGAGCT","CCCGAGCT","GCCGAGCT","TCCGAGCT",
+ "AGCGAGCT","CGCGAGCT","GGCGAGCT","TGCGAGCT","ATCGAGCT","CTCGAGCT","GTCGAGCT","TTCGAGCT",
+ "AAGGAGCT","CAGGAGCT","GAGGAGCT","TAGGAGCT","ACGGAGCT","CCGGAGCT","GCGGAGCT","TCGGAGCT",
+ "AGGGAGCT","CGGGAGCT","GGGGAGCT","TGGGAGCT","ATGGAGCT","CTGGAGCT","GTGGAGCT","TTGGAGCT",
+ "AATGAGCT","CATGAGCT","GATGAGCT","TATGAGCT","ACTGAGCT","CCTGAGCT","GCTGAGCT","TCTGAGCT",
+ "AGTGAGCT","CGTGAGCT","GGTGAGCT","TGTGAGCT","ATTGAGCT","CTTGAGCT","GTTGAGCT","TTTGAGCT",
+ "AAATAGCT","CAATAGCT","GAATAGCT","TAATAGCT","ACATAGCT","CCATAGCT","GCATAGCT","TCATAGCT",
+ "AGATAGCT","CGATAGCT","GGATAGCT","TGATAGCT","ATATAGCT","CTATAGCT","GTATAGCT","TTATAGCT",
+ "AACTAGCT","CACTAGCT","GACTAGCT","TACTAGCT","ACCTAGCT","CCCTAGCT","GCCTAGCT","TCCTAGCT",
+ "AGCTAGCT","CGCTAGCT","GGCTAGCT","TGCTAGCT","ATCTAGCT","CTCTAGCT","GTCTAGCT","TTCTAGCT",
+ "AAGTAGCT","CAGTAGCT","GAGTAGCT","TAGTAGCT","ACGTAGCT","CCGTAGCT","GCGTAGCT","TCGTAGCT",
+ "AGGTAGCT","CGGTAGCT","GGGTAGCT","TGGTAGCT","ATGTAGCT","CTGTAGCT","GTGTAGCT","TTGTAGCT",
+ "AATTAGCT","CATTAGCT","GATTAGCT","TATTAGCT","ACTTAGCT","CCTTAGCT","GCTTAGCT","TCTTAGCT",
+ "AGTTAGCT","CGTTAGCT","GGTTAGCT","TGTTAGCT","ATTTAGCT","CTTTAGCT","GTTTAGCT","TTTTAGCT",
+ "AAAACGCT","CAAACGCT","GAAACGCT","TAAACGCT","ACAACGCT","CCAACGCT","GCAACGCT","TCAACGCT",
+ "AGAACGCT","CGAACGCT","GGAACGCT","TGAACGCT","ATAACGCT","CTAACGCT","GTAACGCT","TTAACGCT",
+ "AACACGCT","CACACGCT","GACACGCT","TACACGCT","ACCACGCT","CCCACGCT","GCCACGCT","TCCACGCT",
+ "AGCACGCT","CGCACGCT","GGCACGCT","TGCACGCT","ATCACGCT","CTCACGCT","GTCACGCT","TTCACGCT",
+ "AAGACGCT","CAGACGCT","GAGACGCT","TAGACGCT","ACGACGCT","CCGACGCT","GCGACGCT","TCGACGCT",
+ "AGGACGCT","CGGACGCT","GGGACGCT","TGGACGCT","ATGACGCT","CTGACGCT","GTGACGCT","TTGACGCT",
+ "AATACGCT","CATACGCT","GATACGCT","TATACGCT","ACTACGCT","CCTACGCT","GCTACGCT","TCTACGCT",
+ "AGTACGCT","CGTACGCT","GGTACGCT","TGTACGCT","ATTACGCT","CTTACGCT","GTTACGCT","TTTACGCT",
+ "AAACCGCT","CAACCGCT","GAACCGCT","TAACCGCT","ACACCGCT","CCACCGCT","GCACCGCT","TCACCGCT",
+ "AGACCGCT","CGACCGCT","GGACCGCT","TGACCGCT","ATACCGCT","CTACCGCT","GTACCGCT","TTACCGCT",
+ "AACCCGCT","CACCCGCT","GACCCGCT","TACCCGCT","ACCCCGCT","CCCCCGCT","GCCCCGCT","TCCCCGCT",
+ "AGCCCGCT","CGCCCGCT","GGCCCGCT","TGCCCGCT","ATCCCGCT","CTCCCGCT","GTCCCGCT","TTCCCGCT",
+ "AAGCCGCT","CAGCCGCT","GAGCCGCT","TAGCCGCT","ACGCCGCT","CCGCCGCT","GCGCCGCT","TCGCCGCT",
+ "AGGCCGCT","CGGCCGCT","GGGCCGCT","TGGCCGCT","ATGCCGCT","CTGCCGCT","GTGCCGCT","TTGCCGCT",
+ "AATCCGCT","CATCCGCT","GATCCGCT","TATCCGCT","ACTCCGCT","CCTCCGCT","GCTCCGCT","TCTCCGCT",
+ "AGTCCGCT","CGTCCGCT","GGTCCGCT","TGTCCGCT","ATTCCGCT","CTTCCGCT","GTTCCGCT","TTTCCGCT",
+ "AAAGCGCT","CAAGCGCT","GAAGCGCT","TAAGCGCT","ACAGCGCT","CCAGCGCT","GCAGCGCT","TCAGCGCT",
+ "AGAGCGCT","CGAGCGCT","GGAGCGCT","TGAGCGCT","ATAGCGCT","CTAGCGCT","GTAGCGCT","TTAGCGCT",
+ "AACGCGCT","CACGCGCT","GACGCGCT","TACGCGCT","ACCGCGCT","CCCGCGCT","GCCGCGCT","TCCGCGCT",
+ "AGCGCGCT","CGCGCGCT","GGCGCGCT","TGCGCGCT","ATCGCGCT","CTCGCGCT","GTCGCGCT","TTCGCGCT",
+ "AAGGCGCT","CAGGCGCT","GAGGCGCT","TAGGCGCT","ACGGCGCT","CCGGCGCT","GCGGCGCT","TCGGCGCT",
+ "AGGGCGCT","CGGGCGCT","GGGGCGCT","TGGGCGCT","ATGGCGCT","CTGGCGCT","GTGGCGCT","TTGGCGCT",
+ "AATGCGCT","CATGCGCT","GATGCGCT","TATGCGCT","ACTGCGCT","CCTGCGCT","GCTGCGCT","TCTGCGCT",
+ "AGTGCGCT","CGTGCGCT","GGTGCGCT","TGTGCGCT","ATTGCGCT","CTTGCGCT","GTTGCGCT","TTTGCGCT",
+ "AAATCGCT","CAATCGCT","GAATCGCT","TAATCGCT","ACATCGCT","CCATCGCT","GCATCGCT","TCATCGCT",
+ "AGATCGCT","CGATCGCT","GGATCGCT","TGATCGCT","ATATCGCT","CTATCGCT","GTATCGCT","TTATCGCT",
+ "AACTCGCT","CACTCGCT","GACTCGCT","TACTCGCT","ACCTCGCT","CCCTCGCT","GCCTCGCT","TCCTCGCT",
+ "AGCTCGCT","CGCTCGCT","GGCTCGCT","TGCTCGCT","ATCTCGCT","CTCTCGCT","GTCTCGCT","TTCTCGCT",
+ "AAGTCGCT","CAGTCGCT","GAGTCGCT","TAGTCGCT","ACGTCGCT","CCGTCGCT","GCGTCGCT","TCGTCGCT",
+ "AGGTCGCT","CGGTCGCT","GGGTCGCT","TGGTCGCT","ATGTCGCT","CTGTCGCT","GTGTCGCT","TTGTCGCT",
+ "AATTCGCT","CATTCGCT","GATTCGCT","TATTCGCT","ACTTCGCT","CCTTCGCT","GCTTCGCT","TCTTCGCT",
+ "AGTTCGCT","CGTTCGCT","GGTTCGCT","TGTTCGCT","ATTTCGCT","CTTTCGCT","GTTTCGCT","TTTTCGCT",
+ "AAAAGGCT","CAAAGGCT","GAAAGGCT","TAAAGGCT","ACAAGGCT","CCAAGGCT","GCAAGGCT","TCAAGGCT",
+ "AGAAGGCT","CGAAGGCT","GGAAGGCT","TGAAGGCT","ATAAGGCT","CTAAGGCT","GTAAGGCT","TTAAGGCT",
+ "AACAGGCT","CACAGGCT","GACAGGCT","TACAGGCT","ACCAGGCT","CCCAGGCT","GCCAGGCT","TCCAGGCT",
+ "AGCAGGCT","CGCAGGCT","GGCAGGCT","TGCAGGCT","ATCAGGCT","CTCAGGCT","GTCAGGCT","TTCAGGCT",
+ "AAGAGGCT","CAGAGGCT","GAGAGGCT","TAGAGGCT","ACGAGGCT","CCGAGGCT","GCGAGGCT","TCGAGGCT",
+ "AGGAGGCT","CGGAGGCT","GGGAGGCT","TGGAGGCT","ATGAGGCT","CTGAGGCT","GTGAGGCT","TTGAGGCT",
+ "AATAGGCT","CATAGGCT","GATAGGCT","TATAGGCT","ACTAGGCT","CCTAGGCT","GCTAGGCT","TCTAGGCT",
+ "AGTAGGCT","CGTAGGCT","GGTAGGCT","TGTAGGCT","ATTAGGCT","CTTAGGCT","GTTAGGCT","TTTAGGCT",
+ "AAACGGCT","CAACGGCT","GAACGGCT","TAACGGCT","ACACGGCT","CCACGGCT","GCACGGCT","TCACGGCT",
+ "AGACGGCT","CGACGGCT","GGACGGCT","TGACGGCT","ATACGGCT","CTACGGCT","GTACGGCT","TTACGGCT",
+ "AACCGGCT","CACCGGCT","GACCGGCT","TACCGGCT","ACCCGGCT","CCCCGGCT","GCCCGGCT","TCCCGGCT",
+ "AGCCGGCT","CGCCGGCT","GGCCGGCT","TGCCGGCT","ATCCGGCT","CTCCGGCT","GTCCGGCT","TTCCGGCT",
+ "AAGCGGCT","CAGCGGCT","GAGCGGCT","TAGCGGCT","ACGCGGCT","CCGCGGCT","GCGCGGCT","TCGCGGCT",
+ "AGGCGGCT","CGGCGGCT","GGGCGGCT","TGGCGGCT","ATGCGGCT","CTGCGGCT","GTGCGGCT","TTGCGGCT",
+ "AATCGGCT","CATCGGCT","GATCGGCT","TATCGGCT","ACTCGGCT","CCTCGGCT","GCTCGGCT","TCTCGGCT",
+ "AGTCGGCT","CGTCGGCT","GGTCGGCT","TGTCGGCT","ATTCGGCT","CTTCGGCT","GTTCGGCT","TTTCGGCT",
+ "AAAGGGCT","CAAGGGCT","GAAGGGCT","TAAGGGCT","ACAGGGCT","CCAGGGCT","GCAGGGCT","TCAGGGCT",
+ "AGAGGGCT","CGAGGGCT","GGAGGGCT","TGAGGGCT","ATAGGGCT","CTAGGGCT","GTAGGGCT","TTAGGGCT",
+ "AACGGGCT","CACGGGCT","GACGGGCT","TACGGGCT","ACCGGGCT","CCCGGGCT","GCCGGGCT","TCCGGGCT",
+ "AGCGGGCT","CGCGGGCT","GGCGGGCT","TGCGGGCT","ATCGGGCT","CTCGGGCT","GTCGGGCT","TTCGGGCT",
+ "AAGGGGCT","CAGGGGCT","GAGGGGCT","TAGGGGCT","ACGGGGCT","CCGGGGCT","GCGGGGCT","TCGGGGCT",
+ "AGGGGGCT","CGGGGGCT","GGGGGGCT","TGGGGGCT","ATGGGGCT","CTGGGGCT","GTGGGGCT","TTGGGGCT",
+ "AATGGGCT","CATGGGCT","GATGGGCT","TATGGGCT","ACTGGGCT","CCTGGGCT","GCTGGGCT","TCTGGGCT",
+ "AGTGGGCT","CGTGGGCT","GGTGGGCT","TGTGGGCT","ATTGGGCT","CTTGGGCT","GTTGGGCT","TTTGGGCT",
+ "AAATGGCT","CAATGGCT","GAATGGCT","TAATGGCT","ACATGGCT","CCATGGCT","GCATGGCT","TCATGGCT",
+ "AGATGGCT","CGATGGCT","GGATGGCT","TGATGGCT","ATATGGCT","CTATGGCT","GTATGGCT","TTATGGCT",
+ "AACTGGCT","CACTGGCT","GACTGGCT","TACTGGCT","ACCTGGCT","CCCTGGCT","GCCTGGCT","TCCTGGCT",
+ "AGCTGGCT","CGCTGGCT","GGCTGGCT","TGCTGGCT","ATCTGGCT","CTCTGGCT","GTCTGGCT","TTCTGGCT",
+ "AAGTGGCT","CAGTGGCT","GAGTGGCT","TAGTGGCT","ACGTGGCT","CCGTGGCT","GCGTGGCT","TCGTGGCT",
+ "AGGTGGCT","CGGTGGCT","GGGTGGCT","TGGTGGCT","ATGTGGCT","CTGTGGCT","GTGTGGCT","TTGTGGCT",
+ "AATTGGCT","CATTGGCT","GATTGGCT","TATTGGCT","ACTTGGCT","CCTTGGCT","GCTTGGCT","TCTTGGCT",
+ "AGTTGGCT","CGTTGGCT","GGTTGGCT","TGTTGGCT","ATTTGGCT","CTTTGGCT","GTTTGGCT","TTTTGGCT",
+ "AAAATGCT","CAAATGCT","GAAATGCT","TAAATGCT","ACAATGCT","CCAATGCT","GCAATGCT","TCAATGCT",
+ "AGAATGCT","CGAATGCT","GGAATGCT","TGAATGCT","ATAATGCT","CTAATGCT","GTAATGCT","TTAATGCT",
+ "AACATGCT","CACATGCT","GACATGCT","TACATGCT","ACCATGCT","CCCATGCT","GCCATGCT","TCCATGCT",
+ "AGCATGCT","CGCATGCT","GGCATGCT","TGCATGCT","ATCATGCT","CTCATGCT","GTCATGCT","TTCATGCT",
+ "AAGATGCT","CAGATGCT","GAGATGCT","TAGATGCT","ACGATGCT","CCGATGCT","GCGATGCT","TCGATGCT",
+ "AGGATGCT","CGGATGCT","GGGATGCT","TGGATGCT","ATGATGCT","CTGATGCT","GTGATGCT","TTGATGCT",
+ "AATATGCT","CATATGCT","GATATGCT","TATATGCT","ACTATGCT","CCTATGCT","GCTATGCT","TCTATGCT",
+ "AGTATGCT","CGTATGCT","GGTATGCT","TGTATGCT","ATTATGCT","CTTATGCT","GTTATGCT","TTTATGCT",
+ "AAACTGCT","CAACTGCT","GAACTGCT","TAACTGCT","ACACTGCT","CCACTGCT","GCACTGCT","TCACTGCT",
+ "AGACTGCT","CGACTGCT","GGACTGCT","TGACTGCT","ATACTGCT","CTACTGCT","GTACTGCT","TTACTGCT",
+ "AACCTGCT","CACCTGCT","GACCTGCT","TACCTGCT","ACCCTGCT","CCCCTGCT","GCCCTGCT","TCCCTGCT",
+ "AGCCTGCT","CGCCTGCT","GGCCTGCT","TGCCTGCT","ATCCTGCT","CTCCTGCT","GTCCTGCT","TTCCTGCT",
+ "AAGCTGCT","CAGCTGCT","GAGCTGCT","TAGCTGCT","ACGCTGCT","CCGCTGCT","GCGCTGCT","TCGCTGCT",
+ "AGGCTGCT","CGGCTGCT","GGGCTGCT","TGGCTGCT","ATGCTGCT","CTGCTGCT","GTGCTGCT","TTGCTGCT",
+ "AATCTGCT","CATCTGCT","GATCTGCT","TATCTGCT","ACTCTGCT","CCTCTGCT","GCTCTGCT","TCTCTGCT",
+ "AGTCTGCT","CGTCTGCT","GGTCTGCT","TGTCTGCT","ATTCTGCT","CTTCTGCT","GTTCTGCT","TTTCTGCT",
+ "AAAGTGCT","CAAGTGCT","GAAGTGCT","TAAGTGCT","ACAGTGCT","CCAGTGCT","GCAGTGCT","TCAGTGCT",
+ "AGAGTGCT","CGAGTGCT","GGAGTGCT","TGAGTGCT","ATAGTGCT","CTAGTGCT","GTAGTGCT","TTAGTGCT",
+ "AACGTGCT","CACGTGCT","GACGTGCT","TACGTGCT","ACCGTGCT","CCCGTGCT","GCCGTGCT","TCCGTGCT",
+ "AGCGTGCT","CGCGTGCT","GGCGTGCT","TGCGTGCT","ATCGTGCT","CTCGTGCT","GTCGTGCT","TTCGTGCT",
+ "AAGGTGCT","CAGGTGCT","GAGGTGCT","TAGGTGCT","ACGGTGCT","CCGGTGCT","GCGGTGCT","TCGGTGCT",
+ "AGGGTGCT","CGGGTGCT","GGGGTGCT","TGGGTGCT","ATGGTGCT","CTGGTGCT","GTGGTGCT","TTGGTGCT",
+ "AATGTGCT","CATGTGCT","GATGTGCT","TATGTGCT","ACTGTGCT","CCTGTGCT","GCTGTGCT","TCTGTGCT",
+ "AGTGTGCT","CGTGTGCT","GGTGTGCT","TGTGTGCT","ATTGTGCT","CTTGTGCT","GTTGTGCT","TTTGTGCT",
+ "AAATTGCT","CAATTGCT","GAATTGCT","TAATTGCT","ACATTGCT","CCATTGCT","GCATTGCT","TCATTGCT",
+ "AGATTGCT","CGATTGCT","GGATTGCT","TGATTGCT","ATATTGCT","CTATTGCT","GTATTGCT","TTATTGCT",
+ "AACTTGCT","CACTTGCT","GACTTGCT","TACTTGCT","ACCTTGCT","CCCTTGCT","GCCTTGCT","TCCTTGCT",
+ "AGCTTGCT","CGCTTGCT","GGCTTGCT","TGCTTGCT","ATCTTGCT","CTCTTGCT","GTCTTGCT","TTCTTGCT",
+ "AAGTTGCT","CAGTTGCT","GAGTTGCT","TAGTTGCT","ACGTTGCT","CCGTTGCT","GCGTTGCT","TCGTTGCT",
+ "AGGTTGCT","CGGTTGCT","GGGTTGCT","TGGTTGCT","ATGTTGCT","CTGTTGCT","GTGTTGCT","TTGTTGCT",
+ "AATTTGCT","CATTTGCT","GATTTGCT","TATTTGCT","ACTTTGCT","CCTTTGCT","GCTTTGCT","TCTTTGCT",
+ "AGTTTGCT","CGTTTGCT","GGTTTGCT","TGTTTGCT","ATTTTGCT","CTTTTGCT","GTTTTGCT","TTTTTGCT",
+ "AAAAATCT","CAAAATCT","GAAAATCT","TAAAATCT","ACAAATCT","CCAAATCT","GCAAATCT","TCAAATCT",
+ "AGAAATCT","CGAAATCT","GGAAATCT","TGAAATCT","ATAAATCT","CTAAATCT","GTAAATCT","TTAAATCT",
+ "AACAATCT","CACAATCT","GACAATCT","TACAATCT","ACCAATCT","CCCAATCT","GCCAATCT","TCCAATCT",
+ "AGCAATCT","CGCAATCT","GGCAATCT","TGCAATCT","ATCAATCT","CTCAATCT","GTCAATCT","TTCAATCT",
+ "AAGAATCT","CAGAATCT","GAGAATCT","TAGAATCT","ACGAATCT","CCGAATCT","GCGAATCT","TCGAATCT",
+ "AGGAATCT","CGGAATCT","GGGAATCT","TGGAATCT","ATGAATCT","CTGAATCT","GTGAATCT","TTGAATCT",
+ "AATAATCT","CATAATCT","GATAATCT","TATAATCT","ACTAATCT","CCTAATCT","GCTAATCT","TCTAATCT",
+ "AGTAATCT","CGTAATCT","GGTAATCT","TGTAATCT","ATTAATCT","CTTAATCT","GTTAATCT","TTTAATCT",
+ "AAACATCT","CAACATCT","GAACATCT","TAACATCT","ACACATCT","CCACATCT","GCACATCT","TCACATCT",
+ "AGACATCT","CGACATCT","GGACATCT","TGACATCT","ATACATCT","CTACATCT","GTACATCT","TTACATCT",
+ "AACCATCT","CACCATCT","GACCATCT","TACCATCT","ACCCATCT","CCCCATCT","GCCCATCT","TCCCATCT",
+ "AGCCATCT","CGCCATCT","GGCCATCT","TGCCATCT","ATCCATCT","CTCCATCT","GTCCATCT","TTCCATCT",
+ "AAGCATCT","CAGCATCT","GAGCATCT","TAGCATCT","ACGCATCT","CCGCATCT","GCGCATCT","TCGCATCT",
+ "AGGCATCT","CGGCATCT","GGGCATCT","TGGCATCT","ATGCATCT","CTGCATCT","GTGCATCT","TTGCATCT",
+ "AATCATCT","CATCATCT","GATCATCT","TATCATCT","ACTCATCT","CCTCATCT","GCTCATCT","TCTCATCT",
+ "AGTCATCT","CGTCATCT","GGTCATCT","TGTCATCT","ATTCATCT","CTTCATCT","GTTCATCT","TTTCATCT",
+ "AAAGATCT","CAAGATCT","GAAGATCT","TAAGATCT","ACAGATCT","CCAGATCT","GCAGATCT","TCAGATCT",
+ "AGAGATCT","CGAGATCT","GGAGATCT","TGAGATCT","ATAGATCT","CTAGATCT","GTAGATCT","TTAGATCT",
+ "AACGATCT","CACGATCT","GACGATCT","TACGATCT","ACCGATCT","CCCGATCT","GCCGATCT","TCCGATCT",
+ "AGCGATCT","CGCGATCT","GGCGATCT","TGCGATCT","ATCGATCT","CTCGATCT","GTCGATCT","TTCGATCT",
+ "AAGGATCT","CAGGATCT","GAGGATCT","TAGGATCT","ACGGATCT","CCGGATCT","GCGGATCT","TCGGATCT",
+ "AGGGATCT","CGGGATCT","GGGGATCT","TGGGATCT","ATGGATCT","CTGGATCT","GTGGATCT","TTGGATCT",
+ "AATGATCT","CATGATCT","GATGATCT","TATGATCT","ACTGATCT","CCTGATCT","GCTGATCT","TCTGATCT",
+ "AGTGATCT","CGTGATCT","GGTGATCT","TGTGATCT","ATTGATCT","CTTGATCT","GTTGATCT","TTTGATCT",
+ "AAATATCT","CAATATCT","GAATATCT","TAATATCT","ACATATCT","CCATATCT","GCATATCT","TCATATCT",
+ "AGATATCT","CGATATCT","GGATATCT","TGATATCT","ATATATCT","CTATATCT","GTATATCT","TTATATCT",
+ "AACTATCT","CACTATCT","GACTATCT","TACTATCT","ACCTATCT","CCCTATCT","GCCTATCT","TCCTATCT",
+ "AGCTATCT","CGCTATCT","GGCTATCT","TGCTATCT","ATCTATCT","CTCTATCT","GTCTATCT","TTCTATCT",
+ "AAGTATCT","CAGTATCT","GAGTATCT","TAGTATCT","ACGTATCT","CCGTATCT","GCGTATCT","TCGTATCT",
+ "AGGTATCT","CGGTATCT","GGGTATCT","TGGTATCT","ATGTATCT","CTGTATCT","GTGTATCT","TTGTATCT",
+ "AATTATCT","CATTATCT","GATTATCT","TATTATCT","ACTTATCT","CCTTATCT","GCTTATCT","TCTTATCT",
+ "AGTTATCT","CGTTATCT","GGTTATCT","TGTTATCT","ATTTATCT","CTTTATCT","GTTTATCT","TTTTATCT",
+ "AAAACTCT","CAAACTCT","GAAACTCT","TAAACTCT","ACAACTCT","CCAACTCT","GCAACTCT","TCAACTCT",
+ "AGAACTCT","CGAACTCT","GGAACTCT","TGAACTCT","ATAACTCT","CTAACTCT","GTAACTCT","TTAACTCT",
+ "AACACTCT","CACACTCT","GACACTCT","TACACTCT","ACCACTCT","CCCACTCT","GCCACTCT","TCCACTCT",
+ "AGCACTCT","CGCACTCT","GGCACTCT","TGCACTCT","ATCACTCT","CTCACTCT","GTCACTCT","TTCACTCT",
+ "AAGACTCT","CAGACTCT","GAGACTCT","TAGACTCT","ACGACTCT","CCGACTCT","GCGACTCT","TCGACTCT",
+ "AGGACTCT","CGGACTCT","GGGACTCT","TGGACTCT","ATGACTCT","CTGACTCT","GTGACTCT","TTGACTCT",
+ "AATACTCT","CATACTCT","GATACTCT","TATACTCT","ACTACTCT","CCTACTCT","GCTACTCT","TCTACTCT",
+ "AGTACTCT","CGTACTCT","GGTACTCT","TGTACTCT","ATTACTCT","CTTACTCT","GTTACTCT","TTTACTCT",
+ "AAACCTCT","CAACCTCT","GAACCTCT","TAACCTCT","ACACCTCT","CCACCTCT","GCACCTCT","TCACCTCT",
+ "AGACCTCT","CGACCTCT","GGACCTCT","TGACCTCT","ATACCTCT","CTACCTCT","GTACCTCT","TTACCTCT",
+ "AACCCTCT","CACCCTCT","GACCCTCT","TACCCTCT","ACCCCTCT","CCCCCTCT","GCCCCTCT","TCCCCTCT",
+ "AGCCCTCT","CGCCCTCT","GGCCCTCT","TGCCCTCT","ATCCCTCT","CTCCCTCT","GTCCCTCT","TTCCCTCT",
+ "AAGCCTCT","CAGCCTCT","GAGCCTCT","TAGCCTCT","ACGCCTCT","CCGCCTCT","GCGCCTCT","TCGCCTCT",
+ "AGGCCTCT","CGGCCTCT","GGGCCTCT","TGGCCTCT","ATGCCTCT","CTGCCTCT","GTGCCTCT","TTGCCTCT",
+ "AATCCTCT","CATCCTCT","GATCCTCT","TATCCTCT","ACTCCTCT","CCTCCTCT","GCTCCTCT","TCTCCTCT",
+ "AGTCCTCT","CGTCCTCT","GGTCCTCT","TGTCCTCT","ATTCCTCT","CTTCCTCT","GTTCCTCT","TTTCCTCT",
+ "AAAGCTCT","CAAGCTCT","GAAGCTCT","TAAGCTCT","ACAGCTCT","CCAGCTCT","GCAGCTCT","TCAGCTCT",
+ "AGAGCTCT","CGAGCTCT","GGAGCTCT","TGAGCTCT","ATAGCTCT","CTAGCTCT","GTAGCTCT","TTAGCTCT",
+ "AACGCTCT","CACGCTCT","GACGCTCT","TACGCTCT","ACCGCTCT","CCCGCTCT","GCCGCTCT","TCCGCTCT",
+ "AGCGCTCT","CGCGCTCT","GGCGCTCT","TGCGCTCT","ATCGCTCT","CTCGCTCT","GTCGCTCT","TTCGCTCT",
+ "AAGGCTCT","CAGGCTCT","GAGGCTCT","TAGGCTCT","ACGGCTCT","CCGGCTCT","GCGGCTCT","TCGGCTCT",
+ "AGGGCTCT","CGGGCTCT","GGGGCTCT","TGGGCTCT","ATGGCTCT","CTGGCTCT","GTGGCTCT","TTGGCTCT",
+ "AATGCTCT","CATGCTCT","GATGCTCT","TATGCTCT","ACTGCTCT","CCTGCTCT","GCTGCTCT","TCTGCTCT",
+ "AGTGCTCT","CGTGCTCT","GGTGCTCT","TGTGCTCT","ATTGCTCT","CTTGCTCT","GTTGCTCT","TTTGCTCT",
+ "AAATCTCT","CAATCTCT","GAATCTCT","TAATCTCT","ACATCTCT","CCATCTCT","GCATCTCT","TCATCTCT",
+ "AGATCTCT","CGATCTCT","GGATCTCT","TGATCTCT","ATATCTCT","CTATCTCT","GTATCTCT","TTATCTCT",
+ "AACTCTCT","CACTCTCT","GACTCTCT","TACTCTCT","ACCTCTCT","CCCTCTCT","GCCTCTCT","TCCTCTCT",
+ "AGCTCTCT","CGCTCTCT","GGCTCTCT","TGCTCTCT","ATCTCTCT","CTCTCTCT","GTCTCTCT","TTCTCTCT",
+ "AAGTCTCT","CAGTCTCT","GAGTCTCT","TAGTCTCT","ACGTCTCT","CCGTCTCT","GCGTCTCT","TCGTCTCT",
+ "AGGTCTCT","CGGTCTCT","GGGTCTCT","TGGTCTCT","ATGTCTCT","CTGTCTCT","GTGTCTCT","TTGTCTCT",
+ "AATTCTCT","CATTCTCT","GATTCTCT","TATTCTCT","ACTTCTCT","CCTTCTCT","GCTTCTCT","TCTTCTCT",
+ "AGTTCTCT","CGTTCTCT","GGTTCTCT","TGTTCTCT","ATTTCTCT","CTTTCTCT","GTTTCTCT","TTTTCTCT",
+ "AAAAGTCT","CAAAGTCT","GAAAGTCT","TAAAGTCT","ACAAGTCT","CCAAGTCT","GCAAGTCT","TCAAGTCT",
+ "AGAAGTCT","CGAAGTCT","GGAAGTCT","TGAAGTCT","ATAAGTCT","CTAAGTCT","GTAAGTCT","TTAAGTCT",
+ "AACAGTCT","CACAGTCT","GACAGTCT","TACAGTCT","ACCAGTCT","CCCAGTCT","GCCAGTCT","TCCAGTCT",
+ "AGCAGTCT","CGCAGTCT","GGCAGTCT","TGCAGTCT","ATCAGTCT","CTCAGTCT","GTCAGTCT","TTCAGTCT",
+ "AAGAGTCT","CAGAGTCT","GAGAGTCT","TAGAGTCT","ACGAGTCT","CCGAGTCT","GCGAGTCT","TCGAGTCT",
+ "AGGAGTCT","CGGAGTCT","GGGAGTCT","TGGAGTCT","ATGAGTCT","CTGAGTCT","GTGAGTCT","TTGAGTCT",
+ "AATAGTCT","CATAGTCT","GATAGTCT","TATAGTCT","ACTAGTCT","CCTAGTCT","GCTAGTCT","TCTAGTCT",
+ "AGTAGTCT","CGTAGTCT","GGTAGTCT","TGTAGTCT","ATTAGTCT","CTTAGTCT","GTTAGTCT","TTTAGTCT",
+ "AAACGTCT","CAACGTCT","GAACGTCT","TAACGTCT","ACACGTCT","CCACGTCT","GCACGTCT","TCACGTCT",
+ "AGACGTCT","CGACGTCT","GGACGTCT","TGACGTCT","ATACGTCT","CTACGTCT","GTACGTCT","TTACGTCT",
+ "AACCGTCT","CACCGTCT","GACCGTCT","TACCGTCT","ACCCGTCT","CCCCGTCT","GCCCGTCT","TCCCGTCT",
+ "AGCCGTCT","CGCCGTCT","GGCCGTCT","TGCCGTCT","ATCCGTCT","CTCCGTCT","GTCCGTCT","TTCCGTCT",
+ "AAGCGTCT","CAGCGTCT","GAGCGTCT","TAGCGTCT","ACGCGTCT","CCGCGTCT","GCGCGTCT","TCGCGTCT",
+ "AGGCGTCT","CGGCGTCT","GGGCGTCT","TGGCGTCT","ATGCGTCT","CTGCGTCT","GTGCGTCT","TTGCGTCT",
+ "AATCGTCT","CATCGTCT","GATCGTCT","TATCGTCT","ACTCGTCT","CCTCGTCT","GCTCGTCT","TCTCGTCT",
+ "AGTCGTCT","CGTCGTCT","GGTCGTCT","TGTCGTCT","ATTCGTCT","CTTCGTCT","GTTCGTCT","TTTCGTCT",
+ "AAAGGTCT","CAAGGTCT","GAAGGTCT","TAAGGTCT","ACAGGTCT","CCAGGTCT","GCAGGTCT","TCAGGTCT",
+ "AGAGGTCT","CGAGGTCT","GGAGGTCT","TGAGGTCT","ATAGGTCT","CTAGGTCT","GTAGGTCT","TTAGGTCT",
+ "AACGGTCT","CACGGTCT","GACGGTCT","TACGGTCT","ACCGGTCT","CCCGGTCT","GCCGGTCT","TCCGGTCT",
+ "AGCGGTCT","CGCGGTCT","GGCGGTCT","TGCGGTCT","ATCGGTCT","CTCGGTCT","GTCGGTCT","TTCGGTCT",
+ "AAGGGTCT","CAGGGTCT","GAGGGTCT","TAGGGTCT","ACGGGTCT","CCGGGTCT","GCGGGTCT","TCGGGTCT",
+ "AGGGGTCT","CGGGGTCT","GGGGGTCT","TGGGGTCT","ATGGGTCT","CTGGGTCT","GTGGGTCT","TTGGGTCT",
+ "AATGGTCT","CATGGTCT","GATGGTCT","TATGGTCT","ACTGGTCT","CCTGGTCT","GCTGGTCT","TCTGGTCT",
+ "AGTGGTCT","CGTGGTCT","GGTGGTCT","TGTGGTCT","ATTGGTCT","CTTGGTCT","GTTGGTCT","TTTGGTCT",
+ "AAATGTCT","CAATGTCT","GAATGTCT","TAATGTCT","ACATGTCT","CCATGTCT","GCATGTCT","TCATGTCT",
+ "AGATGTCT","CGATGTCT","GGATGTCT","TGATGTCT","ATATGTCT","CTATGTCT","GTATGTCT","TTATGTCT",
+ "AACTGTCT","CACTGTCT","GACTGTCT","TACTGTCT","ACCTGTCT","CCCTGTCT","GCCTGTCT","TCCTGTCT",
+ "AGCTGTCT","CGCTGTCT","GGCTGTCT","TGCTGTCT","ATCTGTCT","CTCTGTCT","GTCTGTCT","TTCTGTCT",
+ "AAGTGTCT","CAGTGTCT","GAGTGTCT","TAGTGTCT","ACGTGTCT","CCGTGTCT","GCGTGTCT","TCGTGTCT",
+ "AGGTGTCT","CGGTGTCT","GGGTGTCT","TGGTGTCT","ATGTGTCT","CTGTGTCT","GTGTGTCT","TTGTGTCT",
+ "AATTGTCT","CATTGTCT","GATTGTCT","TATTGTCT","ACTTGTCT","CCTTGTCT","GCTTGTCT","TCTTGTCT",
+ "AGTTGTCT","CGTTGTCT","GGTTGTCT","TGTTGTCT","ATTTGTCT","CTTTGTCT","GTTTGTCT","TTTTGTCT",
+ "AAAATTCT","CAAATTCT","GAAATTCT","TAAATTCT","ACAATTCT","CCAATTCT","GCAATTCT","TCAATTCT",
+ "AGAATTCT","CGAATTCT","GGAATTCT","TGAATTCT","ATAATTCT","CTAATTCT","GTAATTCT","TTAATTCT",
+ "AACATTCT","CACATTCT","GACATTCT","TACATTCT","ACCATTCT","CCCATTCT","GCCATTCT","TCCATTCT",
+ "AGCATTCT","CGCATTCT","GGCATTCT","TGCATTCT","ATCATTCT","CTCATTCT","GTCATTCT","TTCATTCT",
+ "AAGATTCT","CAGATTCT","GAGATTCT","TAGATTCT","ACGATTCT","CCGATTCT","GCGATTCT","TCGATTCT",
+ "AGGATTCT","CGGATTCT","GGGATTCT","TGGATTCT","ATGATTCT","CTGATTCT","GTGATTCT","TTGATTCT",
+ "AATATTCT","CATATTCT","GATATTCT","TATATTCT","ACTATTCT","CCTATTCT","GCTATTCT","TCTATTCT",
+ "AGTATTCT","CGTATTCT","GGTATTCT","TGTATTCT","ATTATTCT","CTTATTCT","GTTATTCT","TTTATTCT",
+ "AAACTTCT","CAACTTCT","GAACTTCT","TAACTTCT","ACACTTCT","CCACTTCT","GCACTTCT","TCACTTCT",
+ "AGACTTCT","CGACTTCT","GGACTTCT","TGACTTCT","ATACTTCT","CTACTTCT","GTACTTCT","TTACTTCT",
+ "AACCTTCT","CACCTTCT","GACCTTCT","TACCTTCT","ACCCTTCT","CCCCTTCT","GCCCTTCT","TCCCTTCT",
+ "AGCCTTCT","CGCCTTCT","GGCCTTCT","TGCCTTCT","ATCCTTCT","CTCCTTCT","GTCCTTCT","TTCCTTCT",
+ "AAGCTTCT","CAGCTTCT","GAGCTTCT","TAGCTTCT","ACGCTTCT","CCGCTTCT","GCGCTTCT","TCGCTTCT",
+ "AGGCTTCT","CGGCTTCT","GGGCTTCT","TGGCTTCT","ATGCTTCT","CTGCTTCT","GTGCTTCT","TTGCTTCT",
+ "AATCTTCT","CATCTTCT","GATCTTCT","TATCTTCT","ACTCTTCT","CCTCTTCT","GCTCTTCT","TCTCTTCT",
+ "AGTCTTCT","CGTCTTCT","GGTCTTCT","TGTCTTCT","ATTCTTCT","CTTCTTCT","GTTCTTCT","TTTCTTCT",
+ "AAAGTTCT","CAAGTTCT","GAAGTTCT","TAAGTTCT","ACAGTTCT","CCAGTTCT","GCAGTTCT","TCAGTTCT",
+ "AGAGTTCT","CGAGTTCT","GGAGTTCT","TGAGTTCT","ATAGTTCT","CTAGTTCT","GTAGTTCT","TTAGTTCT",
+ "AACGTTCT","CACGTTCT","GACGTTCT","TACGTTCT","ACCGTTCT","CCCGTTCT","GCCGTTCT","TCCGTTCT",
+ "AGCGTTCT","CGCGTTCT","GGCGTTCT","TGCGTTCT","ATCGTTCT","CTCGTTCT","GTCGTTCT","TTCGTTCT",
+ "AAGGTTCT","CAGGTTCT","GAGGTTCT","TAGGTTCT","ACGGTTCT","CCGGTTCT","GCGGTTCT","TCGGTTCT",
+ "AGGGTTCT","CGGGTTCT","GGGGTTCT","TGGGTTCT","ATGGTTCT","CTGGTTCT","GTGGTTCT","TTGGTTCT",
+ "AATGTTCT","CATGTTCT","GATGTTCT","TATGTTCT","ACTGTTCT","CCTGTTCT","GCTGTTCT","TCTGTTCT",
+ "AGTGTTCT","CGTGTTCT","GGTGTTCT","TGTGTTCT","ATTGTTCT","CTTGTTCT","GTTGTTCT","TTTGTTCT",
+ "AAATTTCT","CAATTTCT","GAATTTCT","TAATTTCT","ACATTTCT","CCATTTCT","GCATTTCT","TCATTTCT",
+ "AGATTTCT","CGATTTCT","GGATTTCT","TGATTTCT","ATATTTCT","CTATTTCT","GTATTTCT","TTATTTCT",
+ "AACTTTCT","CACTTTCT","GACTTTCT","TACTTTCT","ACCTTTCT","CCCTTTCT","GCCTTTCT","TCCTTTCT",
+ "AGCTTTCT","CGCTTTCT","GGCTTTCT","TGCTTTCT","ATCTTTCT","CTCTTTCT","GTCTTTCT","TTCTTTCT",
+ "AAGTTTCT","CAGTTTCT","GAGTTTCT","TAGTTTCT","ACGTTTCT","CCGTTTCT","GCGTTTCT","TCGTTTCT",
+ "AGGTTTCT","CGGTTTCT","GGGTTTCT","TGGTTTCT","ATGTTTCT","CTGTTTCT","GTGTTTCT","TTGTTTCT",
+ "AATTTTCT","CATTTTCT","GATTTTCT","TATTTTCT","ACTTTTCT","CCTTTTCT","GCTTTTCT","TCTTTTCT",
+ "AGTTTTCT","CGTTTTCT","GGTTTTCT","TGTTTTCT","ATTTTTCT","CTTTTTCT","GTTTTTCT","TTTTTTCT",
+ "AAAAAAGT","CAAAAAGT","GAAAAAGT","TAAAAAGT","ACAAAAGT","CCAAAAGT","GCAAAAGT","TCAAAAGT",
+ "AGAAAAGT","CGAAAAGT","GGAAAAGT","TGAAAAGT","ATAAAAGT","CTAAAAGT","GTAAAAGT","TTAAAAGT",
+ "AACAAAGT","CACAAAGT","GACAAAGT","TACAAAGT","ACCAAAGT","CCCAAAGT","GCCAAAGT","TCCAAAGT",
+ "AGCAAAGT","CGCAAAGT","GGCAAAGT","TGCAAAGT","ATCAAAGT","CTCAAAGT","GTCAAAGT","TTCAAAGT",
+ "AAGAAAGT","CAGAAAGT","GAGAAAGT","TAGAAAGT","ACGAAAGT","CCGAAAGT","GCGAAAGT","TCGAAAGT",
+ "AGGAAAGT","CGGAAAGT","GGGAAAGT","TGGAAAGT","ATGAAAGT","CTGAAAGT","GTGAAAGT","TTGAAAGT",
+ "AATAAAGT","CATAAAGT","GATAAAGT","TATAAAGT","ACTAAAGT","CCTAAAGT","GCTAAAGT","TCTAAAGT",
+ "AGTAAAGT","CGTAAAGT","GGTAAAGT","TGTAAAGT","ATTAAAGT","CTTAAAGT","GTTAAAGT","TTTAAAGT",
+ "AAACAAGT","CAACAAGT","GAACAAGT","TAACAAGT","ACACAAGT","CCACAAGT","GCACAAGT","TCACAAGT",
+ "AGACAAGT","CGACAAGT","GGACAAGT","TGACAAGT","ATACAAGT","CTACAAGT","GTACAAGT","TTACAAGT",
+ "AACCAAGT","CACCAAGT","GACCAAGT","TACCAAGT","ACCCAAGT","CCCCAAGT","GCCCAAGT","TCCCAAGT",
+ "AGCCAAGT","CGCCAAGT","GGCCAAGT","TGCCAAGT","ATCCAAGT","CTCCAAGT","GTCCAAGT","TTCCAAGT",
+ "AAGCAAGT","CAGCAAGT","GAGCAAGT","TAGCAAGT","ACGCAAGT","CCGCAAGT","GCGCAAGT","TCGCAAGT",
+ "AGGCAAGT","CGGCAAGT","GGGCAAGT","TGGCAAGT","ATGCAAGT","CTGCAAGT","GTGCAAGT","TTGCAAGT",
+ "AATCAAGT","CATCAAGT","GATCAAGT","TATCAAGT","ACTCAAGT","CCTCAAGT","GCTCAAGT","TCTCAAGT",
+ "AGTCAAGT","CGTCAAGT","GGTCAAGT","TGTCAAGT","ATTCAAGT","CTTCAAGT","GTTCAAGT","TTTCAAGT",
+ "AAAGAAGT","CAAGAAGT","GAAGAAGT","TAAGAAGT","ACAGAAGT","CCAGAAGT","GCAGAAGT","TCAGAAGT",
+ "AGAGAAGT","CGAGAAGT","GGAGAAGT","TGAGAAGT","ATAGAAGT","CTAGAAGT","GTAGAAGT","TTAGAAGT",
+ "AACGAAGT","CACGAAGT","GACGAAGT","TACGAAGT","ACCGAAGT","CCCGAAGT","GCCGAAGT","TCCGAAGT",
+ "AGCGAAGT","CGCGAAGT","GGCGAAGT","TGCGAAGT","ATCGAAGT","CTCGAAGT","GTCGAAGT","TTCGAAGT",
+ "AAGGAAGT","CAGGAAGT","GAGGAAGT","TAGGAAGT","ACGGAAGT","CCGGAAGT","GCGGAAGT","TCGGAAGT",
+ "AGGGAAGT","CGGGAAGT","GGGGAAGT","TGGGAAGT","ATGGAAGT","CTGGAAGT","GTGGAAGT","TTGGAAGT",
+ "AATGAAGT","CATGAAGT","GATGAAGT","TATGAAGT","ACTGAAGT","CCTGAAGT","GCTGAAGT","TCTGAAGT",
+ "AGTGAAGT","CGTGAAGT","GGTGAAGT","TGTGAAGT","ATTGAAGT","CTTGAAGT","GTTGAAGT","TTTGAAGT",
+ "AAATAAGT","CAATAAGT","GAATAAGT","TAATAAGT","ACATAAGT","CCATAAGT","GCATAAGT","TCATAAGT",
+ "AGATAAGT","CGATAAGT","GGATAAGT","TGATAAGT","ATATAAGT","CTATAAGT","GTATAAGT","TTATAAGT",
+ "AACTAAGT","CACTAAGT","GACTAAGT","TACTAAGT","ACCTAAGT","CCCTAAGT","GCCTAAGT","TCCTAAGT",
+ "AGCTAAGT","CGCTAAGT","GGCTAAGT","TGCTAAGT","ATCTAAGT","CTCTAAGT","GTCTAAGT","TTCTAAGT",
+ "AAGTAAGT","CAGTAAGT","GAGTAAGT","TAGTAAGT","ACGTAAGT","CCGTAAGT","GCGTAAGT","TCGTAAGT",
+ "AGGTAAGT","CGGTAAGT","GGGTAAGT","TGGTAAGT","ATGTAAGT","CTGTAAGT","GTGTAAGT","TTGTAAGT",
+ "AATTAAGT","CATTAAGT","GATTAAGT","TATTAAGT","ACTTAAGT","CCTTAAGT","GCTTAAGT","TCTTAAGT",
+ "AGTTAAGT","CGTTAAGT","GGTTAAGT","TGTTAAGT","ATTTAAGT","CTTTAAGT","GTTTAAGT","TTTTAAGT",
+ "AAAACAGT","CAAACAGT","GAAACAGT","TAAACAGT","ACAACAGT","CCAACAGT","GCAACAGT","TCAACAGT",
+ "AGAACAGT","CGAACAGT","GGAACAGT","TGAACAGT","ATAACAGT","CTAACAGT","GTAACAGT","TTAACAGT",
+ "AACACAGT","CACACAGT","GACACAGT","TACACAGT","ACCACAGT","CCCACAGT","GCCACAGT","TCCACAGT",
+ "AGCACAGT","CGCACAGT","GGCACAGT","TGCACAGT","ATCACAGT","CTCACAGT","GTCACAGT","TTCACAGT",
+ "AAGACAGT","CAGACAGT","GAGACAGT","TAGACAGT","ACGACAGT","CCGACAGT","GCGACAGT","TCGACAGT",
+ "AGGACAGT","CGGACAGT","GGGACAGT","TGGACAGT","ATGACAGT","CTGACAGT","GTGACAGT","TTGACAGT",
+ "AATACAGT","CATACAGT","GATACAGT","TATACAGT","ACTACAGT","CCTACAGT","GCTACAGT","TCTACAGT",
+ "AGTACAGT","CGTACAGT","GGTACAGT","TGTACAGT","ATTACAGT","CTTACAGT","GTTACAGT","TTTACAGT",
+ "AAACCAGT","CAACCAGT","GAACCAGT","TAACCAGT","ACACCAGT","CCACCAGT","GCACCAGT","TCACCAGT",
+ "AGACCAGT","CGACCAGT","GGACCAGT","TGACCAGT","ATACCAGT","CTACCAGT","GTACCAGT","TTACCAGT",
+ "AACCCAGT","CACCCAGT","GACCCAGT","TACCCAGT","ACCCCAGT","CCCCCAGT","GCCCCAGT","TCCCCAGT",
+ "AGCCCAGT","CGCCCAGT","GGCCCAGT","TGCCCAGT","ATCCCAGT","CTCCCAGT","GTCCCAGT","TTCCCAGT",
+ "AAGCCAGT","CAGCCAGT","GAGCCAGT","TAGCCAGT","ACGCCAGT","CCGCCAGT","GCGCCAGT","TCGCCAGT",
+ "AGGCCAGT","CGGCCAGT","GGGCCAGT","TGGCCAGT","ATGCCAGT","CTGCCAGT","GTGCCAGT","TTGCCAGT",
+ "AATCCAGT","CATCCAGT","GATCCAGT","TATCCAGT","ACTCCAGT","CCTCCAGT","GCTCCAGT","TCTCCAGT",
+ "AGTCCAGT","CGTCCAGT","GGTCCAGT","TGTCCAGT","ATTCCAGT","CTTCCAGT","GTTCCAGT","TTTCCAGT",
+ "AAAGCAGT","CAAGCAGT","GAAGCAGT","TAAGCAGT","ACAGCAGT","CCAGCAGT","GCAGCAGT","TCAGCAGT",
+ "AGAGCAGT","CGAGCAGT","GGAGCAGT","TGAGCAGT","ATAGCAGT","CTAGCAGT","GTAGCAGT","TTAGCAGT",
+ "AACGCAGT","CACGCAGT","GACGCAGT","TACGCAGT","ACCGCAGT","CCCGCAGT","GCCGCAGT","TCCGCAGT",
+ "AGCGCAGT","CGCGCAGT","GGCGCAGT","TGCGCAGT","ATCGCAGT","CTCGCAGT","GTCGCAGT","TTCGCAGT",
+ "AAGGCAGT","CAGGCAGT","GAGGCAGT","TAGGCAGT","ACGGCAGT","CCGGCAGT","GCGGCAGT","TCGGCAGT",
+ "AGGGCAGT","CGGGCAGT","GGGGCAGT","TGGGCAGT","ATGGCAGT","CTGGCAGT","GTGGCAGT","TTGGCAGT",
+ "AATGCAGT","CATGCAGT","GATGCAGT","TATGCAGT","ACTGCAGT","CCTGCAGT","GCTGCAGT","TCTGCAGT",
+ "AGTGCAGT","CGTGCAGT","GGTGCAGT","TGTGCAGT","ATTGCAGT","CTTGCAGT","GTTGCAGT","TTTGCAGT",
+ "AAATCAGT","CAATCAGT","GAATCAGT","TAATCAGT","ACATCAGT","CCATCAGT","GCATCAGT","TCATCAGT",
+ "AGATCAGT","CGATCAGT","GGATCAGT","TGATCAGT","ATATCAGT","CTATCAGT","GTATCAGT","TTATCAGT",
+ "AACTCAGT","CACTCAGT","GACTCAGT","TACTCAGT","ACCTCAGT","CCCTCAGT","GCCTCAGT","TCCTCAGT",
+ "AGCTCAGT","CGCTCAGT","GGCTCAGT","TGCTCAGT","ATCTCAGT","CTCTCAGT","GTCTCAGT","TTCTCAGT",
+ "AAGTCAGT","CAGTCAGT","GAGTCAGT","TAGTCAGT","ACGTCAGT","CCGTCAGT","GCGTCAGT","TCGTCAGT",
+ "AGGTCAGT","CGGTCAGT","GGGTCAGT","TGGTCAGT","ATGTCAGT","CTGTCAGT","GTGTCAGT","TTGTCAGT",
+ "AATTCAGT","CATTCAGT","GATTCAGT","TATTCAGT","ACTTCAGT","CCTTCAGT","GCTTCAGT","TCTTCAGT",
+ "AGTTCAGT","CGTTCAGT","GGTTCAGT","TGTTCAGT","ATTTCAGT","CTTTCAGT","GTTTCAGT","TTTTCAGT",
+ "AAAAGAGT","CAAAGAGT","GAAAGAGT","TAAAGAGT","ACAAGAGT","CCAAGAGT","GCAAGAGT","TCAAGAGT",
+ "AGAAGAGT","CGAAGAGT","GGAAGAGT","TGAAGAGT","ATAAGAGT","CTAAGAGT","GTAAGAGT","TTAAGAGT",
+ "AACAGAGT","CACAGAGT","GACAGAGT","TACAGAGT","ACCAGAGT","CCCAGAGT","GCCAGAGT","TCCAGAGT",
+ "AGCAGAGT","CGCAGAGT","GGCAGAGT","TGCAGAGT","ATCAGAGT","CTCAGAGT","GTCAGAGT","TTCAGAGT",
+ "AAGAGAGT","CAGAGAGT","GAGAGAGT","TAGAGAGT","ACGAGAGT","CCGAGAGT","GCGAGAGT","TCGAGAGT",
+ "AGGAGAGT","CGGAGAGT","GGGAGAGT","TGGAGAGT","ATGAGAGT","CTGAGAGT","GTGAGAGT","TTGAGAGT",
+ "AATAGAGT","CATAGAGT","GATAGAGT","TATAGAGT","ACTAGAGT","CCTAGAGT","GCTAGAGT","TCTAGAGT",
+ "AGTAGAGT","CGTAGAGT","GGTAGAGT","TGTAGAGT","ATTAGAGT","CTTAGAGT","GTTAGAGT","TTTAGAGT",
+ "AAACGAGT","CAACGAGT","GAACGAGT","TAACGAGT","ACACGAGT","CCACGAGT","GCACGAGT","TCACGAGT",
+ "AGACGAGT","CGACGAGT","GGACGAGT","TGACGAGT","ATACGAGT","CTACGAGT","GTACGAGT","TTACGAGT",
+ "AACCGAGT","CACCGAGT","GACCGAGT","TACCGAGT","ACCCGAGT","CCCCGAGT","GCCCGAGT","TCCCGAGT",
+ "AGCCGAGT","CGCCGAGT","GGCCGAGT","TGCCGAGT","ATCCGAGT","CTCCGAGT","GTCCGAGT","TTCCGAGT",
+ "AAGCGAGT","CAGCGAGT","GAGCGAGT","TAGCGAGT","ACGCGAGT","CCGCGAGT","GCGCGAGT","TCGCGAGT",
+ "AGGCGAGT","CGGCGAGT","GGGCGAGT","TGGCGAGT","ATGCGAGT","CTGCGAGT","GTGCGAGT","TTGCGAGT",
+ "AATCGAGT","CATCGAGT","GATCGAGT","TATCGAGT","ACTCGAGT","CCTCGAGT","GCTCGAGT","TCTCGAGT",
+ "AGTCGAGT","CGTCGAGT","GGTCGAGT","TGTCGAGT","ATTCGAGT","CTTCGAGT","GTTCGAGT","TTTCGAGT",
+ "AAAGGAGT","CAAGGAGT","GAAGGAGT","TAAGGAGT","ACAGGAGT","CCAGGAGT","GCAGGAGT","TCAGGAGT",
+ "AGAGGAGT","CGAGGAGT","GGAGGAGT","TGAGGAGT","ATAGGAGT","CTAGGAGT","GTAGGAGT","TTAGGAGT",
+ "AACGGAGT","CACGGAGT","GACGGAGT","TACGGAGT","ACCGGAGT","CCCGGAGT","GCCGGAGT","TCCGGAGT",
+ "AGCGGAGT","CGCGGAGT","GGCGGAGT","TGCGGAGT","ATCGGAGT","CTCGGAGT","GTCGGAGT","TTCGGAGT",
+ "AAGGGAGT","CAGGGAGT","GAGGGAGT","TAGGGAGT","ACGGGAGT","CCGGGAGT","GCGGGAGT","TCGGGAGT",
+ "AGGGGAGT","CGGGGAGT","GGGGGAGT","TGGGGAGT","ATGGGAGT","CTGGGAGT","GTGGGAGT","TTGGGAGT",
+ "AATGGAGT","CATGGAGT","GATGGAGT","TATGGAGT","ACTGGAGT","CCTGGAGT","GCTGGAGT","TCTGGAGT",
+ "AGTGGAGT","CGTGGAGT","GGTGGAGT","TGTGGAGT","ATTGGAGT","CTTGGAGT","GTTGGAGT","TTTGGAGT",
+ "AAATGAGT","CAATGAGT","GAATGAGT","TAATGAGT","ACATGAGT","CCATGAGT","GCATGAGT","TCATGAGT",
+ "AGATGAGT","CGATGAGT","GGATGAGT","TGATGAGT","ATATGAGT","CTATGAGT","GTATGAGT","TTATGAGT",
+ "AACTGAGT","CACTGAGT","GACTGAGT","TACTGAGT","ACCTGAGT","CCCTGAGT","GCCTGAGT","TCCTGAGT",
+ "AGCTGAGT","CGCTGAGT","GGCTGAGT","TGCTGAGT","ATCTGAGT","CTCTGAGT","GTCTGAGT","TTCTGAGT",
+ "AAGTGAGT","CAGTGAGT","GAGTGAGT","TAGTGAGT","ACGTGAGT","CCGTGAGT","GCGTGAGT","TCGTGAGT",
+ "AGGTGAGT","CGGTGAGT","GGGTGAGT","TGGTGAGT","ATGTGAGT","CTGTGAGT","GTGTGAGT","TTGTGAGT",
+ "AATTGAGT","CATTGAGT","GATTGAGT","TATTGAGT","ACTTGAGT","CCTTGAGT","GCTTGAGT","TCTTGAGT",
+ "AGTTGAGT","CGTTGAGT","GGTTGAGT","TGTTGAGT","ATTTGAGT","CTTTGAGT","GTTTGAGT","TTTTGAGT",
+ "AAAATAGT","CAAATAGT","GAAATAGT","TAAATAGT","ACAATAGT","CCAATAGT","GCAATAGT","TCAATAGT",
+ "AGAATAGT","CGAATAGT","GGAATAGT","TGAATAGT","ATAATAGT","CTAATAGT","GTAATAGT","TTAATAGT",
+ "AACATAGT","CACATAGT","GACATAGT","TACATAGT","ACCATAGT","CCCATAGT","GCCATAGT","TCCATAGT",
+ "AGCATAGT","CGCATAGT","GGCATAGT","TGCATAGT","ATCATAGT","CTCATAGT","GTCATAGT","TTCATAGT",
+ "AAGATAGT","CAGATAGT","GAGATAGT","TAGATAGT","ACGATAGT","CCGATAGT","GCGATAGT","TCGATAGT",
+ "AGGATAGT","CGGATAGT","GGGATAGT","TGGATAGT","ATGATAGT","CTGATAGT","GTGATAGT","TTGATAGT",
+ "AATATAGT","CATATAGT","GATATAGT","TATATAGT","ACTATAGT","CCTATAGT","GCTATAGT","TCTATAGT",
+ "AGTATAGT","CGTATAGT","GGTATAGT","TGTATAGT","ATTATAGT","CTTATAGT","GTTATAGT","TTTATAGT",
+ "AAACTAGT","CAACTAGT","GAACTAGT","TAACTAGT","ACACTAGT","CCACTAGT","GCACTAGT","TCACTAGT",
+ "AGACTAGT","CGACTAGT","GGACTAGT","TGACTAGT","ATACTAGT","CTACTAGT","GTACTAGT","TTACTAGT",
+ "AACCTAGT","CACCTAGT","GACCTAGT","TACCTAGT","ACCCTAGT","CCCCTAGT","GCCCTAGT","TCCCTAGT",
+ "AGCCTAGT","CGCCTAGT","GGCCTAGT","TGCCTAGT","ATCCTAGT","CTCCTAGT","GTCCTAGT","TTCCTAGT",
+ "AAGCTAGT","CAGCTAGT","GAGCTAGT","TAGCTAGT","ACGCTAGT","CCGCTAGT","GCGCTAGT","TCGCTAGT",
+ "AGGCTAGT","CGGCTAGT","GGGCTAGT","TGGCTAGT","ATGCTAGT","CTGCTAGT","GTGCTAGT","TTGCTAGT",
+ "AATCTAGT","CATCTAGT","GATCTAGT","TATCTAGT","ACTCTAGT","CCTCTAGT","GCTCTAGT","TCTCTAGT",
+ "AGTCTAGT","CGTCTAGT","GGTCTAGT","TGTCTAGT","ATTCTAGT","CTTCTAGT","GTTCTAGT","TTTCTAGT",
+ "AAAGTAGT","CAAGTAGT","GAAGTAGT","TAAGTAGT","ACAGTAGT","CCAGTAGT","GCAGTAGT","TCAGTAGT",
+ "AGAGTAGT","CGAGTAGT","GGAGTAGT","TGAGTAGT","ATAGTAGT","CTAGTAGT","GTAGTAGT","TTAGTAGT",
+ "AACGTAGT","CACGTAGT","GACGTAGT","TACGTAGT","ACCGTAGT","CCCGTAGT","GCCGTAGT","TCCGTAGT",
+ "AGCGTAGT","CGCGTAGT","GGCGTAGT","TGCGTAGT","ATCGTAGT","CTCGTAGT","GTCGTAGT","TTCGTAGT",
+ "AAGGTAGT","CAGGTAGT","GAGGTAGT","TAGGTAGT","ACGGTAGT","CCGGTAGT","GCGGTAGT","TCGGTAGT",
+ "AGGGTAGT","CGGGTAGT","GGGGTAGT","TGGGTAGT","ATGGTAGT","CTGGTAGT","GTGGTAGT","TTGGTAGT",
+ "AATGTAGT","CATGTAGT","GATGTAGT","TATGTAGT","ACTGTAGT","CCTGTAGT","GCTGTAGT","TCTGTAGT",
+ "AGTGTAGT","CGTGTAGT","GGTGTAGT","TGTGTAGT","ATTGTAGT","CTTGTAGT","GTTGTAGT","TTTGTAGT",
+ "AAATTAGT","CAATTAGT","GAATTAGT","TAATTAGT","ACATTAGT","CCATTAGT","GCATTAGT","TCATTAGT",
+ "AGATTAGT","CGATTAGT","GGATTAGT","TGATTAGT","ATATTAGT","CTATTAGT","GTATTAGT","TTATTAGT",
+ "AACTTAGT","CACTTAGT","GACTTAGT","TACTTAGT","ACCTTAGT","CCCTTAGT","GCCTTAGT","TCCTTAGT",
+ "AGCTTAGT","CGCTTAGT","GGCTTAGT","TGCTTAGT","ATCTTAGT","CTCTTAGT","GTCTTAGT","TTCTTAGT",
+ "AAGTTAGT","CAGTTAGT","GAGTTAGT","TAGTTAGT","ACGTTAGT","CCGTTAGT","GCGTTAGT","TCGTTAGT",
+ "AGGTTAGT","CGGTTAGT","GGGTTAGT","TGGTTAGT","ATGTTAGT","CTGTTAGT","GTGTTAGT","TTGTTAGT",
+ "AATTTAGT","CATTTAGT","GATTTAGT","TATTTAGT","ACTTTAGT","CCTTTAGT","GCTTTAGT","TCTTTAGT",
+ "AGTTTAGT","CGTTTAGT","GGTTTAGT","TGTTTAGT","ATTTTAGT","CTTTTAGT","GTTTTAGT","TTTTTAGT",
+ "AAAAACGT","CAAAACGT","GAAAACGT","TAAAACGT","ACAAACGT","CCAAACGT","GCAAACGT","TCAAACGT",
+ "AGAAACGT","CGAAACGT","GGAAACGT","TGAAACGT","ATAAACGT","CTAAACGT","GTAAACGT","TTAAACGT",
+ "AACAACGT","CACAACGT","GACAACGT","TACAACGT","ACCAACGT","CCCAACGT","GCCAACGT","TCCAACGT",
+ "AGCAACGT","CGCAACGT","GGCAACGT","TGCAACGT","ATCAACGT","CTCAACGT","GTCAACGT","TTCAACGT",
+ "AAGAACGT","CAGAACGT","GAGAACGT","TAGAACGT","ACGAACGT","CCGAACGT","GCGAACGT","TCGAACGT",
+ "AGGAACGT","CGGAACGT","GGGAACGT","TGGAACGT","ATGAACGT","CTGAACGT","GTGAACGT","TTGAACGT",
+ "AATAACGT","CATAACGT","GATAACGT","TATAACGT","ACTAACGT","CCTAACGT","GCTAACGT","TCTAACGT",
+ "AGTAACGT","CGTAACGT","GGTAACGT","TGTAACGT","ATTAACGT","CTTAACGT","GTTAACGT","TTTAACGT",
+ "AAACACGT","CAACACGT","GAACACGT","TAACACGT","ACACACGT","CCACACGT","GCACACGT","TCACACGT",
+ "AGACACGT","CGACACGT","GGACACGT","TGACACGT","ATACACGT","CTACACGT","GTACACGT","TTACACGT",
+ "AACCACGT","CACCACGT","GACCACGT","TACCACGT","ACCCACGT","CCCCACGT","GCCCACGT","TCCCACGT",
+ "AGCCACGT","CGCCACGT","GGCCACGT","TGCCACGT","ATCCACGT","CTCCACGT","GTCCACGT","TTCCACGT",
+ "AAGCACGT","CAGCACGT","GAGCACGT","TAGCACGT","ACGCACGT","CCGCACGT","GCGCACGT","TCGCACGT",
+ "AGGCACGT","CGGCACGT","GGGCACGT","TGGCACGT","ATGCACGT","CTGCACGT","GTGCACGT","TTGCACGT",
+ "AATCACGT","CATCACGT","GATCACGT","TATCACGT","ACTCACGT","CCTCACGT","GCTCACGT","TCTCACGT",
+ "AGTCACGT","CGTCACGT","GGTCACGT","TGTCACGT","ATTCACGT","CTTCACGT","GTTCACGT","TTTCACGT",
+ "AAAGACGT","CAAGACGT","GAAGACGT","TAAGACGT","ACAGACGT","CCAGACGT","GCAGACGT","TCAGACGT",
+ "AGAGACGT","CGAGACGT","GGAGACGT","TGAGACGT","ATAGACGT","CTAGACGT","GTAGACGT","TTAGACGT",
+ "AACGACGT","CACGACGT","GACGACGT","TACGACGT","ACCGACGT","CCCGACGT","GCCGACGT","TCCGACGT",
+ "AGCGACGT","CGCGACGT","GGCGACGT","TGCGACGT","ATCGACGT","CTCGACGT","GTCGACGT","TTCGACGT",
+ "AAGGACGT","CAGGACGT","GAGGACGT","TAGGACGT","ACGGACGT","CCGGACGT","GCGGACGT","TCGGACGT",
+ "AGGGACGT","CGGGACGT","GGGGACGT","TGGGACGT","ATGGACGT","CTGGACGT","GTGGACGT","TTGGACGT",
+ "AATGACGT","CATGACGT","GATGACGT","TATGACGT","ACTGACGT","CCTGACGT","GCTGACGT","TCTGACGT",
+ "AGTGACGT","CGTGACGT","GGTGACGT","TGTGACGT","ATTGACGT","CTTGACGT","GTTGACGT","TTTGACGT",
+ "AAATACGT","CAATACGT","GAATACGT","TAATACGT","ACATACGT","CCATACGT","GCATACGT","TCATACGT",
+ "AGATACGT","CGATACGT","GGATACGT","TGATACGT","ATATACGT","CTATACGT","GTATACGT","TTATACGT",
+ "AACTACGT","CACTACGT","GACTACGT","TACTACGT","ACCTACGT","CCCTACGT","GCCTACGT","TCCTACGT",
+ "AGCTACGT","CGCTACGT","GGCTACGT","TGCTACGT","ATCTACGT","CTCTACGT","GTCTACGT","TTCTACGT",
+ "AAGTACGT","CAGTACGT","GAGTACGT","TAGTACGT","ACGTACGT","CCGTACGT","GCGTACGT","TCGTACGT",
+ "AGGTACGT","CGGTACGT","GGGTACGT","TGGTACGT","ATGTACGT","CTGTACGT","GTGTACGT","TTGTACGT",
+ "AATTACGT","CATTACGT","GATTACGT","TATTACGT","ACTTACGT","CCTTACGT","GCTTACGT","TCTTACGT",
+ "AGTTACGT","CGTTACGT","GGTTACGT","TGTTACGT","ATTTACGT","CTTTACGT","GTTTACGT","TTTTACGT",
+ "AAAACCGT","CAAACCGT","GAAACCGT","TAAACCGT","ACAACCGT","CCAACCGT","GCAACCGT","TCAACCGT",
+ "AGAACCGT","CGAACCGT","GGAACCGT","TGAACCGT","ATAACCGT","CTAACCGT","GTAACCGT","TTAACCGT",
+ "AACACCGT","CACACCGT","GACACCGT","TACACCGT","ACCACCGT","CCCACCGT","GCCACCGT","TCCACCGT",
+ "AGCACCGT","CGCACCGT","GGCACCGT","TGCACCGT","ATCACCGT","CTCACCGT","GTCACCGT","TTCACCGT",
+ "AAGACCGT","CAGACCGT","GAGACCGT","TAGACCGT","ACGACCGT","CCGACCGT","GCGACCGT","TCGACCGT",
+ "AGGACCGT","CGGACCGT","GGGACCGT","TGGACCGT","ATGACCGT","CTGACCGT","GTGACCGT","TTGACCGT",
+ "AATACCGT","CATACCGT","GATACCGT","TATACCGT","ACTACCGT","CCTACCGT","GCTACCGT","TCTACCGT",
+ "AGTACCGT","CGTACCGT","GGTACCGT","TGTACCGT","ATTACCGT","CTTACCGT","GTTACCGT","TTTACCGT",
+ "AAACCCGT","CAACCCGT","GAACCCGT","TAACCCGT","ACACCCGT","CCACCCGT","GCACCCGT","TCACCCGT",
+ "AGACCCGT","CGACCCGT","GGACCCGT","TGACCCGT","ATACCCGT","CTACCCGT","GTACCCGT","TTACCCGT",
+ "AACCCCGT","CACCCCGT","GACCCCGT","TACCCCGT","ACCCCCGT","CCCCCCGT","GCCCCCGT","TCCCCCGT",
+ "AGCCCCGT","CGCCCCGT","GGCCCCGT","TGCCCCGT","ATCCCCGT","CTCCCCGT","GTCCCCGT","TTCCCCGT",
+ "AAGCCCGT","CAGCCCGT","GAGCCCGT","TAGCCCGT","ACGCCCGT","CCGCCCGT","GCGCCCGT","TCGCCCGT",
+ "AGGCCCGT","CGGCCCGT","GGGCCCGT","TGGCCCGT","ATGCCCGT","CTGCCCGT","GTGCCCGT","TTGCCCGT",
+ "AATCCCGT","CATCCCGT","GATCCCGT","TATCCCGT","ACTCCCGT","CCTCCCGT","GCTCCCGT","TCTCCCGT",
+ "AGTCCCGT","CGTCCCGT","GGTCCCGT","TGTCCCGT","ATTCCCGT","CTTCCCGT","GTTCCCGT","TTTCCCGT",
+ "AAAGCCGT","CAAGCCGT","GAAGCCGT","TAAGCCGT","ACAGCCGT","CCAGCCGT","GCAGCCGT","TCAGCCGT",
+ "AGAGCCGT","CGAGCCGT","GGAGCCGT","TGAGCCGT","ATAGCCGT","CTAGCCGT","GTAGCCGT","TTAGCCGT",
+ "AACGCCGT","CACGCCGT","GACGCCGT","TACGCCGT","ACCGCCGT","CCCGCCGT","GCCGCCGT","TCCGCCGT",
+ "AGCGCCGT","CGCGCCGT","GGCGCCGT","TGCGCCGT","ATCGCCGT","CTCGCCGT","GTCGCCGT","TTCGCCGT",
+ "AAGGCCGT","CAGGCCGT","GAGGCCGT","TAGGCCGT","ACGGCCGT","CCGGCCGT","GCGGCCGT","TCGGCCGT",
+ "AGGGCCGT","CGGGCCGT","GGGGCCGT","TGGGCCGT","ATGGCCGT","CTGGCCGT","GTGGCCGT","TTGGCCGT",
+ "AATGCCGT","CATGCCGT","GATGCCGT","TATGCCGT","ACTGCCGT","CCTGCCGT","GCTGCCGT","TCTGCCGT",
+ "AGTGCCGT","CGTGCCGT","GGTGCCGT","TGTGCCGT","ATTGCCGT","CTTGCCGT","GTTGCCGT","TTTGCCGT",
+ "AAATCCGT","CAATCCGT","GAATCCGT","TAATCCGT","ACATCCGT","CCATCCGT","GCATCCGT","TCATCCGT",
+ "AGATCCGT","CGATCCGT","GGATCCGT","TGATCCGT","ATATCCGT","CTATCCGT","GTATCCGT","TTATCCGT",
+ "AACTCCGT","CACTCCGT","GACTCCGT","TACTCCGT","ACCTCCGT","CCCTCCGT","GCCTCCGT","TCCTCCGT",
+ "AGCTCCGT","CGCTCCGT","GGCTCCGT","TGCTCCGT","ATCTCCGT","CTCTCCGT","GTCTCCGT","TTCTCCGT",
+ "AAGTCCGT","CAGTCCGT","GAGTCCGT","TAGTCCGT","ACGTCCGT","CCGTCCGT","GCGTCCGT","TCGTCCGT",
+ "AGGTCCGT","CGGTCCGT","GGGTCCGT","TGGTCCGT","ATGTCCGT","CTGTCCGT","GTGTCCGT","TTGTCCGT",
+ "AATTCCGT","CATTCCGT","GATTCCGT","TATTCCGT","ACTTCCGT","CCTTCCGT","GCTTCCGT","TCTTCCGT",
+ "AGTTCCGT","CGTTCCGT","GGTTCCGT","TGTTCCGT","ATTTCCGT","CTTTCCGT","GTTTCCGT","TTTTCCGT",
+ "AAAAGCGT","CAAAGCGT","GAAAGCGT","TAAAGCGT","ACAAGCGT","CCAAGCGT","GCAAGCGT","TCAAGCGT",
+ "AGAAGCGT","CGAAGCGT","GGAAGCGT","TGAAGCGT","ATAAGCGT","CTAAGCGT","GTAAGCGT","TTAAGCGT",
+ "AACAGCGT","CACAGCGT","GACAGCGT","TACAGCGT","ACCAGCGT","CCCAGCGT","GCCAGCGT","TCCAGCGT",
+ "AGCAGCGT","CGCAGCGT","GGCAGCGT","TGCAGCGT","ATCAGCGT","CTCAGCGT","GTCAGCGT","TTCAGCGT",
+ "AAGAGCGT","CAGAGCGT","GAGAGCGT","TAGAGCGT","ACGAGCGT","CCGAGCGT","GCGAGCGT","TCGAGCGT",
+ "AGGAGCGT","CGGAGCGT","GGGAGCGT","TGGAGCGT","ATGAGCGT","CTGAGCGT","GTGAGCGT","TTGAGCGT",
+ "AATAGCGT","CATAGCGT","GATAGCGT","TATAGCGT","ACTAGCGT","CCTAGCGT","GCTAGCGT","TCTAGCGT",
+ "AGTAGCGT","CGTAGCGT","GGTAGCGT","TGTAGCGT","ATTAGCGT","CTTAGCGT","GTTAGCGT","TTTAGCGT",
+ "AAACGCGT","CAACGCGT","GAACGCGT","TAACGCGT","ACACGCGT","CCACGCGT","GCACGCGT","TCACGCGT",
+ "AGACGCGT","CGACGCGT","GGACGCGT","TGACGCGT","ATACGCGT","CTACGCGT","GTACGCGT","TTACGCGT",
+ "AACCGCGT","CACCGCGT","GACCGCGT","TACCGCGT","ACCCGCGT","CCCCGCGT","GCCCGCGT","TCCCGCGT",
+ "AGCCGCGT","CGCCGCGT","GGCCGCGT","TGCCGCGT","ATCCGCGT","CTCCGCGT","GTCCGCGT","TTCCGCGT",
+ "AAGCGCGT","CAGCGCGT","GAGCGCGT","TAGCGCGT","ACGCGCGT","CCGCGCGT","GCGCGCGT","TCGCGCGT",
+ "AGGCGCGT","CGGCGCGT","GGGCGCGT","TGGCGCGT","ATGCGCGT","CTGCGCGT","GTGCGCGT","TTGCGCGT",
+ "AATCGCGT","CATCGCGT","GATCGCGT","TATCGCGT","ACTCGCGT","CCTCGCGT","GCTCGCGT","TCTCGCGT",
+ "AGTCGCGT","CGTCGCGT","GGTCGCGT","TGTCGCGT","ATTCGCGT","CTTCGCGT","GTTCGCGT","TTTCGCGT",
+ "AAAGGCGT","CAAGGCGT","GAAGGCGT","TAAGGCGT","ACAGGCGT","CCAGGCGT","GCAGGCGT","TCAGGCGT",
+ "AGAGGCGT","CGAGGCGT","GGAGGCGT","TGAGGCGT","ATAGGCGT","CTAGGCGT","GTAGGCGT","TTAGGCGT",
+ "AACGGCGT","CACGGCGT","GACGGCGT","TACGGCGT","ACCGGCGT","CCCGGCGT","GCCGGCGT","TCCGGCGT",
+ "AGCGGCGT","CGCGGCGT","GGCGGCGT","TGCGGCGT","ATCGGCGT","CTCGGCGT","GTCGGCGT","TTCGGCGT",
+ "AAGGGCGT","CAGGGCGT","GAGGGCGT","TAGGGCGT","ACGGGCGT","CCGGGCGT","GCGGGCGT","TCGGGCGT",
+ "AGGGGCGT","CGGGGCGT","GGGGGCGT","TGGGGCGT","ATGGGCGT","CTGGGCGT","GTGGGCGT","TTGGGCGT",
+ "AATGGCGT","CATGGCGT","GATGGCGT","TATGGCGT","ACTGGCGT","CCTGGCGT","GCTGGCGT","TCTGGCGT",
+ "AGTGGCGT","CGTGGCGT","GGTGGCGT","TGTGGCGT","ATTGGCGT","CTTGGCGT","GTTGGCGT","TTTGGCGT",
+ "AAATGCGT","CAATGCGT","GAATGCGT","TAATGCGT","ACATGCGT","CCATGCGT","GCATGCGT","TCATGCGT",
+ "AGATGCGT","CGATGCGT","GGATGCGT","TGATGCGT","ATATGCGT","CTATGCGT","GTATGCGT","TTATGCGT",
+ "AACTGCGT","CACTGCGT","GACTGCGT","TACTGCGT","ACCTGCGT","CCCTGCGT","GCCTGCGT","TCCTGCGT",
+ "AGCTGCGT","CGCTGCGT","GGCTGCGT","TGCTGCGT","ATCTGCGT","CTCTGCGT","GTCTGCGT","TTCTGCGT",
+ "AAGTGCGT","CAGTGCGT","GAGTGCGT","TAGTGCGT","ACGTGCGT","CCGTGCGT","GCGTGCGT","TCGTGCGT",
+ "AGGTGCGT","CGGTGCGT","GGGTGCGT","TGGTGCGT","ATGTGCGT","CTGTGCGT","GTGTGCGT","TTGTGCGT",
+ "AATTGCGT","CATTGCGT","GATTGCGT","TATTGCGT","ACTTGCGT","CCTTGCGT","GCTTGCGT","TCTTGCGT",
+ "AGTTGCGT","CGTTGCGT","GGTTGCGT","TGTTGCGT","ATTTGCGT","CTTTGCGT","GTTTGCGT","TTTTGCGT",
+ "AAAATCGT","CAAATCGT","GAAATCGT","TAAATCGT","ACAATCGT","CCAATCGT","GCAATCGT","TCAATCGT",
+ "AGAATCGT","CGAATCGT","GGAATCGT","TGAATCGT","ATAATCGT","CTAATCGT","GTAATCGT","TTAATCGT",
+ "AACATCGT","CACATCGT","GACATCGT","TACATCGT","ACCATCGT","CCCATCGT","GCCATCGT","TCCATCGT",
+ "AGCATCGT","CGCATCGT","GGCATCGT","TGCATCGT","ATCATCGT","CTCATCGT","GTCATCGT","TTCATCGT",
+ "AAGATCGT","CAGATCGT","GAGATCGT","TAGATCGT","ACGATCGT","CCGATCGT","GCGATCGT","TCGATCGT",
+ "AGGATCGT","CGGATCGT","GGGATCGT","TGGATCGT","ATGATCGT","CTGATCGT","GTGATCGT","TTGATCGT",
+ "AATATCGT","CATATCGT","GATATCGT","TATATCGT","ACTATCGT","CCTATCGT","GCTATCGT","TCTATCGT",
+ "AGTATCGT","CGTATCGT","GGTATCGT","TGTATCGT","ATTATCGT","CTTATCGT","GTTATCGT","TTTATCGT",
+ "AAACTCGT","CAACTCGT","GAACTCGT","TAACTCGT","ACACTCGT","CCACTCGT","GCACTCGT","TCACTCGT",
+ "AGACTCGT","CGACTCGT","GGACTCGT","TGACTCGT","ATACTCGT","CTACTCGT","GTACTCGT","TTACTCGT",
+ "AACCTCGT","CACCTCGT","GACCTCGT","TACCTCGT","ACCCTCGT","CCCCTCGT","GCCCTCGT","TCCCTCGT",
+ "AGCCTCGT","CGCCTCGT","GGCCTCGT","TGCCTCGT","ATCCTCGT","CTCCTCGT","GTCCTCGT","TTCCTCGT",
+ "AAGCTCGT","CAGCTCGT","GAGCTCGT","TAGCTCGT","ACGCTCGT","CCGCTCGT","GCGCTCGT","TCGCTCGT",
+ "AGGCTCGT","CGGCTCGT","GGGCTCGT","TGGCTCGT","ATGCTCGT","CTGCTCGT","GTGCTCGT","TTGCTCGT",
+ "AATCTCGT","CATCTCGT","GATCTCGT","TATCTCGT","ACTCTCGT","CCTCTCGT","GCTCTCGT","TCTCTCGT",
+ "AGTCTCGT","CGTCTCGT","GGTCTCGT","TGTCTCGT","ATTCTCGT","CTTCTCGT","GTTCTCGT","TTTCTCGT",
+ "AAAGTCGT","CAAGTCGT","GAAGTCGT","TAAGTCGT","ACAGTCGT","CCAGTCGT","GCAGTCGT","TCAGTCGT",
+ "AGAGTCGT","CGAGTCGT","GGAGTCGT","TGAGTCGT","ATAGTCGT","CTAGTCGT","GTAGTCGT","TTAGTCGT",
+ "AACGTCGT","CACGTCGT","GACGTCGT","TACGTCGT","ACCGTCGT","CCCGTCGT","GCCGTCGT","TCCGTCGT",
+ "AGCGTCGT","CGCGTCGT","GGCGTCGT","TGCGTCGT","ATCGTCGT","CTCGTCGT","GTCGTCGT","TTCGTCGT",
+ "AAGGTCGT","CAGGTCGT","GAGGTCGT","TAGGTCGT","ACGGTCGT","CCGGTCGT","GCGGTCGT","TCGGTCGT",
+ "AGGGTCGT","CGGGTCGT","GGGGTCGT","TGGGTCGT","ATGGTCGT","CTGGTCGT","GTGGTCGT","TTGGTCGT",
+ "AATGTCGT","CATGTCGT","GATGTCGT","TATGTCGT","ACTGTCGT","CCTGTCGT","GCTGTCGT","TCTGTCGT",
+ "AGTGTCGT","CGTGTCGT","GGTGTCGT","TGTGTCGT","ATTGTCGT","CTTGTCGT","GTTGTCGT","TTTGTCGT",
+ "AAATTCGT","CAATTCGT","GAATTCGT","TAATTCGT","ACATTCGT","CCATTCGT","GCATTCGT","TCATTCGT",
+ "AGATTCGT","CGATTCGT","GGATTCGT","TGATTCGT","ATATTCGT","CTATTCGT","GTATTCGT","TTATTCGT",
+ "AACTTCGT","CACTTCGT","GACTTCGT","TACTTCGT","ACCTTCGT","CCCTTCGT","GCCTTCGT","TCCTTCGT",
+ "AGCTTCGT","CGCTTCGT","GGCTTCGT","TGCTTCGT","ATCTTCGT","CTCTTCGT","GTCTTCGT","TTCTTCGT",
+ "AAGTTCGT","CAGTTCGT","GAGTTCGT","TAGTTCGT","ACGTTCGT","CCGTTCGT","GCGTTCGT","TCGTTCGT",
+ "AGGTTCGT","CGGTTCGT","GGGTTCGT","TGGTTCGT","ATGTTCGT","CTGTTCGT","GTGTTCGT","TTGTTCGT",
+ "AATTTCGT","CATTTCGT","GATTTCGT","TATTTCGT","ACTTTCGT","CCTTTCGT","GCTTTCGT","TCTTTCGT",
+ "AGTTTCGT","CGTTTCGT","GGTTTCGT","TGTTTCGT","ATTTTCGT","CTTTTCGT","GTTTTCGT","TTTTTCGT",
+ "AAAAAGGT","CAAAAGGT","GAAAAGGT","TAAAAGGT","ACAAAGGT","CCAAAGGT","GCAAAGGT","TCAAAGGT",
+ "AGAAAGGT","CGAAAGGT","GGAAAGGT","TGAAAGGT","ATAAAGGT","CTAAAGGT","GTAAAGGT","TTAAAGGT",
+ "AACAAGGT","CACAAGGT","GACAAGGT","TACAAGGT","ACCAAGGT","CCCAAGGT","GCCAAGGT","TCCAAGGT",
+ "AGCAAGGT","CGCAAGGT","GGCAAGGT","TGCAAGGT","ATCAAGGT","CTCAAGGT","GTCAAGGT","TTCAAGGT",
+ "AAGAAGGT","CAGAAGGT","GAGAAGGT","TAGAAGGT","ACGAAGGT","CCGAAGGT","GCGAAGGT","TCGAAGGT",
+ "AGGAAGGT","CGGAAGGT","GGGAAGGT","TGGAAGGT","ATGAAGGT","CTGAAGGT","GTGAAGGT","TTGAAGGT",
+ "AATAAGGT","CATAAGGT","GATAAGGT","TATAAGGT","ACTAAGGT","CCTAAGGT","GCTAAGGT","TCTAAGGT",
+ "AGTAAGGT","CGTAAGGT","GGTAAGGT","TGTAAGGT","ATTAAGGT","CTTAAGGT","GTTAAGGT","TTTAAGGT",
+ "AAACAGGT","CAACAGGT","GAACAGGT","TAACAGGT","ACACAGGT","CCACAGGT","GCACAGGT","TCACAGGT",
+ "AGACAGGT","CGACAGGT","GGACAGGT","TGACAGGT","ATACAGGT","CTACAGGT","GTACAGGT","TTACAGGT",
+ "AACCAGGT","CACCAGGT","GACCAGGT","TACCAGGT","ACCCAGGT","CCCCAGGT","GCCCAGGT","TCCCAGGT",
+ "AGCCAGGT","CGCCAGGT","GGCCAGGT","TGCCAGGT","ATCCAGGT","CTCCAGGT","GTCCAGGT","TTCCAGGT",
+ "AAGCAGGT","CAGCAGGT","GAGCAGGT","TAGCAGGT","ACGCAGGT","CCGCAGGT","GCGCAGGT","TCGCAGGT",
+ "AGGCAGGT","CGGCAGGT","GGGCAGGT","TGGCAGGT","ATGCAGGT","CTGCAGGT","GTGCAGGT","TTGCAGGT",
+ "AATCAGGT","CATCAGGT","GATCAGGT","TATCAGGT","ACTCAGGT","CCTCAGGT","GCTCAGGT","TCTCAGGT",
+ "AGTCAGGT","CGTCAGGT","GGTCAGGT","TGTCAGGT","ATTCAGGT","CTTCAGGT","GTTCAGGT","TTTCAGGT",
+ "AAAGAGGT","CAAGAGGT","GAAGAGGT","TAAGAGGT","ACAGAGGT","CCAGAGGT","GCAGAGGT","TCAGAGGT",
+ "AGAGAGGT","CGAGAGGT","GGAGAGGT","TGAGAGGT","ATAGAGGT","CTAGAGGT","GTAGAGGT","TTAGAGGT",
+ "AACGAGGT","CACGAGGT","GACGAGGT","TACGAGGT","ACCGAGGT","CCCGAGGT","GCCGAGGT","TCCGAGGT",
+ "AGCGAGGT","CGCGAGGT","GGCGAGGT","TGCGAGGT","ATCGAGGT","CTCGAGGT","GTCGAGGT","TTCGAGGT",
+ "AAGGAGGT","CAGGAGGT","GAGGAGGT","TAGGAGGT","ACGGAGGT","CCGGAGGT","GCGGAGGT","TCGGAGGT",
+ "AGGGAGGT","CGGGAGGT","GGGGAGGT","TGGGAGGT","ATGGAGGT","CTGGAGGT","GTGGAGGT","TTGGAGGT",
+ "AATGAGGT","CATGAGGT","GATGAGGT","TATGAGGT","ACTGAGGT","CCTGAGGT","GCTGAGGT","TCTGAGGT",
+ "AGTGAGGT","CGTGAGGT","GGTGAGGT","TGTGAGGT","ATTGAGGT","CTTGAGGT","GTTGAGGT","TTTGAGGT",
+ "AAATAGGT","CAATAGGT","GAATAGGT","TAATAGGT","ACATAGGT","CCATAGGT","GCATAGGT","TCATAGGT",
+ "AGATAGGT","CGATAGGT","GGATAGGT","TGATAGGT","ATATAGGT","CTATAGGT","GTATAGGT","TTATAGGT",
+ "AACTAGGT","CACTAGGT","GACTAGGT","TACTAGGT","ACCTAGGT","CCCTAGGT","GCCTAGGT","TCCTAGGT",
+ "AGCTAGGT","CGCTAGGT","GGCTAGGT","TGCTAGGT","ATCTAGGT","CTCTAGGT","GTCTAGGT","TTCTAGGT",
+ "AAGTAGGT","CAGTAGGT","GAGTAGGT","TAGTAGGT","ACGTAGGT","CCGTAGGT","GCGTAGGT","TCGTAGGT",
+ "AGGTAGGT","CGGTAGGT","GGGTAGGT","TGGTAGGT","ATGTAGGT","CTGTAGGT","GTGTAGGT","TTGTAGGT",
+ "AATTAGGT","CATTAGGT","GATTAGGT","TATTAGGT","ACTTAGGT","CCTTAGGT","GCTTAGGT","TCTTAGGT",
+ "AGTTAGGT","CGTTAGGT","GGTTAGGT","TGTTAGGT","ATTTAGGT","CTTTAGGT","GTTTAGGT","TTTTAGGT",
+ "AAAACGGT","CAAACGGT","GAAACGGT","TAAACGGT","ACAACGGT","CCAACGGT","GCAACGGT","TCAACGGT",
+ "AGAACGGT","CGAACGGT","GGAACGGT","TGAACGGT","ATAACGGT","CTAACGGT","GTAACGGT","TTAACGGT",
+ "AACACGGT","CACACGGT","GACACGGT","TACACGGT","ACCACGGT","CCCACGGT","GCCACGGT","TCCACGGT",
+ "AGCACGGT","CGCACGGT","GGCACGGT","TGCACGGT","ATCACGGT","CTCACGGT","GTCACGGT","TTCACGGT",
+ "AAGACGGT","CAGACGGT","GAGACGGT","TAGACGGT","ACGACGGT","CCGACGGT","GCGACGGT","TCGACGGT",
+ "AGGACGGT","CGGACGGT","GGGACGGT","TGGACGGT","ATGACGGT","CTGACGGT","GTGACGGT","TTGACGGT",
+ "AATACGGT","CATACGGT","GATACGGT","TATACGGT","ACTACGGT","CCTACGGT","GCTACGGT","TCTACGGT",
+ "AGTACGGT","CGTACGGT","GGTACGGT","TGTACGGT","ATTACGGT","CTTACGGT","GTTACGGT","TTTACGGT",
+ "AAACCGGT","CAACCGGT","GAACCGGT","TAACCGGT","ACACCGGT","CCACCGGT","GCACCGGT","TCACCGGT",
+ "AGACCGGT","CGACCGGT","GGACCGGT","TGACCGGT","ATACCGGT","CTACCGGT","GTACCGGT","TTACCGGT",
+ "AACCCGGT","CACCCGGT","GACCCGGT","TACCCGGT","ACCCCGGT","CCCCCGGT","GCCCCGGT","TCCCCGGT",
+ "AGCCCGGT","CGCCCGGT","GGCCCGGT","TGCCCGGT","ATCCCGGT","CTCCCGGT","GTCCCGGT","TTCCCGGT",
+ "AAGCCGGT","CAGCCGGT","GAGCCGGT","TAGCCGGT","ACGCCGGT","CCGCCGGT","GCGCCGGT","TCGCCGGT",
+ "AGGCCGGT","CGGCCGGT","GGGCCGGT","TGGCCGGT","ATGCCGGT","CTGCCGGT","GTGCCGGT","TTGCCGGT",
+ "AATCCGGT","CATCCGGT","GATCCGGT","TATCCGGT","ACTCCGGT","CCTCCGGT","GCTCCGGT","TCTCCGGT",
+ "AGTCCGGT","CGTCCGGT","GGTCCGGT","TGTCCGGT","ATTCCGGT","CTTCCGGT","GTTCCGGT","TTTCCGGT",
+ "AAAGCGGT","CAAGCGGT","GAAGCGGT","TAAGCGGT","ACAGCGGT","CCAGCGGT","GCAGCGGT","TCAGCGGT",
+ "AGAGCGGT","CGAGCGGT","GGAGCGGT","TGAGCGGT","ATAGCGGT","CTAGCGGT","GTAGCGGT","TTAGCGGT",
+ "AACGCGGT","CACGCGGT","GACGCGGT","TACGCGGT","ACCGCGGT","CCCGCGGT","GCCGCGGT","TCCGCGGT",
+ "AGCGCGGT","CGCGCGGT","GGCGCGGT","TGCGCGGT","ATCGCGGT","CTCGCGGT","GTCGCGGT","TTCGCGGT",
+ "AAGGCGGT","CAGGCGGT","GAGGCGGT","TAGGCGGT","ACGGCGGT","CCGGCGGT","GCGGCGGT","TCGGCGGT",
+ "AGGGCGGT","CGGGCGGT","GGGGCGGT","TGGGCGGT","ATGGCGGT","CTGGCGGT","GTGGCGGT","TTGGCGGT",
+ "AATGCGGT","CATGCGGT","GATGCGGT","TATGCGGT","ACTGCGGT","CCTGCGGT","GCTGCGGT","TCTGCGGT",
+ "AGTGCGGT","CGTGCGGT","GGTGCGGT","TGTGCGGT","ATTGCGGT","CTTGCGGT","GTTGCGGT","TTTGCGGT",
+ "AAATCGGT","CAATCGGT","GAATCGGT","TAATCGGT","ACATCGGT","CCATCGGT","GCATCGGT","TCATCGGT",
+ "AGATCGGT","CGATCGGT","GGATCGGT","TGATCGGT","ATATCGGT","CTATCGGT","GTATCGGT","TTATCGGT",
+ "AACTCGGT","CACTCGGT","GACTCGGT","TACTCGGT","ACCTCGGT","CCCTCGGT","GCCTCGGT","TCCTCGGT",
+ "AGCTCGGT","CGCTCGGT","GGCTCGGT","TGCTCGGT","ATCTCGGT","CTCTCGGT","GTCTCGGT","TTCTCGGT",
+ "AAGTCGGT","CAGTCGGT","GAGTCGGT","TAGTCGGT","ACGTCGGT","CCGTCGGT","GCGTCGGT","TCGTCGGT",
+ "AGGTCGGT","CGGTCGGT","GGGTCGGT","TGGTCGGT","ATGTCGGT","CTGTCGGT","GTGTCGGT","TTGTCGGT",
+ "AATTCGGT","CATTCGGT","GATTCGGT","TATTCGGT","ACTTCGGT","CCTTCGGT","GCTTCGGT","TCTTCGGT",
+ "AGTTCGGT","CGTTCGGT","GGTTCGGT","TGTTCGGT","ATTTCGGT","CTTTCGGT","GTTTCGGT","TTTTCGGT",
+ "AAAAGGGT","CAAAGGGT","GAAAGGGT","TAAAGGGT","ACAAGGGT","CCAAGGGT","GCAAGGGT","TCAAGGGT",
+ "AGAAGGGT","CGAAGGGT","GGAAGGGT","TGAAGGGT","ATAAGGGT","CTAAGGGT","GTAAGGGT","TTAAGGGT",
+ "AACAGGGT","CACAGGGT","GACAGGGT","TACAGGGT","ACCAGGGT","CCCAGGGT","GCCAGGGT","TCCAGGGT",
+ "AGCAGGGT","CGCAGGGT","GGCAGGGT","TGCAGGGT","ATCAGGGT","CTCAGGGT","GTCAGGGT","TTCAGGGT",
+ "AAGAGGGT","CAGAGGGT","GAGAGGGT","TAGAGGGT","ACGAGGGT","CCGAGGGT","GCGAGGGT","TCGAGGGT",
+ "AGGAGGGT","CGGAGGGT","GGGAGGGT","TGGAGGGT","ATGAGGGT","CTGAGGGT","GTGAGGGT","TTGAGGGT",
+ "AATAGGGT","CATAGGGT","GATAGGGT","TATAGGGT","ACTAGGGT","CCTAGGGT","GCTAGGGT","TCTAGGGT",
+ "AGTAGGGT","CGTAGGGT","GGTAGGGT","TGTAGGGT","ATTAGGGT","CTTAGGGT","GTTAGGGT","TTTAGGGT",
+ "AAACGGGT","CAACGGGT","GAACGGGT","TAACGGGT","ACACGGGT","CCACGGGT","GCACGGGT","TCACGGGT",
+ "AGACGGGT","CGACGGGT","GGACGGGT","TGACGGGT","ATACGGGT","CTACGGGT","GTACGGGT","TTACGGGT",
+ "AACCGGGT","CACCGGGT","GACCGGGT","TACCGGGT","ACCCGGGT","CCCCGGGT","GCCCGGGT","TCCCGGGT",
+ "AGCCGGGT","CGCCGGGT","GGCCGGGT","TGCCGGGT","ATCCGGGT","CTCCGGGT","GTCCGGGT","TTCCGGGT",
+ "AAGCGGGT","CAGCGGGT","GAGCGGGT","TAGCGGGT","ACGCGGGT","CCGCGGGT","GCGCGGGT","TCGCGGGT",
+ "AGGCGGGT","CGGCGGGT","GGGCGGGT","TGGCGGGT","ATGCGGGT","CTGCGGGT","GTGCGGGT","TTGCGGGT",
+ "AATCGGGT","CATCGGGT","GATCGGGT","TATCGGGT","ACTCGGGT","CCTCGGGT","GCTCGGGT","TCTCGGGT",
+ "AGTCGGGT","CGTCGGGT","GGTCGGGT","TGTCGGGT","ATTCGGGT","CTTCGGGT","GTTCGGGT","TTTCGGGT",
+ "AAAGGGGT","CAAGGGGT","GAAGGGGT","TAAGGGGT","ACAGGGGT","CCAGGGGT","GCAGGGGT","TCAGGGGT",
+ "AGAGGGGT","CGAGGGGT","GGAGGGGT","TGAGGGGT","ATAGGGGT","CTAGGGGT","GTAGGGGT","TTAGGGGT",
+ "AACGGGGT","CACGGGGT","GACGGGGT","TACGGGGT","ACCGGGGT","CCCGGGGT","GCCGGGGT","TCCGGGGT",
+ "AGCGGGGT","CGCGGGGT","GGCGGGGT","TGCGGGGT","ATCGGGGT","CTCGGGGT","GTCGGGGT","TTCGGGGT",
+ "AAGGGGGT","CAGGGGGT","GAGGGGGT","TAGGGGGT","ACGGGGGT","CCGGGGGT","GCGGGGGT","TCGGGGGT",
+ "AGGGGGGT","CGGGGGGT","GGGGGGGT","TGGGGGGT","ATGGGGGT","CTGGGGGT","GTGGGGGT","TTGGGGGT",
+ "AATGGGGT","CATGGGGT","GATGGGGT","TATGGGGT","ACTGGGGT","CCTGGGGT","GCTGGGGT","TCTGGGGT",
+ "AGTGGGGT","CGTGGGGT","GGTGGGGT","TGTGGGGT","ATTGGGGT","CTTGGGGT","GTTGGGGT","TTTGGGGT",
+ "AAATGGGT","CAATGGGT","GAATGGGT","TAATGGGT","ACATGGGT","CCATGGGT","GCATGGGT","TCATGGGT",
+ "AGATGGGT","CGATGGGT","GGATGGGT","TGATGGGT","ATATGGGT","CTATGGGT","GTATGGGT","TTATGGGT",
+ "AACTGGGT","CACTGGGT","GACTGGGT","TACTGGGT","ACCTGGGT","CCCTGGGT","GCCTGGGT","TCCTGGGT",
+ "AGCTGGGT","CGCTGGGT","GGCTGGGT","TGCTGGGT","ATCTGGGT","CTCTGGGT","GTCTGGGT","TTCTGGGT",
+ "AAGTGGGT","CAGTGGGT","GAGTGGGT","TAGTGGGT","ACGTGGGT","CCGTGGGT","GCGTGGGT","TCGTGGGT",
+ "AGGTGGGT","CGGTGGGT","GGGTGGGT","TGGTGGGT","ATGTGGGT","CTGTGGGT","GTGTGGGT","TTGTGGGT",
+ "AATTGGGT","CATTGGGT","GATTGGGT","TATTGGGT","ACTTGGGT","CCTTGGGT","GCTTGGGT","TCTTGGGT",
+ "AGTTGGGT","CGTTGGGT","GGTTGGGT","TGTTGGGT","ATTTGGGT","CTTTGGGT","GTTTGGGT","TTTTGGGT",
+ "AAAATGGT","CAAATGGT","GAAATGGT","TAAATGGT","ACAATGGT","CCAATGGT","GCAATGGT","TCAATGGT",
+ "AGAATGGT","CGAATGGT","GGAATGGT","TGAATGGT","ATAATGGT","CTAATGGT","GTAATGGT","TTAATGGT",
+ "AACATGGT","CACATGGT","GACATGGT","TACATGGT","ACCATGGT","CCCATGGT","GCCATGGT","TCCATGGT",
+ "AGCATGGT","CGCATGGT","GGCATGGT","TGCATGGT","ATCATGGT","CTCATGGT","GTCATGGT","TTCATGGT",
+ "AAGATGGT","CAGATGGT","GAGATGGT","TAGATGGT","ACGATGGT","CCGATGGT","GCGATGGT","TCGATGGT",
+ "AGGATGGT","CGGATGGT","GGGATGGT","TGGATGGT","ATGATGGT","CTGATGGT","GTGATGGT","TTGATGGT",
+ "AATATGGT","CATATGGT","GATATGGT","TATATGGT","ACTATGGT","CCTATGGT","GCTATGGT","TCTATGGT",
+ "AGTATGGT","CGTATGGT","GGTATGGT","TGTATGGT","ATTATGGT","CTTATGGT","GTTATGGT","TTTATGGT",
+ "AAACTGGT","CAACTGGT","GAACTGGT","TAACTGGT","ACACTGGT","CCACTGGT","GCACTGGT","TCACTGGT",
+ "AGACTGGT","CGACTGGT","GGACTGGT","TGACTGGT","ATACTGGT","CTACTGGT","GTACTGGT","TTACTGGT",
+ "AACCTGGT","CACCTGGT","GACCTGGT","TACCTGGT","ACCCTGGT","CCCCTGGT","GCCCTGGT","TCCCTGGT",
+ "AGCCTGGT","CGCCTGGT","GGCCTGGT","TGCCTGGT","ATCCTGGT","CTCCTGGT","GTCCTGGT","TTCCTGGT",
+ "AAGCTGGT","CAGCTGGT","GAGCTGGT","TAGCTGGT","ACGCTGGT","CCGCTGGT","GCGCTGGT","TCGCTGGT",
+ "AGGCTGGT","CGGCTGGT","GGGCTGGT","TGGCTGGT","ATGCTGGT","CTGCTGGT","GTGCTGGT","TTGCTGGT",
+ "AATCTGGT","CATCTGGT","GATCTGGT","TATCTGGT","ACTCTGGT","CCTCTGGT","GCTCTGGT","TCTCTGGT",
+ "AGTCTGGT","CGTCTGGT","GGTCTGGT","TGTCTGGT","ATTCTGGT","CTTCTGGT","GTTCTGGT","TTTCTGGT",
+ "AAAGTGGT","CAAGTGGT","GAAGTGGT","TAAGTGGT","ACAGTGGT","CCAGTGGT","GCAGTGGT","TCAGTGGT",
+ "AGAGTGGT","CGAGTGGT","GGAGTGGT","TGAGTGGT","ATAGTGGT","CTAGTGGT","GTAGTGGT","TTAGTGGT",
+ "AACGTGGT","CACGTGGT","GACGTGGT","TACGTGGT","ACCGTGGT","CCCGTGGT","GCCGTGGT","TCCGTGGT",
+ "AGCGTGGT","CGCGTGGT","GGCGTGGT","TGCGTGGT","ATCGTGGT","CTCGTGGT","GTCGTGGT","TTCGTGGT",
+ "AAGGTGGT","CAGGTGGT","GAGGTGGT","TAGGTGGT","ACGGTGGT","CCGGTGGT","GCGGTGGT","TCGGTGGT",
+ "AGGGTGGT","CGGGTGGT","GGGGTGGT","TGGGTGGT","ATGGTGGT","CTGGTGGT","GTGGTGGT","TTGGTGGT",
+ "AATGTGGT","CATGTGGT","GATGTGGT","TATGTGGT","ACTGTGGT","CCTGTGGT","GCTGTGGT","TCTGTGGT",
+ "AGTGTGGT","CGTGTGGT","GGTGTGGT","TGTGTGGT","ATTGTGGT","CTTGTGGT","GTTGTGGT","TTTGTGGT",
+ "AAATTGGT","CAATTGGT","GAATTGGT","TAATTGGT","ACATTGGT","CCATTGGT","GCATTGGT","TCATTGGT",
+ "AGATTGGT","CGATTGGT","GGATTGGT","TGATTGGT","ATATTGGT","CTATTGGT","GTATTGGT","TTATTGGT",
+ "AACTTGGT","CACTTGGT","GACTTGGT","TACTTGGT","ACCTTGGT","CCCTTGGT","GCCTTGGT","TCCTTGGT",
+ "AGCTTGGT","CGCTTGGT","GGCTTGGT","TGCTTGGT","ATCTTGGT","CTCTTGGT","GTCTTGGT","TTCTTGGT",
+ "AAGTTGGT","CAGTTGGT","GAGTTGGT","TAGTTGGT","ACGTTGGT","CCGTTGGT","GCGTTGGT","TCGTTGGT",
+ "AGGTTGGT","CGGTTGGT","GGGTTGGT","TGGTTGGT","ATGTTGGT","CTGTTGGT","GTGTTGGT","TTGTTGGT",
+ "AATTTGGT","CATTTGGT","GATTTGGT","TATTTGGT","ACTTTGGT","CCTTTGGT","GCTTTGGT","TCTTTGGT",
+ "AGTTTGGT","CGTTTGGT","GGTTTGGT","TGTTTGGT","ATTTTGGT","CTTTTGGT","GTTTTGGT","TTTTTGGT",
+ "AAAAATGT","CAAAATGT","GAAAATGT","TAAAATGT","ACAAATGT","CCAAATGT","GCAAATGT","TCAAATGT",
+ "AGAAATGT","CGAAATGT","GGAAATGT","TGAAATGT","ATAAATGT","CTAAATGT","GTAAATGT","TTAAATGT",
+ "AACAATGT","CACAATGT","GACAATGT","TACAATGT","ACCAATGT","CCCAATGT","GCCAATGT","TCCAATGT",
+ "AGCAATGT","CGCAATGT","GGCAATGT","TGCAATGT","ATCAATGT","CTCAATGT","GTCAATGT","TTCAATGT",
+ "AAGAATGT","CAGAATGT","GAGAATGT","TAGAATGT","ACGAATGT","CCGAATGT","GCGAATGT","TCGAATGT",
+ "AGGAATGT","CGGAATGT","GGGAATGT","TGGAATGT","ATGAATGT","CTGAATGT","GTGAATGT","TTGAATGT",
+ "AATAATGT","CATAATGT","GATAATGT","TATAATGT","ACTAATGT","CCTAATGT","GCTAATGT","TCTAATGT",
+ "AGTAATGT","CGTAATGT","GGTAATGT","TGTAATGT","ATTAATGT","CTTAATGT","GTTAATGT","TTTAATGT",
+ "AAACATGT","CAACATGT","GAACATGT","TAACATGT","ACACATGT","CCACATGT","GCACATGT","TCACATGT",
+ "AGACATGT","CGACATGT","GGACATGT","TGACATGT","ATACATGT","CTACATGT","GTACATGT","TTACATGT",
+ "AACCATGT","CACCATGT","GACCATGT","TACCATGT","ACCCATGT","CCCCATGT","GCCCATGT","TCCCATGT",
+ "AGCCATGT","CGCCATGT","GGCCATGT","TGCCATGT","ATCCATGT","CTCCATGT","GTCCATGT","TTCCATGT",
+ "AAGCATGT","CAGCATGT","GAGCATGT","TAGCATGT","ACGCATGT","CCGCATGT","GCGCATGT","TCGCATGT",
+ "AGGCATGT","CGGCATGT","GGGCATGT","TGGCATGT","ATGCATGT","CTGCATGT","GTGCATGT","TTGCATGT",
+ "AATCATGT","CATCATGT","GATCATGT","TATCATGT","ACTCATGT","CCTCATGT","GCTCATGT","TCTCATGT",
+ "AGTCATGT","CGTCATGT","GGTCATGT","TGTCATGT","ATTCATGT","CTTCATGT","GTTCATGT","TTTCATGT",
+ "AAAGATGT","CAAGATGT","GAAGATGT","TAAGATGT","ACAGATGT","CCAGATGT","GCAGATGT","TCAGATGT",
+ "AGAGATGT","CGAGATGT","GGAGATGT","TGAGATGT","ATAGATGT","CTAGATGT","GTAGATGT","TTAGATGT",
+ "AACGATGT","CACGATGT","GACGATGT","TACGATGT","ACCGATGT","CCCGATGT","GCCGATGT","TCCGATGT",
+ "AGCGATGT","CGCGATGT","GGCGATGT","TGCGATGT","ATCGATGT","CTCGATGT","GTCGATGT","TTCGATGT",
+ "AAGGATGT","CAGGATGT","GAGGATGT","TAGGATGT","ACGGATGT","CCGGATGT","GCGGATGT","TCGGATGT",
+ "AGGGATGT","CGGGATGT","GGGGATGT","TGGGATGT","ATGGATGT","CTGGATGT","GTGGATGT","TTGGATGT",
+ "AATGATGT","CATGATGT","GATGATGT","TATGATGT","ACTGATGT","CCTGATGT","GCTGATGT","TCTGATGT",
+ "AGTGATGT","CGTGATGT","GGTGATGT","TGTGATGT","ATTGATGT","CTTGATGT","GTTGATGT","TTTGATGT",
+ "AAATATGT","CAATATGT","GAATATGT","TAATATGT","ACATATGT","CCATATGT","GCATATGT","TCATATGT",
+ "AGATATGT","CGATATGT","GGATATGT","TGATATGT","ATATATGT","CTATATGT","GTATATGT","TTATATGT",
+ "AACTATGT","CACTATGT","GACTATGT","TACTATGT","ACCTATGT","CCCTATGT","GCCTATGT","TCCTATGT",
+ "AGCTATGT","CGCTATGT","GGCTATGT","TGCTATGT","ATCTATGT","CTCTATGT","GTCTATGT","TTCTATGT",
+ "AAGTATGT","CAGTATGT","GAGTATGT","TAGTATGT","ACGTATGT","CCGTATGT","GCGTATGT","TCGTATGT",
+ "AGGTATGT","CGGTATGT","GGGTATGT","TGGTATGT","ATGTATGT","CTGTATGT","GTGTATGT","TTGTATGT",
+ "AATTATGT","CATTATGT","GATTATGT","TATTATGT","ACTTATGT","CCTTATGT","GCTTATGT","TCTTATGT",
+ "AGTTATGT","CGTTATGT","GGTTATGT","TGTTATGT","ATTTATGT","CTTTATGT","GTTTATGT","TTTTATGT",
+ "AAAACTGT","CAAACTGT","GAAACTGT","TAAACTGT","ACAACTGT","CCAACTGT","GCAACTGT","TCAACTGT",
+ "AGAACTGT","CGAACTGT","GGAACTGT","TGAACTGT","ATAACTGT","CTAACTGT","GTAACTGT","TTAACTGT",
+ "AACACTGT","CACACTGT","GACACTGT","TACACTGT","ACCACTGT","CCCACTGT","GCCACTGT","TCCACTGT",
+ "AGCACTGT","CGCACTGT","GGCACTGT","TGCACTGT","ATCACTGT","CTCACTGT","GTCACTGT","TTCACTGT",
+ "AAGACTGT","CAGACTGT","GAGACTGT","TAGACTGT","ACGACTGT","CCGACTGT","GCGACTGT","TCGACTGT",
+ "AGGACTGT","CGGACTGT","GGGACTGT","TGGACTGT","ATGACTGT","CTGACTGT","GTGACTGT","TTGACTGT",
+ "AATACTGT","CATACTGT","GATACTGT","TATACTGT","ACTACTGT","CCTACTGT","GCTACTGT","TCTACTGT",
+ "AGTACTGT","CGTACTGT","GGTACTGT","TGTACTGT","ATTACTGT","CTTACTGT","GTTACTGT","TTTACTGT",
+ "AAACCTGT","CAACCTGT","GAACCTGT","TAACCTGT","ACACCTGT","CCACCTGT","GCACCTGT","TCACCTGT",
+ "AGACCTGT","CGACCTGT","GGACCTGT","TGACCTGT","ATACCTGT","CTACCTGT","GTACCTGT","TTACCTGT",
+ "AACCCTGT","CACCCTGT","GACCCTGT","TACCCTGT","ACCCCTGT","CCCCCTGT","GCCCCTGT","TCCCCTGT",
+ "AGCCCTGT","CGCCCTGT","GGCCCTGT","TGCCCTGT","ATCCCTGT","CTCCCTGT","GTCCCTGT","TTCCCTGT",
+ "AAGCCTGT","CAGCCTGT","GAGCCTGT","TAGCCTGT","ACGCCTGT","CCGCCTGT","GCGCCTGT","TCGCCTGT",
+ "AGGCCTGT","CGGCCTGT","GGGCCTGT","TGGCCTGT","ATGCCTGT","CTGCCTGT","GTGCCTGT","TTGCCTGT",
+ "AATCCTGT","CATCCTGT","GATCCTGT","TATCCTGT","ACTCCTGT","CCTCCTGT","GCTCCTGT","TCTCCTGT",
+ "AGTCCTGT","CGTCCTGT","GGTCCTGT","TGTCCTGT","ATTCCTGT","CTTCCTGT","GTTCCTGT","TTTCCTGT",
+ "AAAGCTGT","CAAGCTGT","GAAGCTGT","TAAGCTGT","ACAGCTGT","CCAGCTGT","GCAGCTGT","TCAGCTGT",
+ "AGAGCTGT","CGAGCTGT","GGAGCTGT","TGAGCTGT","ATAGCTGT","CTAGCTGT","GTAGCTGT","TTAGCTGT",
+ "AACGCTGT","CACGCTGT","GACGCTGT","TACGCTGT","ACCGCTGT","CCCGCTGT","GCCGCTGT","TCCGCTGT",
+ "AGCGCTGT","CGCGCTGT","GGCGCTGT","TGCGCTGT","ATCGCTGT","CTCGCTGT","GTCGCTGT","TTCGCTGT",
+ "AAGGCTGT","CAGGCTGT","GAGGCTGT","TAGGCTGT","ACGGCTGT","CCGGCTGT","GCGGCTGT","TCGGCTGT",
+ "AGGGCTGT","CGGGCTGT","GGGGCTGT","TGGGCTGT","ATGGCTGT","CTGGCTGT","GTGGCTGT","TTGGCTGT",
+ "AATGCTGT","CATGCTGT","GATGCTGT","TATGCTGT","ACTGCTGT","CCTGCTGT","GCTGCTGT","TCTGCTGT",
+ "AGTGCTGT","CGTGCTGT","GGTGCTGT","TGTGCTGT","ATTGCTGT","CTTGCTGT","GTTGCTGT","TTTGCTGT",
+ "AAATCTGT","CAATCTGT","GAATCTGT","TAATCTGT","ACATCTGT","CCATCTGT","GCATCTGT","TCATCTGT",
+ "AGATCTGT","CGATCTGT","GGATCTGT","TGATCTGT","ATATCTGT","CTATCTGT","GTATCTGT","TTATCTGT",
+ "AACTCTGT","CACTCTGT","GACTCTGT","TACTCTGT","ACCTCTGT","CCCTCTGT","GCCTCTGT","TCCTCTGT",
+ "AGCTCTGT","CGCTCTGT","GGCTCTGT","TGCTCTGT","ATCTCTGT","CTCTCTGT","GTCTCTGT","TTCTCTGT",
+ "AAGTCTGT","CAGTCTGT","GAGTCTGT","TAGTCTGT","ACGTCTGT","CCGTCTGT","GCGTCTGT","TCGTCTGT",
+ "AGGTCTGT","CGGTCTGT","GGGTCTGT","TGGTCTGT","ATGTCTGT","CTGTCTGT","GTGTCTGT","TTGTCTGT",
+ "AATTCTGT","CATTCTGT","GATTCTGT","TATTCTGT","ACTTCTGT","CCTTCTGT","GCTTCTGT","TCTTCTGT",
+ "AGTTCTGT","CGTTCTGT","GGTTCTGT","TGTTCTGT","ATTTCTGT","CTTTCTGT","GTTTCTGT","TTTTCTGT",
+ "AAAAGTGT","CAAAGTGT","GAAAGTGT","TAAAGTGT","ACAAGTGT","CCAAGTGT","GCAAGTGT","TCAAGTGT",
+ "AGAAGTGT","CGAAGTGT","GGAAGTGT","TGAAGTGT","ATAAGTGT","CTAAGTGT","GTAAGTGT","TTAAGTGT",
+ "AACAGTGT","CACAGTGT","GACAGTGT","TACAGTGT","ACCAGTGT","CCCAGTGT","GCCAGTGT","TCCAGTGT",
+ "AGCAGTGT","CGCAGTGT","GGCAGTGT","TGCAGTGT","ATCAGTGT","CTCAGTGT","GTCAGTGT","TTCAGTGT",
+ "AAGAGTGT","CAGAGTGT","GAGAGTGT","TAGAGTGT","ACGAGTGT","CCGAGTGT","GCGAGTGT","TCGAGTGT",
+ "AGGAGTGT","CGGAGTGT","GGGAGTGT","TGGAGTGT","ATGAGTGT","CTGAGTGT","GTGAGTGT","TTGAGTGT",
+ "AATAGTGT","CATAGTGT","GATAGTGT","TATAGTGT","ACTAGTGT","CCTAGTGT","GCTAGTGT","TCTAGTGT",
+ "AGTAGTGT","CGTAGTGT","GGTAGTGT","TGTAGTGT","ATTAGTGT","CTTAGTGT","GTTAGTGT","TTTAGTGT",
+ "AAACGTGT","CAACGTGT","GAACGTGT","TAACGTGT","ACACGTGT","CCACGTGT","GCACGTGT","TCACGTGT",
+ "AGACGTGT","CGACGTGT","GGACGTGT","TGACGTGT","ATACGTGT","CTACGTGT","GTACGTGT","TTACGTGT",
+ "AACCGTGT","CACCGTGT","GACCGTGT","TACCGTGT","ACCCGTGT","CCCCGTGT","GCCCGTGT","TCCCGTGT",
+ "AGCCGTGT","CGCCGTGT","GGCCGTGT","TGCCGTGT","ATCCGTGT","CTCCGTGT","GTCCGTGT","TTCCGTGT",
+ "AAGCGTGT","CAGCGTGT","GAGCGTGT","TAGCGTGT","ACGCGTGT","CCGCGTGT","GCGCGTGT","TCGCGTGT",
+ "AGGCGTGT","CGGCGTGT","GGGCGTGT","TGGCGTGT","ATGCGTGT","CTGCGTGT","GTGCGTGT","TTGCGTGT",
+ "AATCGTGT","CATCGTGT","GATCGTGT","TATCGTGT","ACTCGTGT","CCTCGTGT","GCTCGTGT","TCTCGTGT",
+ "AGTCGTGT","CGTCGTGT","GGTCGTGT","TGTCGTGT","ATTCGTGT","CTTCGTGT","GTTCGTGT","TTTCGTGT",
+ "AAAGGTGT","CAAGGTGT","GAAGGTGT","TAAGGTGT","ACAGGTGT","CCAGGTGT","GCAGGTGT","TCAGGTGT",
+ "AGAGGTGT","CGAGGTGT","GGAGGTGT","TGAGGTGT","ATAGGTGT","CTAGGTGT","GTAGGTGT","TTAGGTGT",
+ "AACGGTGT","CACGGTGT","GACGGTGT","TACGGTGT","ACCGGTGT","CCCGGTGT","GCCGGTGT","TCCGGTGT",
+ "AGCGGTGT","CGCGGTGT","GGCGGTGT","TGCGGTGT","ATCGGTGT","CTCGGTGT","GTCGGTGT","TTCGGTGT",
+ "AAGGGTGT","CAGGGTGT","GAGGGTGT","TAGGGTGT","ACGGGTGT","CCGGGTGT","GCGGGTGT","TCGGGTGT",
+ "AGGGGTGT","CGGGGTGT","GGGGGTGT","TGGGGTGT","ATGGGTGT","CTGGGTGT","GTGGGTGT","TTGGGTGT",
+ "AATGGTGT","CATGGTGT","GATGGTGT","TATGGTGT","ACTGGTGT","CCTGGTGT","GCTGGTGT","TCTGGTGT",
+ "AGTGGTGT","CGTGGTGT","GGTGGTGT","TGTGGTGT","ATTGGTGT","CTTGGTGT","GTTGGTGT","TTTGGTGT",
+ "AAATGTGT","CAATGTGT","GAATGTGT","TAATGTGT","ACATGTGT","CCATGTGT","GCATGTGT","TCATGTGT",
+ "AGATGTGT","CGATGTGT","GGATGTGT","TGATGTGT","ATATGTGT","CTATGTGT","GTATGTGT","TTATGTGT",
+ "AACTGTGT","CACTGTGT","GACTGTGT","TACTGTGT","ACCTGTGT","CCCTGTGT","GCCTGTGT","TCCTGTGT",
+ "AGCTGTGT","CGCTGTGT","GGCTGTGT","TGCTGTGT","ATCTGTGT","CTCTGTGT","GTCTGTGT","TTCTGTGT",
+ "AAGTGTGT","CAGTGTGT","GAGTGTGT","TAGTGTGT","ACGTGTGT","CCGTGTGT","GCGTGTGT","TCGTGTGT",
+ "AGGTGTGT","CGGTGTGT","GGGTGTGT","TGGTGTGT","ATGTGTGT","CTGTGTGT","GTGTGTGT","TTGTGTGT",
+ "AATTGTGT","CATTGTGT","GATTGTGT","TATTGTGT","ACTTGTGT","CCTTGTGT","GCTTGTGT","TCTTGTGT",
+ "AGTTGTGT","CGTTGTGT","GGTTGTGT","TGTTGTGT","ATTTGTGT","CTTTGTGT","GTTTGTGT","TTTTGTGT",
+ "AAAATTGT","CAAATTGT","GAAATTGT","TAAATTGT","ACAATTGT","CCAATTGT","GCAATTGT","TCAATTGT",
+ "AGAATTGT","CGAATTGT","GGAATTGT","TGAATTGT","ATAATTGT","CTAATTGT","GTAATTGT","TTAATTGT",
+ "AACATTGT","CACATTGT","GACATTGT","TACATTGT","ACCATTGT","CCCATTGT","GCCATTGT","TCCATTGT",
+ "AGCATTGT","CGCATTGT","GGCATTGT","TGCATTGT","ATCATTGT","CTCATTGT","GTCATTGT","TTCATTGT",
+ "AAGATTGT","CAGATTGT","GAGATTGT","TAGATTGT","ACGATTGT","CCGATTGT","GCGATTGT","TCGATTGT",
+ "AGGATTGT","CGGATTGT","GGGATTGT","TGGATTGT","ATGATTGT","CTGATTGT","GTGATTGT","TTGATTGT",
+ "AATATTGT","CATATTGT","GATATTGT","TATATTGT","ACTATTGT","CCTATTGT","GCTATTGT","TCTATTGT",
+ "AGTATTGT","CGTATTGT","GGTATTGT","TGTATTGT","ATTATTGT","CTTATTGT","GTTATTGT","TTTATTGT",
+ "AAACTTGT","CAACTTGT","GAACTTGT","TAACTTGT","ACACTTGT","CCACTTGT","GCACTTGT","TCACTTGT",
+ "AGACTTGT","CGACTTGT","GGACTTGT","TGACTTGT","ATACTTGT","CTACTTGT","GTACTTGT","TTACTTGT",
+ "AACCTTGT","CACCTTGT","GACCTTGT","TACCTTGT","ACCCTTGT","CCCCTTGT","GCCCTTGT","TCCCTTGT",
+ "AGCCTTGT","CGCCTTGT","GGCCTTGT","TGCCTTGT","ATCCTTGT","CTCCTTGT","GTCCTTGT","TTCCTTGT",
+ "AAGCTTGT","CAGCTTGT","GAGCTTGT","TAGCTTGT","ACGCTTGT","CCGCTTGT","GCGCTTGT","TCGCTTGT",
+ "AGGCTTGT","CGGCTTGT","GGGCTTGT","TGGCTTGT","ATGCTTGT","CTGCTTGT","GTGCTTGT","TTGCTTGT",
+ "AATCTTGT","CATCTTGT","GATCTTGT","TATCTTGT","ACTCTTGT","CCTCTTGT","GCTCTTGT","TCTCTTGT",
+ "AGTCTTGT","CGTCTTGT","GGTCTTGT","TGTCTTGT","ATTCTTGT","CTTCTTGT","GTTCTTGT","TTTCTTGT",
+ "AAAGTTGT","CAAGTTGT","GAAGTTGT","TAAGTTGT","ACAGTTGT","CCAGTTGT","GCAGTTGT","TCAGTTGT",
+ "AGAGTTGT","CGAGTTGT","GGAGTTGT","TGAGTTGT","ATAGTTGT","CTAGTTGT","GTAGTTGT","TTAGTTGT",
+ "AACGTTGT","CACGTTGT","GACGTTGT","TACGTTGT","ACCGTTGT","CCCGTTGT","GCCGTTGT","TCCGTTGT",
+ "AGCGTTGT","CGCGTTGT","GGCGTTGT","TGCGTTGT","ATCGTTGT","CTCGTTGT","GTCGTTGT","TTCGTTGT",
+ "AAGGTTGT","CAGGTTGT","GAGGTTGT","TAGGTTGT","ACGGTTGT","CCGGTTGT","GCGGTTGT","TCGGTTGT",
+ "AGGGTTGT","CGGGTTGT","GGGGTTGT","TGGGTTGT","ATGGTTGT","CTGGTTGT","GTGGTTGT","TTGGTTGT",
+ "AATGTTGT","CATGTTGT","GATGTTGT","TATGTTGT","ACTGTTGT","CCTGTTGT","GCTGTTGT","TCTGTTGT",
+ "AGTGTTGT","CGTGTTGT","GGTGTTGT","TGTGTTGT","ATTGTTGT","CTTGTTGT","GTTGTTGT","TTTGTTGT",
+ "AAATTTGT","CAATTTGT","GAATTTGT","TAATTTGT","ACATTTGT","CCATTTGT","GCATTTGT","TCATTTGT",
+ "AGATTTGT","CGATTTGT","GGATTTGT","TGATTTGT","ATATTTGT","CTATTTGT","GTATTTGT","TTATTTGT",
+ "AACTTTGT","CACTTTGT","GACTTTGT","TACTTTGT","ACCTTTGT","CCCTTTGT","GCCTTTGT","TCCTTTGT",
+ "AGCTTTGT","CGCTTTGT","GGCTTTGT","TGCTTTGT","ATCTTTGT","CTCTTTGT","GTCTTTGT","TTCTTTGT",
+ "AAGTTTGT","CAGTTTGT","GAGTTTGT","TAGTTTGT","ACGTTTGT","CCGTTTGT","GCGTTTGT","TCGTTTGT",
+ "AGGTTTGT","CGGTTTGT","GGGTTTGT","TGGTTTGT","ATGTTTGT","CTGTTTGT","GTGTTTGT","TTGTTTGT",
+ "AATTTTGT","CATTTTGT","GATTTTGT","TATTTTGT","ACTTTTGT","CCTTTTGT","GCTTTTGT","TCTTTTGT",
+ "AGTTTTGT","CGTTTTGT","GGTTTTGT","TGTTTTGT","ATTTTTGT","CTTTTTGT","GTTTTTGT","TTTTTTGT",
+ "AAAAAATT","CAAAAATT","GAAAAATT","TAAAAATT","ACAAAATT","CCAAAATT","GCAAAATT","TCAAAATT",
+ "AGAAAATT","CGAAAATT","GGAAAATT","TGAAAATT","ATAAAATT","CTAAAATT","GTAAAATT","TTAAAATT",
+ "AACAAATT","CACAAATT","GACAAATT","TACAAATT","ACCAAATT","CCCAAATT","GCCAAATT","TCCAAATT",
+ "AGCAAATT","CGCAAATT","GGCAAATT","TGCAAATT","ATCAAATT","CTCAAATT","GTCAAATT","TTCAAATT",
+ "AAGAAATT","CAGAAATT","GAGAAATT","TAGAAATT","ACGAAATT","CCGAAATT","GCGAAATT","TCGAAATT",
+ "AGGAAATT","CGGAAATT","GGGAAATT","TGGAAATT","ATGAAATT","CTGAAATT","GTGAAATT","TTGAAATT",
+ "AATAAATT","CATAAATT","GATAAATT","TATAAATT","ACTAAATT","CCTAAATT","GCTAAATT","TCTAAATT",
+ "AGTAAATT","CGTAAATT","GGTAAATT","TGTAAATT","ATTAAATT","CTTAAATT","GTTAAATT","TTTAAATT",
+ "AAACAATT","CAACAATT","GAACAATT","TAACAATT","ACACAATT","CCACAATT","GCACAATT","TCACAATT",
+ "AGACAATT","CGACAATT","GGACAATT","TGACAATT","ATACAATT","CTACAATT","GTACAATT","TTACAATT",
+ "AACCAATT","CACCAATT","GACCAATT","TACCAATT","ACCCAATT","CCCCAATT","GCCCAATT","TCCCAATT",
+ "AGCCAATT","CGCCAATT","GGCCAATT","TGCCAATT","ATCCAATT","CTCCAATT","GTCCAATT","TTCCAATT",
+ "AAGCAATT","CAGCAATT","GAGCAATT","TAGCAATT","ACGCAATT","CCGCAATT","GCGCAATT","TCGCAATT",
+ "AGGCAATT","CGGCAATT","GGGCAATT","TGGCAATT","ATGCAATT","CTGCAATT","GTGCAATT","TTGCAATT",
+ "AATCAATT","CATCAATT","GATCAATT","TATCAATT","ACTCAATT","CCTCAATT","GCTCAATT","TCTCAATT",
+ "AGTCAATT","CGTCAATT","GGTCAATT","TGTCAATT","ATTCAATT","CTTCAATT","GTTCAATT","TTTCAATT",
+ "AAAGAATT","CAAGAATT","GAAGAATT","TAAGAATT","ACAGAATT","CCAGAATT","GCAGAATT","TCAGAATT",
+ "AGAGAATT","CGAGAATT","GGAGAATT","TGAGAATT","ATAGAATT","CTAGAATT","GTAGAATT","TTAGAATT",
+ "AACGAATT","CACGAATT","GACGAATT","TACGAATT","ACCGAATT","CCCGAATT","GCCGAATT","TCCGAATT",
+ "AGCGAATT","CGCGAATT","GGCGAATT","TGCGAATT","ATCGAATT","CTCGAATT","GTCGAATT","TTCGAATT",
+ "AAGGAATT","CAGGAATT","GAGGAATT","TAGGAATT","ACGGAATT","CCGGAATT","GCGGAATT","TCGGAATT",
+ "AGGGAATT","CGGGAATT","GGGGAATT","TGGGAATT","ATGGAATT","CTGGAATT","GTGGAATT","TTGGAATT",
+ "AATGAATT","CATGAATT","GATGAATT","TATGAATT","ACTGAATT","CCTGAATT","GCTGAATT","TCTGAATT",
+ "AGTGAATT","CGTGAATT","GGTGAATT","TGTGAATT","ATTGAATT","CTTGAATT","GTTGAATT","TTTGAATT",
+ "AAATAATT","CAATAATT","GAATAATT","TAATAATT","ACATAATT","CCATAATT","GCATAATT","TCATAATT",
+ "AGATAATT","CGATAATT","GGATAATT","TGATAATT","ATATAATT","CTATAATT","GTATAATT","TTATAATT",
+ "AACTAATT","CACTAATT","GACTAATT","TACTAATT","ACCTAATT","CCCTAATT","GCCTAATT","TCCTAATT",
+ "AGCTAATT","CGCTAATT","GGCTAATT","TGCTAATT","ATCTAATT","CTCTAATT","GTCTAATT","TTCTAATT",
+ "AAGTAATT","CAGTAATT","GAGTAATT","TAGTAATT","ACGTAATT","CCGTAATT","GCGTAATT","TCGTAATT",
+ "AGGTAATT","CGGTAATT","GGGTAATT","TGGTAATT","ATGTAATT","CTGTAATT","GTGTAATT","TTGTAATT",
+ "AATTAATT","CATTAATT","GATTAATT","TATTAATT","ACTTAATT","CCTTAATT","GCTTAATT","TCTTAATT",
+ "AGTTAATT","CGTTAATT","GGTTAATT","TGTTAATT","ATTTAATT","CTTTAATT","GTTTAATT","TTTTAATT",
+ "AAAACATT","CAAACATT","GAAACATT","TAAACATT","ACAACATT","CCAACATT","GCAACATT","TCAACATT",
+ "AGAACATT","CGAACATT","GGAACATT","TGAACATT","ATAACATT","CTAACATT","GTAACATT","TTAACATT",
+ "AACACATT","CACACATT","GACACATT","TACACATT","ACCACATT","CCCACATT","GCCACATT","TCCACATT",
+ "AGCACATT","CGCACATT","GGCACATT","TGCACATT","ATCACATT","CTCACATT","GTCACATT","TTCACATT",
+ "AAGACATT","CAGACATT","GAGACATT","TAGACATT","ACGACATT","CCGACATT","GCGACATT","TCGACATT",
+ "AGGACATT","CGGACATT","GGGACATT","TGGACATT","ATGACATT","CTGACATT","GTGACATT","TTGACATT",
+ "AATACATT","CATACATT","GATACATT","TATACATT","ACTACATT","CCTACATT","GCTACATT","TCTACATT",
+ "AGTACATT","CGTACATT","GGTACATT","TGTACATT","ATTACATT","CTTACATT","GTTACATT","TTTACATT",
+ "AAACCATT","CAACCATT","GAACCATT","TAACCATT","ACACCATT","CCACCATT","GCACCATT","TCACCATT",
+ "AGACCATT","CGACCATT","GGACCATT","TGACCATT","ATACCATT","CTACCATT","GTACCATT","TTACCATT",
+ "AACCCATT","CACCCATT","GACCCATT","TACCCATT","ACCCCATT","CCCCCATT","GCCCCATT","TCCCCATT",
+ "AGCCCATT","CGCCCATT","GGCCCATT","TGCCCATT","ATCCCATT","CTCCCATT","GTCCCATT","TTCCCATT",
+ "AAGCCATT","CAGCCATT","GAGCCATT","TAGCCATT","ACGCCATT","CCGCCATT","GCGCCATT","TCGCCATT",
+ "AGGCCATT","CGGCCATT","GGGCCATT","TGGCCATT","ATGCCATT","CTGCCATT","GTGCCATT","TTGCCATT",
+ "AATCCATT","CATCCATT","GATCCATT","TATCCATT","ACTCCATT","CCTCCATT","GCTCCATT","TCTCCATT",
+ "AGTCCATT","CGTCCATT","GGTCCATT","TGTCCATT","ATTCCATT","CTTCCATT","GTTCCATT","TTTCCATT",
+ "AAAGCATT","CAAGCATT","GAAGCATT","TAAGCATT","ACAGCATT","CCAGCATT","GCAGCATT","TCAGCATT",
+ "AGAGCATT","CGAGCATT","GGAGCATT","TGAGCATT","ATAGCATT","CTAGCATT","GTAGCATT","TTAGCATT",
+ "AACGCATT","CACGCATT","GACGCATT","TACGCATT","ACCGCATT","CCCGCATT","GCCGCATT","TCCGCATT",
+ "AGCGCATT","CGCGCATT","GGCGCATT","TGCGCATT","ATCGCATT","CTCGCATT","GTCGCATT","TTCGCATT",
+ "AAGGCATT","CAGGCATT","GAGGCATT","TAGGCATT","ACGGCATT","CCGGCATT","GCGGCATT","TCGGCATT",
+ "AGGGCATT","CGGGCATT","GGGGCATT","TGGGCATT","ATGGCATT","CTGGCATT","GTGGCATT","TTGGCATT",
+ "AATGCATT","CATGCATT","GATGCATT","TATGCATT","ACTGCATT","CCTGCATT","GCTGCATT","TCTGCATT",
+ "AGTGCATT","CGTGCATT","GGTGCATT","TGTGCATT","ATTGCATT","CTTGCATT","GTTGCATT","TTTGCATT",
+ "AAATCATT","CAATCATT","GAATCATT","TAATCATT","ACATCATT","CCATCATT","GCATCATT","TCATCATT",
+ "AGATCATT","CGATCATT","GGATCATT","TGATCATT","ATATCATT","CTATCATT","GTATCATT","TTATCATT",
+ "AACTCATT","CACTCATT","GACTCATT","TACTCATT","ACCTCATT","CCCTCATT","GCCTCATT","TCCTCATT",
+ "AGCTCATT","CGCTCATT","GGCTCATT","TGCTCATT","ATCTCATT","CTCTCATT","GTCTCATT","TTCTCATT",
+ "AAGTCATT","CAGTCATT","GAGTCATT","TAGTCATT","ACGTCATT","CCGTCATT","GCGTCATT","TCGTCATT",
+ "AGGTCATT","CGGTCATT","GGGTCATT","TGGTCATT","ATGTCATT","CTGTCATT","GTGTCATT","TTGTCATT",
+ "AATTCATT","CATTCATT","GATTCATT","TATTCATT","ACTTCATT","CCTTCATT","GCTTCATT","TCTTCATT",
+ "AGTTCATT","CGTTCATT","GGTTCATT","TGTTCATT","ATTTCATT","CTTTCATT","GTTTCATT","TTTTCATT",
+ "AAAAGATT","CAAAGATT","GAAAGATT","TAAAGATT","ACAAGATT","CCAAGATT","GCAAGATT","TCAAGATT",
+ "AGAAGATT","CGAAGATT","GGAAGATT","TGAAGATT","ATAAGATT","CTAAGATT","GTAAGATT","TTAAGATT",
+ "AACAGATT","CACAGATT","GACAGATT","TACAGATT","ACCAGATT","CCCAGATT","GCCAGATT","TCCAGATT",
+ "AGCAGATT","CGCAGATT","GGCAGATT","TGCAGATT","ATCAGATT","CTCAGATT","GTCAGATT","TTCAGATT",
+ "AAGAGATT","CAGAGATT","GAGAGATT","TAGAGATT","ACGAGATT","CCGAGATT","GCGAGATT","TCGAGATT",
+ "AGGAGATT","CGGAGATT","GGGAGATT","TGGAGATT","ATGAGATT","CTGAGATT","GTGAGATT","TTGAGATT",
+ "AATAGATT","CATAGATT","GATAGATT","TATAGATT","ACTAGATT","CCTAGATT","GCTAGATT","TCTAGATT",
+ "AGTAGATT","CGTAGATT","GGTAGATT","TGTAGATT","ATTAGATT","CTTAGATT","GTTAGATT","TTTAGATT",
+ "AAACGATT","CAACGATT","GAACGATT","TAACGATT","ACACGATT","CCACGATT","GCACGATT","TCACGATT",
+ "AGACGATT","CGACGATT","GGACGATT","TGACGATT","ATACGATT","CTACGATT","GTACGATT","TTACGATT",
+ "AACCGATT","CACCGATT","GACCGATT","TACCGATT","ACCCGATT","CCCCGATT","GCCCGATT","TCCCGATT",
+ "AGCCGATT","CGCCGATT","GGCCGATT","TGCCGATT","ATCCGATT","CTCCGATT","GTCCGATT","TTCCGATT",
+ "AAGCGATT","CAGCGATT","GAGCGATT","TAGCGATT","ACGCGATT","CCGCGATT","GCGCGATT","TCGCGATT",
+ "AGGCGATT","CGGCGATT","GGGCGATT","TGGCGATT","ATGCGATT","CTGCGATT","GTGCGATT","TTGCGATT",
+ "AATCGATT","CATCGATT","GATCGATT","TATCGATT","ACTCGATT","CCTCGATT","GCTCGATT","TCTCGATT",
+ "AGTCGATT","CGTCGATT","GGTCGATT","TGTCGATT","ATTCGATT","CTTCGATT","GTTCGATT","TTTCGATT",
+ "AAAGGATT","CAAGGATT","GAAGGATT","TAAGGATT","ACAGGATT","CCAGGATT","GCAGGATT","TCAGGATT",
+ "AGAGGATT","CGAGGATT","GGAGGATT","TGAGGATT","ATAGGATT","CTAGGATT","GTAGGATT","TTAGGATT",
+ "AACGGATT","CACGGATT","GACGGATT","TACGGATT","ACCGGATT","CCCGGATT","GCCGGATT","TCCGGATT",
+ "AGCGGATT","CGCGGATT","GGCGGATT","TGCGGATT","ATCGGATT","CTCGGATT","GTCGGATT","TTCGGATT",
+ "AAGGGATT","CAGGGATT","GAGGGATT","TAGGGATT","ACGGGATT","CCGGGATT","GCGGGATT","TCGGGATT",
+ "AGGGGATT","CGGGGATT","GGGGGATT","TGGGGATT","ATGGGATT","CTGGGATT","GTGGGATT","TTGGGATT",
+ "AATGGATT","CATGGATT","GATGGATT","TATGGATT","ACTGGATT","CCTGGATT","GCTGGATT","TCTGGATT",
+ "AGTGGATT","CGTGGATT","GGTGGATT","TGTGGATT","ATTGGATT","CTTGGATT","GTTGGATT","TTTGGATT",
+ "AAATGATT","CAATGATT","GAATGATT","TAATGATT","ACATGATT","CCATGATT","GCATGATT","TCATGATT",
+ "AGATGATT","CGATGATT","GGATGATT","TGATGATT","ATATGATT","CTATGATT","GTATGATT","TTATGATT",
+ "AACTGATT","CACTGATT","GACTGATT","TACTGATT","ACCTGATT","CCCTGATT","GCCTGATT","TCCTGATT",
+ "AGCTGATT","CGCTGATT","GGCTGATT","TGCTGATT","ATCTGATT","CTCTGATT","GTCTGATT","TTCTGATT",
+ "AAGTGATT","CAGTGATT","GAGTGATT","TAGTGATT","ACGTGATT","CCGTGATT","GCGTGATT","TCGTGATT",
+ "AGGTGATT","CGGTGATT","GGGTGATT","TGGTGATT","ATGTGATT","CTGTGATT","GTGTGATT","TTGTGATT",
+ "AATTGATT","CATTGATT","GATTGATT","TATTGATT","ACTTGATT","CCTTGATT","GCTTGATT","TCTTGATT",
+ "AGTTGATT","CGTTGATT","GGTTGATT","TGTTGATT","ATTTGATT","CTTTGATT","GTTTGATT","TTTTGATT",
+ "AAAATATT","CAAATATT","GAAATATT","TAAATATT","ACAATATT","CCAATATT","GCAATATT","TCAATATT",
+ "AGAATATT","CGAATATT","GGAATATT","TGAATATT","ATAATATT","CTAATATT","GTAATATT","TTAATATT",
+ "AACATATT","CACATATT","GACATATT","TACATATT","ACCATATT","CCCATATT","GCCATATT","TCCATATT",
+ "AGCATATT","CGCATATT","GGCATATT","TGCATATT","ATCATATT","CTCATATT","GTCATATT","TTCATATT",
+ "AAGATATT","CAGATATT","GAGATATT","TAGATATT","ACGATATT","CCGATATT","GCGATATT","TCGATATT",
+ "AGGATATT","CGGATATT","GGGATATT","TGGATATT","ATGATATT","CTGATATT","GTGATATT","TTGATATT",
+ "AATATATT","CATATATT","GATATATT","TATATATT","ACTATATT","CCTATATT","GCTATATT","TCTATATT",
+ "AGTATATT","CGTATATT","GGTATATT","TGTATATT","ATTATATT","CTTATATT","GTTATATT","TTTATATT",
+ "AAACTATT","CAACTATT","GAACTATT","TAACTATT","ACACTATT","CCACTATT","GCACTATT","TCACTATT",
+ "AGACTATT","CGACTATT","GGACTATT","TGACTATT","ATACTATT","CTACTATT","GTACTATT","TTACTATT",
+ "AACCTATT","CACCTATT","GACCTATT","TACCTATT","ACCCTATT","CCCCTATT","GCCCTATT","TCCCTATT",
+ "AGCCTATT","CGCCTATT","GGCCTATT","TGCCTATT","ATCCTATT","CTCCTATT","GTCCTATT","TTCCTATT",
+ "AAGCTATT","CAGCTATT","GAGCTATT","TAGCTATT","ACGCTATT","CCGCTATT","GCGCTATT","TCGCTATT",
+ "AGGCTATT","CGGCTATT","GGGCTATT","TGGCTATT","ATGCTATT","CTGCTATT","GTGCTATT","TTGCTATT",
+ "AATCTATT","CATCTATT","GATCTATT","TATCTATT","ACTCTATT","CCTCTATT","GCTCTATT","TCTCTATT",
+ "AGTCTATT","CGTCTATT","GGTCTATT","TGTCTATT","ATTCTATT","CTTCTATT","GTTCTATT","TTTCTATT",
+ "AAAGTATT","CAAGTATT","GAAGTATT","TAAGTATT","ACAGTATT","CCAGTATT","GCAGTATT","TCAGTATT",
+ "AGAGTATT","CGAGTATT","GGAGTATT","TGAGTATT","ATAGTATT","CTAGTATT","GTAGTATT","TTAGTATT",
+ "AACGTATT","CACGTATT","GACGTATT","TACGTATT","ACCGTATT","CCCGTATT","GCCGTATT","TCCGTATT",
+ "AGCGTATT","CGCGTATT","GGCGTATT","TGCGTATT","ATCGTATT","CTCGTATT","GTCGTATT","TTCGTATT",
+ "AAGGTATT","CAGGTATT","GAGGTATT","TAGGTATT","ACGGTATT","CCGGTATT","GCGGTATT","TCGGTATT",
+ "AGGGTATT","CGGGTATT","GGGGTATT","TGGGTATT","ATGGTATT","CTGGTATT","GTGGTATT","TTGGTATT",
+ "AATGTATT","CATGTATT","GATGTATT","TATGTATT","ACTGTATT","CCTGTATT","GCTGTATT","TCTGTATT",
+ "AGTGTATT","CGTGTATT","GGTGTATT","TGTGTATT","ATTGTATT","CTTGTATT","GTTGTATT","TTTGTATT",
+ "AAATTATT","CAATTATT","GAATTATT","TAATTATT","ACATTATT","CCATTATT","GCATTATT","TCATTATT",
+ "AGATTATT","CGATTATT","GGATTATT","TGATTATT","ATATTATT","CTATTATT","GTATTATT","TTATTATT",
+ "AACTTATT","CACTTATT","GACTTATT","TACTTATT","ACCTTATT","CCCTTATT","GCCTTATT","TCCTTATT",
+ "AGCTTATT","CGCTTATT","GGCTTATT","TGCTTATT","ATCTTATT","CTCTTATT","GTCTTATT","TTCTTATT",
+ "AAGTTATT","CAGTTATT","GAGTTATT","TAGTTATT","ACGTTATT","CCGTTATT","GCGTTATT","TCGTTATT",
+ "AGGTTATT","CGGTTATT","GGGTTATT","TGGTTATT","ATGTTATT","CTGTTATT","GTGTTATT","TTGTTATT",
+ "AATTTATT","CATTTATT","GATTTATT","TATTTATT","ACTTTATT","CCTTTATT","GCTTTATT","TCTTTATT",
+ "AGTTTATT","CGTTTATT","GGTTTATT","TGTTTATT","ATTTTATT","CTTTTATT","GTTTTATT","TTTTTATT",
+ "AAAAACTT","CAAAACTT","GAAAACTT","TAAAACTT","ACAAACTT","CCAAACTT","GCAAACTT","TCAAACTT",
+ "AGAAACTT","CGAAACTT","GGAAACTT","TGAAACTT","ATAAACTT","CTAAACTT","GTAAACTT","TTAAACTT",
+ "AACAACTT","CACAACTT","GACAACTT","TACAACTT","ACCAACTT","CCCAACTT","GCCAACTT","TCCAACTT",
+ "AGCAACTT","CGCAACTT","GGCAACTT","TGCAACTT","ATCAACTT","CTCAACTT","GTCAACTT","TTCAACTT",
+ "AAGAACTT","CAGAACTT","GAGAACTT","TAGAACTT","ACGAACTT","CCGAACTT","GCGAACTT","TCGAACTT",
+ "AGGAACTT","CGGAACTT","GGGAACTT","TGGAACTT","ATGAACTT","CTGAACTT","GTGAACTT","TTGAACTT",
+ "AATAACTT","CATAACTT","GATAACTT","TATAACTT","ACTAACTT","CCTAACTT","GCTAACTT","TCTAACTT",
+ "AGTAACTT","CGTAACTT","GGTAACTT","TGTAACTT","ATTAACTT","CTTAACTT","GTTAACTT","TTTAACTT",
+ "AAACACTT","CAACACTT","GAACACTT","TAACACTT","ACACACTT","CCACACTT","GCACACTT","TCACACTT",
+ "AGACACTT","CGACACTT","GGACACTT","TGACACTT","ATACACTT","CTACACTT","GTACACTT","TTACACTT",
+ "AACCACTT","CACCACTT","GACCACTT","TACCACTT","ACCCACTT","CCCCACTT","GCCCACTT","TCCCACTT",
+ "AGCCACTT","CGCCACTT","GGCCACTT","TGCCACTT","ATCCACTT","CTCCACTT","GTCCACTT","TTCCACTT",
+ "AAGCACTT","CAGCACTT","GAGCACTT","TAGCACTT","ACGCACTT","CCGCACTT","GCGCACTT","TCGCACTT",
+ "AGGCACTT","CGGCACTT","GGGCACTT","TGGCACTT","ATGCACTT","CTGCACTT","GTGCACTT","TTGCACTT",
+ "AATCACTT","CATCACTT","GATCACTT","TATCACTT","ACTCACTT","CCTCACTT","GCTCACTT","TCTCACTT",
+ "AGTCACTT","CGTCACTT","GGTCACTT","TGTCACTT","ATTCACTT","CTTCACTT","GTTCACTT","TTTCACTT",
+ "AAAGACTT","CAAGACTT","GAAGACTT","TAAGACTT","ACAGACTT","CCAGACTT","GCAGACTT","TCAGACTT",
+ "AGAGACTT","CGAGACTT","GGAGACTT","TGAGACTT","ATAGACTT","CTAGACTT","GTAGACTT","TTAGACTT",
+ "AACGACTT","CACGACTT","GACGACTT","TACGACTT","ACCGACTT","CCCGACTT","GCCGACTT","TCCGACTT",
+ "AGCGACTT","CGCGACTT","GGCGACTT","TGCGACTT","ATCGACTT","CTCGACTT","GTCGACTT","TTCGACTT",
+ "AAGGACTT","CAGGACTT","GAGGACTT","TAGGACTT","ACGGACTT","CCGGACTT","GCGGACTT","TCGGACTT",
+ "AGGGACTT","CGGGACTT","GGGGACTT","TGGGACTT","ATGGACTT","CTGGACTT","GTGGACTT","TTGGACTT",
+ "AATGACTT","CATGACTT","GATGACTT","TATGACTT","ACTGACTT","CCTGACTT","GCTGACTT","TCTGACTT",
+ "AGTGACTT","CGTGACTT","GGTGACTT","TGTGACTT","ATTGACTT","CTTGACTT","GTTGACTT","TTTGACTT",
+ "AAATACTT","CAATACTT","GAATACTT","TAATACTT","ACATACTT","CCATACTT","GCATACTT","TCATACTT",
+ "AGATACTT","CGATACTT","GGATACTT","TGATACTT","ATATACTT","CTATACTT","GTATACTT","TTATACTT",
+ "AACTACTT","CACTACTT","GACTACTT","TACTACTT","ACCTACTT","CCCTACTT","GCCTACTT","TCCTACTT",
+ "AGCTACTT","CGCTACTT","GGCTACTT","TGCTACTT","ATCTACTT","CTCTACTT","GTCTACTT","TTCTACTT",
+ "AAGTACTT","CAGTACTT","GAGTACTT","TAGTACTT","ACGTACTT","CCGTACTT","GCGTACTT","TCGTACTT",
+ "AGGTACTT","CGGTACTT","GGGTACTT","TGGTACTT","ATGTACTT","CTGTACTT","GTGTACTT","TTGTACTT",
+ "AATTACTT","CATTACTT","GATTACTT","TATTACTT","ACTTACTT","CCTTACTT","GCTTACTT","TCTTACTT",
+ "AGTTACTT","CGTTACTT","GGTTACTT","TGTTACTT","ATTTACTT","CTTTACTT","GTTTACTT","TTTTACTT",
+ "AAAACCTT","CAAACCTT","GAAACCTT","TAAACCTT","ACAACCTT","CCAACCTT","GCAACCTT","TCAACCTT",
+ "AGAACCTT","CGAACCTT","GGAACCTT","TGAACCTT","ATAACCTT","CTAACCTT","GTAACCTT","TTAACCTT",
+ "AACACCTT","CACACCTT","GACACCTT","TACACCTT","ACCACCTT","CCCACCTT","GCCACCTT","TCCACCTT",
+ "AGCACCTT","CGCACCTT","GGCACCTT","TGCACCTT","ATCACCTT","CTCACCTT","GTCACCTT","TTCACCTT",
+ "AAGACCTT","CAGACCTT","GAGACCTT","TAGACCTT","ACGACCTT","CCGACCTT","GCGACCTT","TCGACCTT",
+ "AGGACCTT","CGGACCTT","GGGACCTT","TGGACCTT","ATGACCTT","CTGACCTT","GTGACCTT","TTGACCTT",
+ "AATACCTT","CATACCTT","GATACCTT","TATACCTT","ACTACCTT","CCTACCTT","GCTACCTT","TCTACCTT",
+ "AGTACCTT","CGTACCTT","GGTACCTT","TGTACCTT","ATTACCTT","CTTACCTT","GTTACCTT","TTTACCTT",
+ "AAACCCTT","CAACCCTT","GAACCCTT","TAACCCTT","ACACCCTT","CCACCCTT","GCACCCTT","TCACCCTT",
+ "AGACCCTT","CGACCCTT","GGACCCTT","TGACCCTT","ATACCCTT","CTACCCTT","GTACCCTT","TTACCCTT",
+ "AACCCCTT","CACCCCTT","GACCCCTT","TACCCCTT","ACCCCCTT","CCCCCCTT","GCCCCCTT","TCCCCCTT",
+ "AGCCCCTT","CGCCCCTT","GGCCCCTT","TGCCCCTT","ATCCCCTT","CTCCCCTT","GTCCCCTT","TTCCCCTT",
+ "AAGCCCTT","CAGCCCTT","GAGCCCTT","TAGCCCTT","ACGCCCTT","CCGCCCTT","GCGCCCTT","TCGCCCTT",
+ "AGGCCCTT","CGGCCCTT","GGGCCCTT","TGGCCCTT","ATGCCCTT","CTGCCCTT","GTGCCCTT","TTGCCCTT",
+ "AATCCCTT","CATCCCTT","GATCCCTT","TATCCCTT","ACTCCCTT","CCTCCCTT","GCTCCCTT","TCTCCCTT",
+ "AGTCCCTT","CGTCCCTT","GGTCCCTT","TGTCCCTT","ATTCCCTT","CTTCCCTT","GTTCCCTT","TTTCCCTT",
+ "AAAGCCTT","CAAGCCTT","GAAGCCTT","TAAGCCTT","ACAGCCTT","CCAGCCTT","GCAGCCTT","TCAGCCTT",
+ "AGAGCCTT","CGAGCCTT","GGAGCCTT","TGAGCCTT","ATAGCCTT","CTAGCCTT","GTAGCCTT","TTAGCCTT",
+ "AACGCCTT","CACGCCTT","GACGCCTT","TACGCCTT","ACCGCCTT","CCCGCCTT","GCCGCCTT","TCCGCCTT",
+ "AGCGCCTT","CGCGCCTT","GGCGCCTT","TGCGCCTT","ATCGCCTT","CTCGCCTT","GTCGCCTT","TTCGCCTT",
+ "AAGGCCTT","CAGGCCTT","GAGGCCTT","TAGGCCTT","ACGGCCTT","CCGGCCTT","GCGGCCTT","TCGGCCTT",
+ "AGGGCCTT","CGGGCCTT","GGGGCCTT","TGGGCCTT","ATGGCCTT","CTGGCCTT","GTGGCCTT","TTGGCCTT",
+ "AATGCCTT","CATGCCTT","GATGCCTT","TATGCCTT","ACTGCCTT","CCTGCCTT","GCTGCCTT","TCTGCCTT",
+ "AGTGCCTT","CGTGCCTT","GGTGCCTT","TGTGCCTT","ATTGCCTT","CTTGCCTT","GTTGCCTT","TTTGCCTT",
+ "AAATCCTT","CAATCCTT","GAATCCTT","TAATCCTT","ACATCCTT","CCATCCTT","GCATCCTT","TCATCCTT",
+ "AGATCCTT","CGATCCTT","GGATCCTT","TGATCCTT","ATATCCTT","CTATCCTT","GTATCCTT","TTATCCTT",
+ "AACTCCTT","CACTCCTT","GACTCCTT","TACTCCTT","ACCTCCTT","CCCTCCTT","GCCTCCTT","TCCTCCTT",
+ "AGCTCCTT","CGCTCCTT","GGCTCCTT","TGCTCCTT","ATCTCCTT","CTCTCCTT","GTCTCCTT","TTCTCCTT",
+ "AAGTCCTT","CAGTCCTT","GAGTCCTT","TAGTCCTT","ACGTCCTT","CCGTCCTT","GCGTCCTT","TCGTCCTT",
+ "AGGTCCTT","CGGTCCTT","GGGTCCTT","TGGTCCTT","ATGTCCTT","CTGTCCTT","GTGTCCTT","TTGTCCTT",
+ "AATTCCTT","CATTCCTT","GATTCCTT","TATTCCTT","ACTTCCTT","CCTTCCTT","GCTTCCTT","TCTTCCTT",
+ "AGTTCCTT","CGTTCCTT","GGTTCCTT","TGTTCCTT","ATTTCCTT","CTTTCCTT","GTTTCCTT","TTTTCCTT",
+ "AAAAGCTT","CAAAGCTT","GAAAGCTT","TAAAGCTT","ACAAGCTT","CCAAGCTT","GCAAGCTT","TCAAGCTT",
+ "AGAAGCTT","CGAAGCTT","GGAAGCTT","TGAAGCTT","ATAAGCTT","CTAAGCTT","GTAAGCTT","TTAAGCTT",
+ "AACAGCTT","CACAGCTT","GACAGCTT","TACAGCTT","ACCAGCTT","CCCAGCTT","GCCAGCTT","TCCAGCTT",
+ "AGCAGCTT","CGCAGCTT","GGCAGCTT","TGCAGCTT","ATCAGCTT","CTCAGCTT","GTCAGCTT","TTCAGCTT",
+ "AAGAGCTT","CAGAGCTT","GAGAGCTT","TAGAGCTT","ACGAGCTT","CCGAGCTT","GCGAGCTT","TCGAGCTT",
+ "AGGAGCTT","CGGAGCTT","GGGAGCTT","TGGAGCTT","ATGAGCTT","CTGAGCTT","GTGAGCTT","TTGAGCTT",
+ "AATAGCTT","CATAGCTT","GATAGCTT","TATAGCTT","ACTAGCTT","CCTAGCTT","GCTAGCTT","TCTAGCTT",
+ "AGTAGCTT","CGTAGCTT","GGTAGCTT","TGTAGCTT","ATTAGCTT","CTTAGCTT","GTTAGCTT","TTTAGCTT",
+ "AAACGCTT","CAACGCTT","GAACGCTT","TAACGCTT","ACACGCTT","CCACGCTT","GCACGCTT","TCACGCTT",
+ "AGACGCTT","CGACGCTT","GGACGCTT","TGACGCTT","ATACGCTT","CTACGCTT","GTACGCTT","TTACGCTT",
+ "AACCGCTT","CACCGCTT","GACCGCTT","TACCGCTT","ACCCGCTT","CCCCGCTT","GCCCGCTT","TCCCGCTT",
+ "AGCCGCTT","CGCCGCTT","GGCCGCTT","TGCCGCTT","ATCCGCTT","CTCCGCTT","GTCCGCTT","TTCCGCTT",
+ "AAGCGCTT","CAGCGCTT","GAGCGCTT","TAGCGCTT","ACGCGCTT","CCGCGCTT","GCGCGCTT","TCGCGCTT",
+ "AGGCGCTT","CGGCGCTT","GGGCGCTT","TGGCGCTT","ATGCGCTT","CTGCGCTT","GTGCGCTT","TTGCGCTT",
+ "AATCGCTT","CATCGCTT","GATCGCTT","TATCGCTT","ACTCGCTT","CCTCGCTT","GCTCGCTT","TCTCGCTT",
+ "AGTCGCTT","CGTCGCTT","GGTCGCTT","TGTCGCTT","ATTCGCTT","CTTCGCTT","GTTCGCTT","TTTCGCTT",
+ "AAAGGCTT","CAAGGCTT","GAAGGCTT","TAAGGCTT","ACAGGCTT","CCAGGCTT","GCAGGCTT","TCAGGCTT",
+ "AGAGGCTT","CGAGGCTT","GGAGGCTT","TGAGGCTT","ATAGGCTT","CTAGGCTT","GTAGGCTT","TTAGGCTT",
+ "AACGGCTT","CACGGCTT","GACGGCTT","TACGGCTT","ACCGGCTT","CCCGGCTT","GCCGGCTT","TCCGGCTT",
+ "AGCGGCTT","CGCGGCTT","GGCGGCTT","TGCGGCTT","ATCGGCTT","CTCGGCTT","GTCGGCTT","TTCGGCTT",
+ "AAGGGCTT","CAGGGCTT","GAGGGCTT","TAGGGCTT","ACGGGCTT","CCGGGCTT","GCGGGCTT","TCGGGCTT",
+ "AGGGGCTT","CGGGGCTT","GGGGGCTT","TGGGGCTT","ATGGGCTT","CTGGGCTT","GTGGGCTT","TTGGGCTT",
+ "AATGGCTT","CATGGCTT","GATGGCTT","TATGGCTT","ACTGGCTT","CCTGGCTT","GCTGGCTT","TCTGGCTT",
+ "AGTGGCTT","CGTGGCTT","GGTGGCTT","TGTGGCTT","ATTGGCTT","CTTGGCTT","GTTGGCTT","TTTGGCTT",
+ "AAATGCTT","CAATGCTT","GAATGCTT","TAATGCTT","ACATGCTT","CCATGCTT","GCATGCTT","TCATGCTT",
+ "AGATGCTT","CGATGCTT","GGATGCTT","TGATGCTT","ATATGCTT","CTATGCTT","GTATGCTT","TTATGCTT",
+ "AACTGCTT","CACTGCTT","GACTGCTT","TACTGCTT","ACCTGCTT","CCCTGCTT","GCCTGCTT","TCCTGCTT",
+ "AGCTGCTT","CGCTGCTT","GGCTGCTT","TGCTGCTT","ATCTGCTT","CTCTGCTT","GTCTGCTT","TTCTGCTT",
+ "AAGTGCTT","CAGTGCTT","GAGTGCTT","TAGTGCTT","ACGTGCTT","CCGTGCTT","GCGTGCTT","TCGTGCTT",
+ "AGGTGCTT","CGGTGCTT","GGGTGCTT","TGGTGCTT","ATGTGCTT","CTGTGCTT","GTGTGCTT","TTGTGCTT",
+ "AATTGCTT","CATTGCTT","GATTGCTT","TATTGCTT","ACTTGCTT","CCTTGCTT","GCTTGCTT","TCTTGCTT",
+ "AGTTGCTT","CGTTGCTT","GGTTGCTT","TGTTGCTT","ATTTGCTT","CTTTGCTT","GTTTGCTT","TTTTGCTT",
+ "AAAATCTT","CAAATCTT","GAAATCTT","TAAATCTT","ACAATCTT","CCAATCTT","GCAATCTT","TCAATCTT",
+ "AGAATCTT","CGAATCTT","GGAATCTT","TGAATCTT","ATAATCTT","CTAATCTT","GTAATCTT","TTAATCTT",
+ "AACATCTT","CACATCTT","GACATCTT","TACATCTT","ACCATCTT","CCCATCTT","GCCATCTT","TCCATCTT",
+ "AGCATCTT","CGCATCTT","GGCATCTT","TGCATCTT","ATCATCTT","CTCATCTT","GTCATCTT","TTCATCTT",
+ "AAGATCTT","CAGATCTT","GAGATCTT","TAGATCTT","ACGATCTT","CCGATCTT","GCGATCTT","TCGATCTT",
+ "AGGATCTT","CGGATCTT","GGGATCTT","TGGATCTT","ATGATCTT","CTGATCTT","GTGATCTT","TTGATCTT",
+ "AATATCTT","CATATCTT","GATATCTT","TATATCTT","ACTATCTT","CCTATCTT","GCTATCTT","TCTATCTT",
+ "AGTATCTT","CGTATCTT","GGTATCTT","TGTATCTT","ATTATCTT","CTTATCTT","GTTATCTT","TTTATCTT",
+ "AAACTCTT","CAACTCTT","GAACTCTT","TAACTCTT","ACACTCTT","CCACTCTT","GCACTCTT","TCACTCTT",
+ "AGACTCTT","CGACTCTT","GGACTCTT","TGACTCTT","ATACTCTT","CTACTCTT","GTACTCTT","TTACTCTT",
+ "AACCTCTT","CACCTCTT","GACCTCTT","TACCTCTT","ACCCTCTT","CCCCTCTT","GCCCTCTT","TCCCTCTT",
+ "AGCCTCTT","CGCCTCTT","GGCCTCTT","TGCCTCTT","ATCCTCTT","CTCCTCTT","GTCCTCTT","TTCCTCTT",
+ "AAGCTCTT","CAGCTCTT","GAGCTCTT","TAGCTCTT","ACGCTCTT","CCGCTCTT","GCGCTCTT","TCGCTCTT",
+ "AGGCTCTT","CGGCTCTT","GGGCTCTT","TGGCTCTT","ATGCTCTT","CTGCTCTT","GTGCTCTT","TTGCTCTT",
+ "AATCTCTT","CATCTCTT","GATCTCTT","TATCTCTT","ACTCTCTT","CCTCTCTT","GCTCTCTT","TCTCTCTT",
+ "AGTCTCTT","CGTCTCTT","GGTCTCTT","TGTCTCTT","ATTCTCTT","CTTCTCTT","GTTCTCTT","TTTCTCTT",
+ "AAAGTCTT","CAAGTCTT","GAAGTCTT","TAAGTCTT","ACAGTCTT","CCAGTCTT","GCAGTCTT","TCAGTCTT",
+ "AGAGTCTT","CGAGTCTT","GGAGTCTT","TGAGTCTT","ATAGTCTT","CTAGTCTT","GTAGTCTT","TTAGTCTT",
+ "AACGTCTT","CACGTCTT","GACGTCTT","TACGTCTT","ACCGTCTT","CCCGTCTT","GCCGTCTT","TCCGTCTT",
+ "AGCGTCTT","CGCGTCTT","GGCGTCTT","TGCGTCTT","ATCGTCTT","CTCGTCTT","GTCGTCTT","TTCGTCTT",
+ "AAGGTCTT","CAGGTCTT","GAGGTCTT","TAGGTCTT","ACGGTCTT","CCGGTCTT","GCGGTCTT","TCGGTCTT",
+ "AGGGTCTT","CGGGTCTT","GGGGTCTT","TGGGTCTT","ATGGTCTT","CTGGTCTT","GTGGTCTT","TTGGTCTT",
+ "AATGTCTT","CATGTCTT","GATGTCTT","TATGTCTT","ACTGTCTT","CCTGTCTT","GCTGTCTT","TCTGTCTT",
+ "AGTGTCTT","CGTGTCTT","GGTGTCTT","TGTGTCTT","ATTGTCTT","CTTGTCTT","GTTGTCTT","TTTGTCTT",
+ "AAATTCTT","CAATTCTT","GAATTCTT","TAATTCTT","ACATTCTT","CCATTCTT","GCATTCTT","TCATTCTT",
+ "AGATTCTT","CGATTCTT","GGATTCTT","TGATTCTT","ATATTCTT","CTATTCTT","GTATTCTT","TTATTCTT",
+ "AACTTCTT","CACTTCTT","GACTTCTT","TACTTCTT","ACCTTCTT","CCCTTCTT","GCCTTCTT","TCCTTCTT",
+ "AGCTTCTT","CGCTTCTT","GGCTTCTT","TGCTTCTT","ATCTTCTT","CTCTTCTT","GTCTTCTT","TTCTTCTT",
+ "AAGTTCTT","CAGTTCTT","GAGTTCTT","TAGTTCTT","ACGTTCTT","CCGTTCTT","GCGTTCTT","TCGTTCTT",
+ "AGGTTCTT","CGGTTCTT","GGGTTCTT","TGGTTCTT","ATGTTCTT","CTGTTCTT","GTGTTCTT","TTGTTCTT",
+ "AATTTCTT","CATTTCTT","GATTTCTT","TATTTCTT","ACTTTCTT","CCTTTCTT","GCTTTCTT","TCTTTCTT",
+ "AGTTTCTT","CGTTTCTT","GGTTTCTT","TGTTTCTT","ATTTTCTT","CTTTTCTT","GTTTTCTT","TTTTTCTT",
+ "AAAAAGTT","CAAAAGTT","GAAAAGTT","TAAAAGTT","ACAAAGTT","CCAAAGTT","GCAAAGTT","TCAAAGTT",
+ "AGAAAGTT","CGAAAGTT","GGAAAGTT","TGAAAGTT","ATAAAGTT","CTAAAGTT","GTAAAGTT","TTAAAGTT",
+ "AACAAGTT","CACAAGTT","GACAAGTT","TACAAGTT","ACCAAGTT","CCCAAGTT","GCCAAGTT","TCCAAGTT",
+ "AGCAAGTT","CGCAAGTT","GGCAAGTT","TGCAAGTT","ATCAAGTT","CTCAAGTT","GTCAAGTT","TTCAAGTT",
+ "AAGAAGTT","CAGAAGTT","GAGAAGTT","TAGAAGTT","ACGAAGTT","CCGAAGTT","GCGAAGTT","TCGAAGTT",
+ "AGGAAGTT","CGGAAGTT","GGGAAGTT","TGGAAGTT","ATGAAGTT","CTGAAGTT","GTGAAGTT","TTGAAGTT",
+ "AATAAGTT","CATAAGTT","GATAAGTT","TATAAGTT","ACTAAGTT","CCTAAGTT","GCTAAGTT","TCTAAGTT",
+ "AGTAAGTT","CGTAAGTT","GGTAAGTT","TGTAAGTT","ATTAAGTT","CTTAAGTT","GTTAAGTT","TTTAAGTT",
+ "AAACAGTT","CAACAGTT","GAACAGTT","TAACAGTT","ACACAGTT","CCACAGTT","GCACAGTT","TCACAGTT",
+ "AGACAGTT","CGACAGTT","GGACAGTT","TGACAGTT","ATACAGTT","CTACAGTT","GTACAGTT","TTACAGTT",
+ "AACCAGTT","CACCAGTT","GACCAGTT","TACCAGTT","ACCCAGTT","CCCCAGTT","GCCCAGTT","TCCCAGTT",
+ "AGCCAGTT","CGCCAGTT","GGCCAGTT","TGCCAGTT","ATCCAGTT","CTCCAGTT","GTCCAGTT","TTCCAGTT",
+ "AAGCAGTT","CAGCAGTT","GAGCAGTT","TAGCAGTT","ACGCAGTT","CCGCAGTT","GCGCAGTT","TCGCAGTT",
+ "AGGCAGTT","CGGCAGTT","GGGCAGTT","TGGCAGTT","ATGCAGTT","CTGCAGTT","GTGCAGTT","TTGCAGTT",
+ "AATCAGTT","CATCAGTT","GATCAGTT","TATCAGTT","ACTCAGTT","CCTCAGTT","GCTCAGTT","TCTCAGTT",
+ "AGTCAGTT","CGTCAGTT","GGTCAGTT","TGTCAGTT","ATTCAGTT","CTTCAGTT","GTTCAGTT","TTTCAGTT",
+ "AAAGAGTT","CAAGAGTT","GAAGAGTT","TAAGAGTT","ACAGAGTT","CCAGAGTT","GCAGAGTT","TCAGAGTT",
+ "AGAGAGTT","CGAGAGTT","GGAGAGTT","TGAGAGTT","ATAGAGTT","CTAGAGTT","GTAGAGTT","TTAGAGTT",
+ "AACGAGTT","CACGAGTT","GACGAGTT","TACGAGTT","ACCGAGTT","CCCGAGTT","GCCGAGTT","TCCGAGTT",
+ "AGCGAGTT","CGCGAGTT","GGCGAGTT","TGCGAGTT","ATCGAGTT","CTCGAGTT","GTCGAGTT","TTCGAGTT",
+ "AAGGAGTT","CAGGAGTT","GAGGAGTT","TAGGAGTT","ACGGAGTT","CCGGAGTT","GCGGAGTT","TCGGAGTT",
+ "AGGGAGTT","CGGGAGTT","GGGGAGTT","TGGGAGTT","ATGGAGTT","CTGGAGTT","GTGGAGTT","TTGGAGTT",
+ "AATGAGTT","CATGAGTT","GATGAGTT","TATGAGTT","ACTGAGTT","CCTGAGTT","GCTGAGTT","TCTGAGTT",
+ "AGTGAGTT","CGTGAGTT","GGTGAGTT","TGTGAGTT","ATTGAGTT","CTTGAGTT","GTTGAGTT","TTTGAGTT",
+ "AAATAGTT","CAATAGTT","GAATAGTT","TAATAGTT","ACATAGTT","CCATAGTT","GCATAGTT","TCATAGTT",
+ "AGATAGTT","CGATAGTT","GGATAGTT","TGATAGTT","ATATAGTT","CTATAGTT","GTATAGTT","TTATAGTT",
+ "AACTAGTT","CACTAGTT","GACTAGTT","TACTAGTT","ACCTAGTT","CCCTAGTT","GCCTAGTT","TCCTAGTT",
+ "AGCTAGTT","CGCTAGTT","GGCTAGTT","TGCTAGTT","ATCTAGTT","CTCTAGTT","GTCTAGTT","TTCTAGTT",
+ "AAGTAGTT","CAGTAGTT","GAGTAGTT","TAGTAGTT","ACGTAGTT","CCGTAGTT","GCGTAGTT","TCGTAGTT",
+ "AGGTAGTT","CGGTAGTT","GGGTAGTT","TGGTAGTT","ATGTAGTT","CTGTAGTT","GTGTAGTT","TTGTAGTT",
+ "AATTAGTT","CATTAGTT","GATTAGTT","TATTAGTT","ACTTAGTT","CCTTAGTT","GCTTAGTT","TCTTAGTT",
+ "AGTTAGTT","CGTTAGTT","GGTTAGTT","TGTTAGTT","ATTTAGTT","CTTTAGTT","GTTTAGTT","TTTTAGTT",
+ "AAAACGTT","CAAACGTT","GAAACGTT","TAAACGTT","ACAACGTT","CCAACGTT","GCAACGTT","TCAACGTT",
+ "AGAACGTT","CGAACGTT","GGAACGTT","TGAACGTT","ATAACGTT","CTAACGTT","GTAACGTT","TTAACGTT",
+ "AACACGTT","CACACGTT","GACACGTT","TACACGTT","ACCACGTT","CCCACGTT","GCCACGTT","TCCACGTT",
+ "AGCACGTT","CGCACGTT","GGCACGTT","TGCACGTT","ATCACGTT","CTCACGTT","GTCACGTT","TTCACGTT",
+ "AAGACGTT","CAGACGTT","GAGACGTT","TAGACGTT","ACGACGTT","CCGACGTT","GCGACGTT","TCGACGTT",
+ "AGGACGTT","CGGACGTT","GGGACGTT","TGGACGTT","ATGACGTT","CTGACGTT","GTGACGTT","TTGACGTT",
+ "AATACGTT","CATACGTT","GATACGTT","TATACGTT","ACTACGTT","CCTACGTT","GCTACGTT","TCTACGTT",
+ "AGTACGTT","CGTACGTT","GGTACGTT","TGTACGTT","ATTACGTT","CTTACGTT","GTTACGTT","TTTACGTT",
+ "AAACCGTT","CAACCGTT","GAACCGTT","TAACCGTT","ACACCGTT","CCACCGTT","GCACCGTT","TCACCGTT",
+ "AGACCGTT","CGACCGTT","GGACCGTT","TGACCGTT","ATACCGTT","CTACCGTT","GTACCGTT","TTACCGTT",
+ "AACCCGTT","CACCCGTT","GACCCGTT","TACCCGTT","ACCCCGTT","CCCCCGTT","GCCCCGTT","TCCCCGTT",
+ "AGCCCGTT","CGCCCGTT","GGCCCGTT","TGCCCGTT","ATCCCGTT","CTCCCGTT","GTCCCGTT","TTCCCGTT",
+ "AAGCCGTT","CAGCCGTT","GAGCCGTT","TAGCCGTT","ACGCCGTT","CCGCCGTT","GCGCCGTT","TCGCCGTT",
+ "AGGCCGTT","CGGCCGTT","GGGCCGTT","TGGCCGTT","ATGCCGTT","CTGCCGTT","GTGCCGTT","TTGCCGTT",
+ "AATCCGTT","CATCCGTT","GATCCGTT","TATCCGTT","ACTCCGTT","CCTCCGTT","GCTCCGTT","TCTCCGTT",
+ "AGTCCGTT","CGTCCGTT","GGTCCGTT","TGTCCGTT","ATTCCGTT","CTTCCGTT","GTTCCGTT","TTTCCGTT",
+ "AAAGCGTT","CAAGCGTT","GAAGCGTT","TAAGCGTT","ACAGCGTT","CCAGCGTT","GCAGCGTT","TCAGCGTT",
+ "AGAGCGTT","CGAGCGTT","GGAGCGTT","TGAGCGTT","ATAGCGTT","CTAGCGTT","GTAGCGTT","TTAGCGTT",
+ "AACGCGTT","CACGCGTT","GACGCGTT","TACGCGTT","ACCGCGTT","CCCGCGTT","GCCGCGTT","TCCGCGTT",
+ "AGCGCGTT","CGCGCGTT","GGCGCGTT","TGCGCGTT","ATCGCGTT","CTCGCGTT","GTCGCGTT","TTCGCGTT",
+ "AAGGCGTT","CAGGCGTT","GAGGCGTT","TAGGCGTT","ACGGCGTT","CCGGCGTT","GCGGCGTT","TCGGCGTT",
+ "AGGGCGTT","CGGGCGTT","GGGGCGTT","TGGGCGTT","ATGGCGTT","CTGGCGTT","GTGGCGTT","TTGGCGTT",
+ "AATGCGTT","CATGCGTT","GATGCGTT","TATGCGTT","ACTGCGTT","CCTGCGTT","GCTGCGTT","TCTGCGTT",
+ "AGTGCGTT","CGTGCGTT","GGTGCGTT","TGTGCGTT","ATTGCGTT","CTTGCGTT","GTTGCGTT","TTTGCGTT",
+ "AAATCGTT","CAATCGTT","GAATCGTT","TAATCGTT","ACATCGTT","CCATCGTT","GCATCGTT","TCATCGTT",
+ "AGATCGTT","CGATCGTT","GGATCGTT","TGATCGTT","ATATCGTT","CTATCGTT","GTATCGTT","TTATCGTT",
+ "AACTCGTT","CACTCGTT","GACTCGTT","TACTCGTT","ACCTCGTT","CCCTCGTT","GCCTCGTT","TCCTCGTT",
+ "AGCTCGTT","CGCTCGTT","GGCTCGTT","TGCTCGTT","ATCTCGTT","CTCTCGTT","GTCTCGTT","TTCTCGTT",
+ "AAGTCGTT","CAGTCGTT","GAGTCGTT","TAGTCGTT","ACGTCGTT","CCGTCGTT","GCGTCGTT","TCGTCGTT",
+ "AGGTCGTT","CGGTCGTT","GGGTCGTT","TGGTCGTT","ATGTCGTT","CTGTCGTT","GTGTCGTT","TTGTCGTT",
+ "AATTCGTT","CATTCGTT","GATTCGTT","TATTCGTT","ACTTCGTT","CCTTCGTT","GCTTCGTT","TCTTCGTT",
+ "AGTTCGTT","CGTTCGTT","GGTTCGTT","TGTTCGTT","ATTTCGTT","CTTTCGTT","GTTTCGTT","TTTTCGTT",
+ "AAAAGGTT","CAAAGGTT","GAAAGGTT","TAAAGGTT","ACAAGGTT","CCAAGGTT","GCAAGGTT","TCAAGGTT",
+ "AGAAGGTT","CGAAGGTT","GGAAGGTT","TGAAGGTT","ATAAGGTT","CTAAGGTT","GTAAGGTT","TTAAGGTT",
+ "AACAGGTT","CACAGGTT","GACAGGTT","TACAGGTT","ACCAGGTT","CCCAGGTT","GCCAGGTT","TCCAGGTT",
+ "AGCAGGTT","CGCAGGTT","GGCAGGTT","TGCAGGTT","ATCAGGTT","CTCAGGTT","GTCAGGTT","TTCAGGTT",
+ "AAGAGGTT","CAGAGGTT","GAGAGGTT","TAGAGGTT","ACGAGGTT","CCGAGGTT","GCGAGGTT","TCGAGGTT",
+ "AGGAGGTT","CGGAGGTT","GGGAGGTT","TGGAGGTT","ATGAGGTT","CTGAGGTT","GTGAGGTT","TTGAGGTT",
+ "AATAGGTT","CATAGGTT","GATAGGTT","TATAGGTT","ACTAGGTT","CCTAGGTT","GCTAGGTT","TCTAGGTT",
+ "AGTAGGTT","CGTAGGTT","GGTAGGTT","TGTAGGTT","ATTAGGTT","CTTAGGTT","GTTAGGTT","TTTAGGTT",
+ "AAACGGTT","CAACGGTT","GAACGGTT","TAACGGTT","ACACGGTT","CCACGGTT","GCACGGTT","TCACGGTT",
+ "AGACGGTT","CGACGGTT","GGACGGTT","TGACGGTT","ATACGGTT","CTACGGTT","GTACGGTT","TTACGGTT",
+ "AACCGGTT","CACCGGTT","GACCGGTT","TACCGGTT","ACCCGGTT","CCCCGGTT","GCCCGGTT","TCCCGGTT",
+ "AGCCGGTT","CGCCGGTT","GGCCGGTT","TGCCGGTT","ATCCGGTT","CTCCGGTT","GTCCGGTT","TTCCGGTT",
+ "AAGCGGTT","CAGCGGTT","GAGCGGTT","TAGCGGTT","ACGCGGTT","CCGCGGTT","GCGCGGTT","TCGCGGTT",
+ "AGGCGGTT","CGGCGGTT","GGGCGGTT","TGGCGGTT","ATGCGGTT","CTGCGGTT","GTGCGGTT","TTGCGGTT",
+ "AATCGGTT","CATCGGTT","GATCGGTT","TATCGGTT","ACTCGGTT","CCTCGGTT","GCTCGGTT","TCTCGGTT",
+ "AGTCGGTT","CGTCGGTT","GGTCGGTT","TGTCGGTT","ATTCGGTT","CTTCGGTT","GTTCGGTT","TTTCGGTT",
+ "AAAGGGTT","CAAGGGTT","GAAGGGTT","TAAGGGTT","ACAGGGTT","CCAGGGTT","GCAGGGTT","TCAGGGTT",
+ "AGAGGGTT","CGAGGGTT","GGAGGGTT","TGAGGGTT","ATAGGGTT","CTAGGGTT","GTAGGGTT","TTAGGGTT",
+ "AACGGGTT","CACGGGTT","GACGGGTT","TACGGGTT","ACCGGGTT","CCCGGGTT","GCCGGGTT","TCCGGGTT",
+ "AGCGGGTT","CGCGGGTT","GGCGGGTT","TGCGGGTT","ATCGGGTT","CTCGGGTT","GTCGGGTT","TTCGGGTT",
+ "AAGGGGTT","CAGGGGTT","GAGGGGTT","TAGGGGTT","ACGGGGTT","CCGGGGTT","GCGGGGTT","TCGGGGTT",
+ "AGGGGGTT","CGGGGGTT","GGGGGGTT","TGGGGGTT","ATGGGGTT","CTGGGGTT","GTGGGGTT","TTGGGGTT",
+ "AATGGGTT","CATGGGTT","GATGGGTT","TATGGGTT","ACTGGGTT","CCTGGGTT","GCTGGGTT","TCTGGGTT",
+ "AGTGGGTT","CGTGGGTT","GGTGGGTT","TGTGGGTT","ATTGGGTT","CTTGGGTT","GTTGGGTT","TTTGGGTT",
+ "AAATGGTT","CAATGGTT","GAATGGTT","TAATGGTT","ACATGGTT","CCATGGTT","GCATGGTT","TCATGGTT",
+ "AGATGGTT","CGATGGTT","GGATGGTT","TGATGGTT","ATATGGTT","CTATGGTT","GTATGGTT","TTATGGTT",
+ "AACTGGTT","CACTGGTT","GACTGGTT","TACTGGTT","ACCTGGTT","CCCTGGTT","GCCTGGTT","TCCTGGTT",
+ "AGCTGGTT","CGCTGGTT","GGCTGGTT","TGCTGGTT","ATCTGGTT","CTCTGGTT","GTCTGGTT","TTCTGGTT",
+ "AAGTGGTT","CAGTGGTT","GAGTGGTT","TAGTGGTT","ACGTGGTT","CCGTGGTT","GCGTGGTT","TCGTGGTT",
+ "AGGTGGTT","CGGTGGTT","GGGTGGTT","TGGTGGTT","ATGTGGTT","CTGTGGTT","GTGTGGTT","TTGTGGTT",
+ "AATTGGTT","CATTGGTT","GATTGGTT","TATTGGTT","ACTTGGTT","CCTTGGTT","GCTTGGTT","TCTTGGTT",
+ "AGTTGGTT","CGTTGGTT","GGTTGGTT","TGTTGGTT","ATTTGGTT","CTTTGGTT","GTTTGGTT","TTTTGGTT",
+ "AAAATGTT","CAAATGTT","GAAATGTT","TAAATGTT","ACAATGTT","CCAATGTT","GCAATGTT","TCAATGTT",
+ "AGAATGTT","CGAATGTT","GGAATGTT","TGAATGTT","ATAATGTT","CTAATGTT","GTAATGTT","TTAATGTT",
+ "AACATGTT","CACATGTT","GACATGTT","TACATGTT","ACCATGTT","CCCATGTT","GCCATGTT","TCCATGTT",
+ "AGCATGTT","CGCATGTT","GGCATGTT","TGCATGTT","ATCATGTT","CTCATGTT","GTCATGTT","TTCATGTT",
+ "AAGATGTT","CAGATGTT","GAGATGTT","TAGATGTT","ACGATGTT","CCGATGTT","GCGATGTT","TCGATGTT",
+ "AGGATGTT","CGGATGTT","GGGATGTT","TGGATGTT","ATGATGTT","CTGATGTT","GTGATGTT","TTGATGTT",
+ "AATATGTT","CATATGTT","GATATGTT","TATATGTT","ACTATGTT","CCTATGTT","GCTATGTT","TCTATGTT",
+ "AGTATGTT","CGTATGTT","GGTATGTT","TGTATGTT","ATTATGTT","CTTATGTT","GTTATGTT","TTTATGTT",
+ "AAACTGTT","CAACTGTT","GAACTGTT","TAACTGTT","ACACTGTT","CCACTGTT","GCACTGTT","TCACTGTT",
+ "AGACTGTT","CGACTGTT","GGACTGTT","TGACTGTT","ATACTGTT","CTACTGTT","GTACTGTT","TTACTGTT",
+ "AACCTGTT","CACCTGTT","GACCTGTT","TACCTGTT","ACCCTGTT","CCCCTGTT","GCCCTGTT","TCCCTGTT",
+ "AGCCTGTT","CGCCTGTT","GGCCTGTT","TGCCTGTT","ATCCTGTT","CTCCTGTT","GTCCTGTT","TTCCTGTT",
+ "AAGCTGTT","CAGCTGTT","GAGCTGTT","TAGCTGTT","ACGCTGTT","CCGCTGTT","GCGCTGTT","TCGCTGTT",
+ "AGGCTGTT","CGGCTGTT","GGGCTGTT","TGGCTGTT","ATGCTGTT","CTGCTGTT","GTGCTGTT","TTGCTGTT",
+ "AATCTGTT","CATCTGTT","GATCTGTT","TATCTGTT","ACTCTGTT","CCTCTGTT","GCTCTGTT","TCTCTGTT",
+ "AGTCTGTT","CGTCTGTT","GGTCTGTT","TGTCTGTT","ATTCTGTT","CTTCTGTT","GTTCTGTT","TTTCTGTT",
+ "AAAGTGTT","CAAGTGTT","GAAGTGTT","TAAGTGTT","ACAGTGTT","CCAGTGTT","GCAGTGTT","TCAGTGTT",
+ "AGAGTGTT","CGAGTGTT","GGAGTGTT","TGAGTGTT","ATAGTGTT","CTAGTGTT","GTAGTGTT","TTAGTGTT",
+ "AACGTGTT","CACGTGTT","GACGTGTT","TACGTGTT","ACCGTGTT","CCCGTGTT","GCCGTGTT","TCCGTGTT",
+ "AGCGTGTT","CGCGTGTT","GGCGTGTT","TGCGTGTT","ATCGTGTT","CTCGTGTT","GTCGTGTT","TTCGTGTT",
+ "AAGGTGTT","CAGGTGTT","GAGGTGTT","TAGGTGTT","ACGGTGTT","CCGGTGTT","GCGGTGTT","TCGGTGTT",
+ "AGGGTGTT","CGGGTGTT","GGGGTGTT","TGGGTGTT","ATGGTGTT","CTGGTGTT","GTGGTGTT","TTGGTGTT",
+ "AATGTGTT","CATGTGTT","GATGTGTT","TATGTGTT","ACTGTGTT","CCTGTGTT","GCTGTGTT","TCTGTGTT",
+ "AGTGTGTT","CGTGTGTT","GGTGTGTT","TGTGTGTT","ATTGTGTT","CTTGTGTT","GTTGTGTT","TTTGTGTT",
+ "AAATTGTT","CAATTGTT","GAATTGTT","TAATTGTT","ACATTGTT","CCATTGTT","GCATTGTT","TCATTGTT",
+ "AGATTGTT","CGATTGTT","GGATTGTT","TGATTGTT","ATATTGTT","CTATTGTT","GTATTGTT","TTATTGTT",
+ "AACTTGTT","CACTTGTT","GACTTGTT","TACTTGTT","ACCTTGTT","CCCTTGTT","GCCTTGTT","TCCTTGTT",
+ "AGCTTGTT","CGCTTGTT","GGCTTGTT","TGCTTGTT","ATCTTGTT","CTCTTGTT","GTCTTGTT","TTCTTGTT",
+ "AAGTTGTT","CAGTTGTT","GAGTTGTT","TAGTTGTT","ACGTTGTT","CCGTTGTT","GCGTTGTT","TCGTTGTT",
+ "AGGTTGTT","CGGTTGTT","GGGTTGTT","TGGTTGTT","ATGTTGTT","CTGTTGTT","GTGTTGTT","TTGTTGTT",
+ "AATTTGTT","CATTTGTT","GATTTGTT","TATTTGTT","ACTTTGTT","CCTTTGTT","GCTTTGTT","TCTTTGTT",
+ "AGTTTGTT","CGTTTGTT","GGTTTGTT","TGTTTGTT","ATTTTGTT","CTTTTGTT","GTTTTGTT","TTTTTGTT",
+ "AAAAATTT","CAAAATTT","GAAAATTT","TAAAATTT","ACAAATTT","CCAAATTT","GCAAATTT","TCAAATTT",
+ "AGAAATTT","CGAAATTT","GGAAATTT","TGAAATTT","ATAAATTT","CTAAATTT","GTAAATTT","TTAAATTT",
+ "AACAATTT","CACAATTT","GACAATTT","TACAATTT","ACCAATTT","CCCAATTT","GCCAATTT","TCCAATTT",
+ "AGCAATTT","CGCAATTT","GGCAATTT","TGCAATTT","ATCAATTT","CTCAATTT","GTCAATTT","TTCAATTT",
+ "AAGAATTT","CAGAATTT","GAGAATTT","TAGAATTT","ACGAATTT","CCGAATTT","GCGAATTT","TCGAATTT",
+ "AGGAATTT","CGGAATTT","GGGAATTT","TGGAATTT","ATGAATTT","CTGAATTT","GTGAATTT","TTGAATTT",
+ "AATAATTT","CATAATTT","GATAATTT","TATAATTT","ACTAATTT","CCTAATTT","GCTAATTT","TCTAATTT",
+ "AGTAATTT","CGTAATTT","GGTAATTT","TGTAATTT","ATTAATTT","CTTAATTT","GTTAATTT","TTTAATTT",
+ "AAACATTT","CAACATTT","GAACATTT","TAACATTT","ACACATTT","CCACATTT","GCACATTT","TCACATTT",
+ "AGACATTT","CGACATTT","GGACATTT","TGACATTT","ATACATTT","CTACATTT","GTACATTT","TTACATTT",
+ "AACCATTT","CACCATTT","GACCATTT","TACCATTT","ACCCATTT","CCCCATTT","GCCCATTT","TCCCATTT",
+ "AGCCATTT","CGCCATTT","GGCCATTT","TGCCATTT","ATCCATTT","CTCCATTT","GTCCATTT","TTCCATTT",
+ "AAGCATTT","CAGCATTT","GAGCATTT","TAGCATTT","ACGCATTT","CCGCATTT","GCGCATTT","TCGCATTT",
+ "AGGCATTT","CGGCATTT","GGGCATTT","TGGCATTT","ATGCATTT","CTGCATTT","GTGCATTT","TTGCATTT",
+ "AATCATTT","CATCATTT","GATCATTT","TATCATTT","ACTCATTT","CCTCATTT","GCTCATTT","TCTCATTT",
+ "AGTCATTT","CGTCATTT","GGTCATTT","TGTCATTT","ATTCATTT","CTTCATTT","GTTCATTT","TTTCATTT",
+ "AAAGATTT","CAAGATTT","GAAGATTT","TAAGATTT","ACAGATTT","CCAGATTT","GCAGATTT","TCAGATTT",
+ "AGAGATTT","CGAGATTT","GGAGATTT","TGAGATTT","ATAGATTT","CTAGATTT","GTAGATTT","TTAGATTT",
+ "AACGATTT","CACGATTT","GACGATTT","TACGATTT","ACCGATTT","CCCGATTT","GCCGATTT","TCCGATTT",
+ "AGCGATTT","CGCGATTT","GGCGATTT","TGCGATTT","ATCGATTT","CTCGATTT","GTCGATTT","TTCGATTT",
+ "AAGGATTT","CAGGATTT","GAGGATTT","TAGGATTT","ACGGATTT","CCGGATTT","GCGGATTT","TCGGATTT",
+ "AGGGATTT","CGGGATTT","GGGGATTT","TGGGATTT","ATGGATTT","CTGGATTT","GTGGATTT","TTGGATTT",
+ "AATGATTT","CATGATTT","GATGATTT","TATGATTT","ACTGATTT","CCTGATTT","GCTGATTT","TCTGATTT",
+ "AGTGATTT","CGTGATTT","GGTGATTT","TGTGATTT","ATTGATTT","CTTGATTT","GTTGATTT","TTTGATTT",
+ "AAATATTT","CAATATTT","GAATATTT","TAATATTT","ACATATTT","CCATATTT","GCATATTT","TCATATTT",
+ "AGATATTT","CGATATTT","GGATATTT","TGATATTT","ATATATTT","CTATATTT","GTATATTT","TTATATTT",
+ "AACTATTT","CACTATTT","GACTATTT","TACTATTT","ACCTATTT","CCCTATTT","GCCTATTT","TCCTATTT",
+ "AGCTATTT","CGCTATTT","GGCTATTT","TGCTATTT","ATCTATTT","CTCTATTT","GTCTATTT","TTCTATTT",
+ "AAGTATTT","CAGTATTT","GAGTATTT","TAGTATTT","ACGTATTT","CCGTATTT","GCGTATTT","TCGTATTT",
+ "AGGTATTT","CGGTATTT","GGGTATTT","TGGTATTT","ATGTATTT","CTGTATTT","GTGTATTT","TTGTATTT",
+ "AATTATTT","CATTATTT","GATTATTT","TATTATTT","ACTTATTT","CCTTATTT","GCTTATTT","TCTTATTT",
+ "AGTTATTT","CGTTATTT","GGTTATTT","TGTTATTT","ATTTATTT","CTTTATTT","GTTTATTT","TTTTATTT",
+ "AAAACTTT","CAAACTTT","GAAACTTT","TAAACTTT","ACAACTTT","CCAACTTT","GCAACTTT","TCAACTTT",
+ "AGAACTTT","CGAACTTT","GGAACTTT","TGAACTTT","ATAACTTT","CTAACTTT","GTAACTTT","TTAACTTT",
+ "AACACTTT","CACACTTT","GACACTTT","TACACTTT","ACCACTTT","CCCACTTT","GCCACTTT","TCCACTTT",
+ "AGCACTTT","CGCACTTT","GGCACTTT","TGCACTTT","ATCACTTT","CTCACTTT","GTCACTTT","TTCACTTT",
+ "AAGACTTT","CAGACTTT","GAGACTTT","TAGACTTT","ACGACTTT","CCGACTTT","GCGACTTT","TCGACTTT",
+ "AGGACTTT","CGGACTTT","GGGACTTT","TGGACTTT","ATGACTTT","CTGACTTT","GTGACTTT","TTGACTTT",
+ "AATACTTT","CATACTTT","GATACTTT","TATACTTT","ACTACTTT","CCTACTTT","GCTACTTT","TCTACTTT",
+ "AGTACTTT","CGTACTTT","GGTACTTT","TGTACTTT","ATTACTTT","CTTACTTT","GTTACTTT","TTTACTTT",
+ "AAACCTTT","CAACCTTT","GAACCTTT","TAACCTTT","ACACCTTT","CCACCTTT","GCACCTTT","TCACCTTT",
+ "AGACCTTT","CGACCTTT","GGACCTTT","TGACCTTT","ATACCTTT","CTACCTTT","GTACCTTT","TTACCTTT",
+ "AACCCTTT","CACCCTTT","GACCCTTT","TACCCTTT","ACCCCTTT","CCCCCTTT","GCCCCTTT","TCCCCTTT",
+ "AGCCCTTT","CGCCCTTT","GGCCCTTT","TGCCCTTT","ATCCCTTT","CTCCCTTT","GTCCCTTT","TTCCCTTT",
+ "AAGCCTTT","CAGCCTTT","GAGCCTTT","TAGCCTTT","ACGCCTTT","CCGCCTTT","GCGCCTTT","TCGCCTTT",
+ "AGGCCTTT","CGGCCTTT","GGGCCTTT","TGGCCTTT","ATGCCTTT","CTGCCTTT","GTGCCTTT","TTGCCTTT",
+ "AATCCTTT","CATCCTTT","GATCCTTT","TATCCTTT","ACTCCTTT","CCTCCTTT","GCTCCTTT","TCTCCTTT",
+ "AGTCCTTT","CGTCCTTT","GGTCCTTT","TGTCCTTT","ATTCCTTT","CTTCCTTT","GTTCCTTT","TTTCCTTT",
+ "AAAGCTTT","CAAGCTTT","GAAGCTTT","TAAGCTTT","ACAGCTTT","CCAGCTTT","GCAGCTTT","TCAGCTTT",
+ "AGAGCTTT","CGAGCTTT","GGAGCTTT","TGAGCTTT","ATAGCTTT","CTAGCTTT","GTAGCTTT","TTAGCTTT",
+ "AACGCTTT","CACGCTTT","GACGCTTT","TACGCTTT","ACCGCTTT","CCCGCTTT","GCCGCTTT","TCCGCTTT",
+ "AGCGCTTT","CGCGCTTT","GGCGCTTT","TGCGCTTT","ATCGCTTT","CTCGCTTT","GTCGCTTT","TTCGCTTT",
+ "AAGGCTTT","CAGGCTTT","GAGGCTTT","TAGGCTTT","ACGGCTTT","CCGGCTTT","GCGGCTTT","TCGGCTTT",
+ "AGGGCTTT","CGGGCTTT","GGGGCTTT","TGGGCTTT","ATGGCTTT","CTGGCTTT","GTGGCTTT","TTGGCTTT",
+ "AATGCTTT","CATGCTTT","GATGCTTT","TATGCTTT","ACTGCTTT","CCTGCTTT","GCTGCTTT","TCTGCTTT",
+ "AGTGCTTT","CGTGCTTT","GGTGCTTT","TGTGCTTT","ATTGCTTT","CTTGCTTT","GTTGCTTT","TTTGCTTT",
+ "AAATCTTT","CAATCTTT","GAATCTTT","TAATCTTT","ACATCTTT","CCATCTTT","GCATCTTT","TCATCTTT",
+ "AGATCTTT","CGATCTTT","GGATCTTT","TGATCTTT","ATATCTTT","CTATCTTT","GTATCTTT","TTATCTTT",
+ "AACTCTTT","CACTCTTT","GACTCTTT","TACTCTTT","ACCTCTTT","CCCTCTTT","GCCTCTTT","TCCTCTTT",
+ "AGCTCTTT","CGCTCTTT","GGCTCTTT","TGCTCTTT","ATCTCTTT","CTCTCTTT","GTCTCTTT","TTCTCTTT",
+ "AAGTCTTT","CAGTCTTT","GAGTCTTT","TAGTCTTT","ACGTCTTT","CCGTCTTT","GCGTCTTT","TCGTCTTT",
+ "AGGTCTTT","CGGTCTTT","GGGTCTTT","TGGTCTTT","ATGTCTTT","CTGTCTTT","GTGTCTTT","TTGTCTTT",
+ "AATTCTTT","CATTCTTT","GATTCTTT","TATTCTTT","ACTTCTTT","CCTTCTTT","GCTTCTTT","TCTTCTTT",
+ "AGTTCTTT","CGTTCTTT","GGTTCTTT","TGTTCTTT","ATTTCTTT","CTTTCTTT","GTTTCTTT","TTTTCTTT",
+ "AAAAGTTT","CAAAGTTT","GAAAGTTT","TAAAGTTT","ACAAGTTT","CCAAGTTT","GCAAGTTT","TCAAGTTT",
+ "AGAAGTTT","CGAAGTTT","GGAAGTTT","TGAAGTTT","ATAAGTTT","CTAAGTTT","GTAAGTTT","TTAAGTTT",
+ "AACAGTTT","CACAGTTT","GACAGTTT","TACAGTTT","ACCAGTTT","CCCAGTTT","GCCAGTTT","TCCAGTTT",
+ "AGCAGTTT","CGCAGTTT","GGCAGTTT","TGCAGTTT","ATCAGTTT","CTCAGTTT","GTCAGTTT","TTCAGTTT",
+ "AAGAGTTT","CAGAGTTT","GAGAGTTT","TAGAGTTT","ACGAGTTT","CCGAGTTT","GCGAGTTT","TCGAGTTT",
+ "AGGAGTTT","CGGAGTTT","GGGAGTTT","TGGAGTTT","ATGAGTTT","CTGAGTTT","GTGAGTTT","TTGAGTTT",
+ "AATAGTTT","CATAGTTT","GATAGTTT","TATAGTTT","ACTAGTTT","CCTAGTTT","GCTAGTTT","TCTAGTTT",
+ "AGTAGTTT","CGTAGTTT","GGTAGTTT","TGTAGTTT","ATTAGTTT","CTTAGTTT","GTTAGTTT","TTTAGTTT",
+ "AAACGTTT","CAACGTTT","GAACGTTT","TAACGTTT","ACACGTTT","CCACGTTT","GCACGTTT","TCACGTTT",
+ "AGACGTTT","CGACGTTT","GGACGTTT","TGACGTTT","ATACGTTT","CTACGTTT","GTACGTTT","TTACGTTT",
+ "AACCGTTT","CACCGTTT","GACCGTTT","TACCGTTT","ACCCGTTT","CCCCGTTT","GCCCGTTT","TCCCGTTT",
+ "AGCCGTTT","CGCCGTTT","GGCCGTTT","TGCCGTTT","ATCCGTTT","CTCCGTTT","GTCCGTTT","TTCCGTTT",
+ "AAGCGTTT","CAGCGTTT","GAGCGTTT","TAGCGTTT","ACGCGTTT","CCGCGTTT","GCGCGTTT","TCGCGTTT",
+ "AGGCGTTT","CGGCGTTT","GGGCGTTT","TGGCGTTT","ATGCGTTT","CTGCGTTT","GTGCGTTT","TTGCGTTT",
+ "AATCGTTT","CATCGTTT","GATCGTTT","TATCGTTT","ACTCGTTT","CCTCGTTT","GCTCGTTT","TCTCGTTT",
+ "AGTCGTTT","CGTCGTTT","GGTCGTTT","TGTCGTTT","ATTCGTTT","CTTCGTTT","GTTCGTTT","TTTCGTTT",
+ "AAAGGTTT","CAAGGTTT","GAAGGTTT","TAAGGTTT","ACAGGTTT","CCAGGTTT","GCAGGTTT","TCAGGTTT",
+ "AGAGGTTT","CGAGGTTT","GGAGGTTT","TGAGGTTT","ATAGGTTT","CTAGGTTT","GTAGGTTT","TTAGGTTT",
+ "AACGGTTT","CACGGTTT","GACGGTTT","TACGGTTT","ACCGGTTT","CCCGGTTT","GCCGGTTT","TCCGGTTT",
+ "AGCGGTTT","CGCGGTTT","GGCGGTTT","TGCGGTTT","ATCGGTTT","CTCGGTTT","GTCGGTTT","TTCGGTTT",
+ "AAGGGTTT","CAGGGTTT","GAGGGTTT","TAGGGTTT","ACGGGTTT","CCGGGTTT","GCGGGTTT","TCGGGTTT",
+ "AGGGGTTT","CGGGGTTT","GGGGGTTT","TGGGGTTT","ATGGGTTT","CTGGGTTT","GTGGGTTT","TTGGGTTT",
+ "AATGGTTT","CATGGTTT","GATGGTTT","TATGGTTT","ACTGGTTT","CCTGGTTT","GCTGGTTT","TCTGGTTT",
+ "AGTGGTTT","CGTGGTTT","GGTGGTTT","TGTGGTTT","ATTGGTTT","CTTGGTTT","GTTGGTTT","TTTGGTTT",
+ "AAATGTTT","CAATGTTT","GAATGTTT","TAATGTTT","ACATGTTT","CCATGTTT","GCATGTTT","TCATGTTT",
+ "AGATGTTT","CGATGTTT","GGATGTTT","TGATGTTT","ATATGTTT","CTATGTTT","GTATGTTT","TTATGTTT",
+ "AACTGTTT","CACTGTTT","GACTGTTT","TACTGTTT","ACCTGTTT","CCCTGTTT","GCCTGTTT","TCCTGTTT",
+ "AGCTGTTT","CGCTGTTT","GGCTGTTT","TGCTGTTT","ATCTGTTT","CTCTGTTT","GTCTGTTT","TTCTGTTT",
+ "AAGTGTTT","CAGTGTTT","GAGTGTTT","TAGTGTTT","ACGTGTTT","CCGTGTTT","GCGTGTTT","TCGTGTTT",
+ "AGGTGTTT","CGGTGTTT","GGGTGTTT","TGGTGTTT","ATGTGTTT","CTGTGTTT","GTGTGTTT","TTGTGTTT",
+ "AATTGTTT","CATTGTTT","GATTGTTT","TATTGTTT","ACTTGTTT","CCTTGTTT","GCTTGTTT","TCTTGTTT",
+ "AGTTGTTT","CGTTGTTT","GGTTGTTT","TGTTGTTT","ATTTGTTT","CTTTGTTT","GTTTGTTT","TTTTGTTT",
+ "AAAATTTT","CAAATTTT","GAAATTTT","TAAATTTT","ACAATTTT","CCAATTTT","GCAATTTT","TCAATTTT",
+ "AGAATTTT","CGAATTTT","GGAATTTT","TGAATTTT","ATAATTTT","CTAATTTT","GTAATTTT","TTAATTTT",
+ "AACATTTT","CACATTTT","GACATTTT","TACATTTT","ACCATTTT","CCCATTTT","GCCATTTT","TCCATTTT",
+ "AGCATTTT","CGCATTTT","GGCATTTT","TGCATTTT","ATCATTTT","CTCATTTT","GTCATTTT","TTCATTTT",
+ "AAGATTTT","CAGATTTT","GAGATTTT","TAGATTTT","ACGATTTT","CCGATTTT","GCGATTTT","TCGATTTT",
+ "AGGATTTT","CGGATTTT","GGGATTTT","TGGATTTT","ATGATTTT","CTGATTTT","GTGATTTT","TTGATTTT",
+ "AATATTTT","CATATTTT","GATATTTT","TATATTTT","ACTATTTT","CCTATTTT","GCTATTTT","TCTATTTT",
+ "AGTATTTT","CGTATTTT","GGTATTTT","TGTATTTT","ATTATTTT","CTTATTTT","GTTATTTT","TTTATTTT",
+ "AAACTTTT","CAACTTTT","GAACTTTT","TAACTTTT","ACACTTTT","CCACTTTT","GCACTTTT","TCACTTTT",
+ "AGACTTTT","CGACTTTT","GGACTTTT","TGACTTTT","ATACTTTT","CTACTTTT","GTACTTTT","TTACTTTT",
+ "AACCTTTT","CACCTTTT","GACCTTTT","TACCTTTT","ACCCTTTT","CCCCTTTT","GCCCTTTT","TCCCTTTT",
+ "AGCCTTTT","CGCCTTTT","GGCCTTTT","TGCCTTTT","ATCCTTTT","CTCCTTTT","GTCCTTTT","TTCCTTTT",
+ "AAGCTTTT","CAGCTTTT","GAGCTTTT","TAGCTTTT","ACGCTTTT","CCGCTTTT","GCGCTTTT","TCGCTTTT",
+ "AGGCTTTT","CGGCTTTT","GGGCTTTT","TGGCTTTT","ATGCTTTT","CTGCTTTT","GTGCTTTT","TTGCTTTT",
+ "AATCTTTT","CATCTTTT","GATCTTTT","TATCTTTT","ACTCTTTT","CCTCTTTT","GCTCTTTT","TCTCTTTT",
+ "AGTCTTTT","CGTCTTTT","GGTCTTTT","TGTCTTTT","ATTCTTTT","CTTCTTTT","GTTCTTTT","TTTCTTTT",
+ "AAAGTTTT","CAAGTTTT","GAAGTTTT","TAAGTTTT","ACAGTTTT","CCAGTTTT","GCAGTTTT","TCAGTTTT",
+ "AGAGTTTT","CGAGTTTT","GGAGTTTT","TGAGTTTT","ATAGTTTT","CTAGTTTT","GTAGTTTT","TTAGTTTT",
+ "AACGTTTT","CACGTTTT","GACGTTTT","TACGTTTT","ACCGTTTT","CCCGTTTT","GCCGTTTT","TCCGTTTT",
+ "AGCGTTTT","CGCGTTTT","GGCGTTTT","TGCGTTTT","ATCGTTTT","CTCGTTTT","GTCGTTTT","TTCGTTTT",
+ "AAGGTTTT","CAGGTTTT","GAGGTTTT","TAGGTTTT","ACGGTTTT","CCGGTTTT","GCGGTTTT","TCGGTTTT",
+ "AGGGTTTT","CGGGTTTT","GGGGTTTT","TGGGTTTT","ATGGTTTT","CTGGTTTT","GTGGTTTT","TTGGTTTT",
+ "AATGTTTT","CATGTTTT","GATGTTTT","TATGTTTT","ACTGTTTT","CCTGTTTT","GCTGTTTT","TCTGTTTT",
+ "AGTGTTTT","CGTGTTTT","GGTGTTTT","TGTGTTTT","ATTGTTTT","CTTGTTTT","GTTGTTTT","TTTGTTTT",
+ "AAATTTTT","CAATTTTT","GAATTTTT","TAATTTTT","ACATTTTT","CCATTTTT","GCATTTTT","TCATTTTT",
+ "AGATTTTT","CGATTTTT","GGATTTTT","TGATTTTT","ATATTTTT","CTATTTTT","GTATTTTT","TTATTTTT",
+ "AACTTTTT","CACTTTTT","GACTTTTT","TACTTTTT","ACCTTTTT","CCCTTTTT","GCCTTTTT","TCCTTTTT",
+ "AGCTTTTT","CGCTTTTT","GGCTTTTT","TGCTTTTT","ATCTTTTT","CTCTTTTT","GTCTTTTT","TTCTTTTT",
+ "AAGTTTTT","CAGTTTTT","GAGTTTTT","TAGTTTTT","ACGTTTTT","CCGTTTTT","GCGTTTTT","TCGTTTTT",
+ "AGGTTTTT","CGGTTTTT","GGGTTTTT","TGGTTTTT","ATGTTTTT","CTGTTTTT","GTGTTTTT","TTGTTTTT",
+ "AATTTTTT","CATTTTTT","GATTTTTT","TATTTTTT","ACTTTTTT","CCTTTTTT","GCTTTTTT","TCTTTTTT",
+ "AGTTTTTT","CGTTTTTT","GGTTTTTT","TGTTTTTT","ATTTTTTT","CTTTTTTT","GTTTTTTT","TTTTTTTT"};
+ 
+
+
+static void
+uncompress_fileio (char *gbuffer1, T this, Univcoord_T startpos, 
+		   Univcoord_T endpos, const char defaultchars[],
+		   const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard, i;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+    genomecomp_move_absolute(this,ptr);
+    high = genomecomp_read_current(this);
+    low = genomecomp_read_current(this);
+    flags = genomecomp_read_current(this);
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < enddiscard; i++) {
+      *gbuffer1++ = Buffer[i];
+    }
+  } else {
+    genomecomp_move_absolute(this,ptr);
+    high = genomecomp_read_current(this);
+    low = genomecomp_read_current(this);
+    flags = genomecomp_read_current(this);
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < 32; i++) {
+      *gbuffer1++ = Buffer[i];
+    }
+    ptr += 3;
+      
+    while (ptr < endblock) {
+      high = genomecomp_read_current(this);
+      low = genomecomp_read_current(this);
+      flags = genomecomp_read_current(this);
+
+      for (i = 0; i < 16; i++) {
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+      high = genomecomp_read_current(this);
+      low = genomecomp_read_current(this);
+      flags = genomecomp_read_current(this);
+
+      for (i = 0; i < 16; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      for (i = 0; i < enddiscard; i++) {
+	*gbuffer1++ = Buffer[i];
+      }
+    }
+  }
+
+  return;
+}
+
+static void
+ntcounts_fileio (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt,
+		 T this, Univcoord_T startpos, Univcoord_T endpos,
+		 const char defaultchars[], const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32], c;
+  int startdiscard, enddiscard, i;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+    genomecomp_move_absolute(this,ptr);
+    high = genomecomp_read_current(this);
+    low = genomecomp_read_current(this);
+    flags = genomecomp_read_current(this);
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < enddiscard; i++) {
+      switch (Buffer[i]) {
+      case 'A': case 'a': (*na)++; break;
+      case 'C': case 'c': (*nc)++; break;
+      case 'G': case 'g': (*ng)++; break;
+      case 'T': case 't': (*nt)++; break;
+      }
+    }
+  } else {
+    genomecomp_move_absolute(this,ptr);
+    high = genomecomp_read_current(this);
+    low = genomecomp_read_current(this);
+    flags = genomecomp_read_current(this);
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < 32; i++) {
+      switch (Buffer[i]) {
+      case 'A': case 'a': (*na)++; break;
+      case 'C': case 'c': (*nc)++; break;
+      case 'G': case 'g': (*ng)++; break;
+      case 'T': case 't': (*nt)++; break;
+      }
+    }
+    ptr += 3;
+      
+    while (ptr < endblock) {
+      high = genomecomp_read_current(this);
+      low = genomecomp_read_current(this);
+      flags = genomecomp_read_current(this);
+
+      for (i = 0; i < 16; i++) {
+	c = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	switch (c) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	c = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	switch (c) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+      high = genomecomp_read_current(this);
+      low = genomecomp_read_current(this);
+      flags = genomecomp_read_current(this);
+
+      for (i = 0; i < 16; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      for (i = 0; i < enddiscard; i++) {
+	switch (Buffer[i]) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+      }
+    }
+  }
+
+  return;
+}
+
+
+static void
+uncompress_mmap_bitbybit (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			  Univcoord_T endpos, const char defaultchars[], const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard, i;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < enddiscard; i++) {
+      *gbuffer1++ = Buffer[i];
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < 32; i++) {
+      *gbuffer1++ = Buffer[i];
+    }
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      for (i = 0; i < 16; i++) {
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	*gbuffer1++ = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      for (i = 0; i < 16; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      for (i = 0; i < enddiscard; i++) {
+	*gbuffer1++ = Buffer[i];
+      }
+    }
+  }
+
+  return;
+}
+
+
+void
+Genome_uncompress_mmap (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard;
+  Univcoord_T k = 0, i;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),(enddiscard - startdiscard));
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),k = 32 - startdiscard);
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(&(gbuffer1[k]),nucleotides[low & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[low >> 16],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high >> 16],8); k += 8;
+      if (flags) {
+	for (i = k - 32; i < k; i++) {
+	  if (flags & 1U) {
+	    gbuffer1[i] = 'N';
+	  }
+	  flags >>= 1;
+	}
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+      memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+      memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+      memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+      if (flags) {
+	for (i = 0; i < 32; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = 'N';
+	  }
+	  flags >>= 1;
+	}
+      }
+      memcpy(&(gbuffer1[k]),Buffer,enddiscard);
+    }
+  }
+
+  return;
+}
+
+
+/* Same as Genome_uncompress_mmap, except does not perform bigendian conversion */
+void
+Genome_uncompress_memory (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			  Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard;
+  Univcoord_T k = 0, i;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#if 0
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),(enddiscard - startdiscard));
+
+  } else {
+#if 0
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+    if (flags) {
+      for (i = 0; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),k = 32 - startdiscard);
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#if 0
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(&(gbuffer1[k]),nucleotides[low & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[low >> 16],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[high >> 16],8); k += 8;
+      if (flags) {
+	for (i = k - 32; i < k; i++) {
+	  if (flags & 1U) {
+	    gbuffer1[i] = 'N';
+	  }
+	  flags >>= 1;
+	}
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#if 0
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(Buffer,nucleotides[low & 0x0000FFFF],8);
+      memcpy(&(Buffer[8]),nucleotides[low >> 16],8);
+      memcpy(&(Buffer[16]),nucleotides[high & 0x0000FFFF],8);
+      memcpy(&(Buffer[24]),nucleotides[high >> 16],8);
+      if (flags) {
+	for (i = 0; i < 32; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = 'N';
+	  }
+	  flags >>= 1;
+	}
+      }
+      memcpy(&(gbuffer1[k]),Buffer,enddiscard);
+    }
+  }
+
+  return;
+}
+
+
+
+/* Correct procedure should look at alt high/low and normal flags, and substitute N based on normal flags */
+/* May not handle wildcard positions correctly.  A wildcard occurs if ref == alt && ref_flag == 0 && alt_flag == 1 */
+static void
+uncompress_mmap_snps_subst (char *gbuffer1, Genomecomp_T *refblocks, Genomecomp_T *altblocks, Univcoord_T startpos, 
+			    Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T althigh, altlow, refflags;
+  char Buffer[32];
+  int startdiscard, enddiscard, i, k, k1;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    althigh = Bigendian_convert_uint(altblocks[ptr]);
+    altlow = Bigendian_convert_uint(altblocks[ptr+1]);
+    refflags = Bigendian_convert_uint(refblocks[ptr+2]);
+#else
+    althigh = altblocks[ptr]; altlow = altblocks[ptr+1]; refflags = refblocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[altlow & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[altlow >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[althigh & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[althigh >> 16],8);
+
+    if (refflags) {
+      for (i = 0; i < 16; i++) {
+	if (refflags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	altlow >>= 2;
+	refflags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (refflags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	althigh >>= 2;
+	refflags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),(enddiscard - startdiscard));
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    althigh = Bigendian_convert_uint(altblocks[ptr]);
+    altlow = Bigendian_convert_uint(altblocks[ptr+1]);
+    refflags = Bigendian_convert_uint(refblocks[ptr+2]);
+#else
+    althigh = altblocks[ptr]; altlow = altblocks[ptr+1]; refflags = refblocks[ptr+2];
+#endif
+
+    memcpy(Buffer,nucleotides[altlow & 0x0000FFFF],8);
+    memcpy(&(Buffer[8]),nucleotides[altlow >> 16],8);
+    memcpy(&(Buffer[16]),nucleotides[althigh & 0x0000FFFF],8);
+    memcpy(&(Buffer[24]),nucleotides[althigh >> 16],8);
+
+    if (refflags) {
+      for (i = 0; i < 16; i++) {
+	if (refflags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	altlow >>= 2;
+	refflags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (refflags & 1U) {
+	  Buffer[i] = 'N';
+	}
+	althigh >>= 2;
+	refflags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),k = 32 - startdiscard);
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      althigh = Bigendian_convert_uint(altblocks[ptr]);
+      altlow = Bigendian_convert_uint(altblocks[ptr+1]);
+      refflags = Bigendian_convert_uint(refblocks[ptr+2]);
+#else
+      althigh = altblocks[ptr]; altlow = altblocks[ptr+1]; refflags = refblocks[ptr+2];
+#endif
+
+      memcpy(&(gbuffer1[k]),nucleotides[altlow & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[altlow >> 16],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[althigh & 0x0000FFFF],8); k += 8;
+      memcpy(&(gbuffer1[k]),nucleotides[althigh >> 16],8); k += 8;
+
+      if (refflags) {
+	k1 = k - 32;
+	for (i = 0; i < 16; i++, k1++) {
+	  if (refflags & 1U) {
+	    gbuffer1[k1] = 'N';
+	  }
+	  altlow >>= 2;
+	  refflags >>= 1;
+	}
+	for ( ; i < 32; i++, k1++) {
+	  if (refflags & 1U) {
+	    gbuffer1[k1] = 'N';
+	  }
+	  althigh >>= 2;
+	  refflags >>= 1;
+	}
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      althigh = Bigendian_convert_uint(altblocks[ptr]);
+      altlow = Bigendian_convert_uint(altblocks[ptr+1]);
+      refflags = Bigendian_convert_uint(refblocks[ptr+2]);
+#else
+      althigh = altblocks[ptr]; altlow = altblocks[ptr+1]; refflags = refblocks[ptr+2];
+#endif
+
+      memcpy(Buffer,nucleotides[altlow & 0x0000FFFF],8);
+      memcpy(&(Buffer[8]),nucleotides[altlow >> 16],8);
+      memcpy(&(Buffer[16]),nucleotides[althigh & 0x0000FFFF],8);
+      memcpy(&(Buffer[24]),nucleotides[althigh >> 16],8);
+
+      if (refflags) {
+	for (i = 0; i < 16; i++) {
+	  if (refflags & 1U) {
+	    Buffer[i] = 'N';
+	  }
+	  altlow >>= 2;
+	  refflags >>= 1;
+	}
+	for ( ; i < 32; i++) {
+	  if (refflags & 1U) {
+	    Buffer[i] = 'N';
+	  }
+	  althigh >>= 2;
+	  refflags >>= 1;
+	}
+      }
+      memcpy(&(gbuffer1[k]),Buffer,enddiscard);
+    }
+  }
+
+  return;
+}
+
+
+
+#if 0
+
+                          /*01234567890123456789012345678901*/
+static char EMPTY_32[32] = "                                ";
+
+static void
+uncompress_mmap_snps_only (char *gbuffer1, Genomecomp_T *blocks, Univcoord_T startpos, 
+			   Univcoord_T endpos, const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32];
+  int startdiscard, enddiscard, i;
+  Univcoord_T k = 0;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,EMPTY_32,32);
+    if (flags) {
+      for (i = 0; i < 16; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[low & 3U];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[high & 3U];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),(enddiscard - startdiscard));
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+    memcpy(Buffer,EMPTY_32,32);
+    if (flags) {
+      for (i = 0; i < 16; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[low & 3U];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 1U) {
+	  Buffer[i] = flagchars[high & 3U];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+    }
+    memcpy(gbuffer1,&(Buffer[startdiscard]),k = 32 - startdiscard);
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(&(gbuffer1[k]),EMPTY_32,32);
+      if (!flags) {
+	k += 32;
+      } else {
+	for (i = 0; i < 16; i++, k++) {
+	  if (flags & 1U) {
+	    gbuffer1[k] = flagchars[low & 3U];
+	  }
+	  low >>= 2;
+	  flags >>= 1;
+	}
+	for ( ; i < 32; i++, k++) {
+	  if (flags & 1U) {
+	    gbuffer1[k] = flagchars[high & 3U];
+	  }
+	  high >>= 2;
+	  flags >>= 1;
+	}
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+
+      memcpy(Buffer,EMPTY_32,32);
+      if (flags) {
+	for (i = 0; i < 16; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = flagchars[low & 3U];
+	  }
+	  low >>= 2;
+	  flags >>= 1;
+	}
+	for ( ; i < 32; i++) {
+	  if (flags & 1U) {
+	    Buffer[i] = flagchars[high & 3U];
+	  }
+	  high >>= 2;
+	  flags >>= 1;
+	}
+      }
+      memcpy(&(gbuffer1[k]),Buffer,enddiscard);
+    }
+  }
+
+  return;
+}
+
+#endif
+
+#define LOW_TWO_BITS 0x3;
+
+static char
+uncompress_one_char (Genomecomp_T *blocks, Univcoord_T pos, char flagchar, char chartable[]) {
+  Univcoord_T ptr;
+  Genomecomp_T high, low, flags;
+  int bit, c;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = pos/32U*3;
+  bit = pos % 32;
+  
+#ifdef WORDS_BIGENDIAN
+  flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+  flags = blocks[ptr+2];
+#endif
+
+  if (flags & (1 << bit)) {
+    return flagchar;
+
+  } else if (bit < 16) {
+#ifdef WORDS_BIGENDIAN
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+    low = blocks[ptr+1];
+#endif
+    c = (low >> (bit+bit)) & LOW_TWO_BITS;
+    return chartable[c];
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+#else
+    high = blocks[ptr];
+#endif
+    c = (high >> (bit+bit-32)) & LOW_TWO_BITS;
+    return chartable[c];
+  }
+}
+  
+
+static char CHARTABLE[4] = {'A','C','G','T'};
+
+static char
+uncompress_one_char_ignore_flags (Genomecomp_T *blocks, Univcoord_T pos) {
+  Univcoord_T ptr;
+  Genomecomp_T high, low;
+  int bit, c;
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = pos/32U*3;
+  bit = pos % 32;
+  
+  if (bit < 16) {
+#ifdef WORDS_BIGENDIAN
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+    low = blocks[ptr+1];
+#endif
+    c = (low >> (bit+bit)) & LOW_TWO_BITS;
+    return CHARTABLE[c];
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+#else
+    high = blocks[ptr];
+#endif
+    c = (high >> (bit+bit-32)) & LOW_TWO_BITS;
+    return CHARTABLE[c];
+  }
+}
+
+
+static void
+Genome_ntcounts_mmap (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt, Genomecomp_T *blocks,
+		      Univcoord_T startpos, Univcoord_T endpos, const char defaultchars[],
+		      const char flagchars[]) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  char Buffer[32], c;
+  int startdiscard, enddiscard, i;
+
+  /* *na = *nc = *ng = *nt = 0; */
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < enddiscard; i++) {
+      switch (Buffer[i]) {
+      case 'A': case 'a': (*na)++; break;
+      case 'C': case 'c': (*nc)++; break;
+      case 'G': case 'g': (*ng)++; break;
+      case 'T': case 't': (*nt)++; break;
+      }
+    }
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    for (i = 0; i < 16; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+      low >>= 2;
+      flags >>= 1;
+    }
+    for ( ; i < 32; i++) {
+      Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+      high >>= 2;
+      flags >>= 1;
+    }
+    for (i = startdiscard; i < 32; i++) {
+      switch (Buffer[i]) {
+      case 'A': case 'a': (*na)++; break;
+      case 'C': case 'c': (*nc)++; break;
+      case 'G': case 'g': (*ng)++; break;
+      case 'T': case 't': (*nt)++; break;
+      }
+    }
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	c = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	switch (c) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	c = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	switch (c) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[low & 3U] : defaultchars[low & 3U]);
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	Buffer[i] = (char) ((flags & 1U) ? flagchars[high & 3U] : defaultchars[high & 3U]);
+	high >>= 2;
+	flags >>= 1;
+      }
+      for (i = 0; i < enddiscard; i++) {
+	switch (Buffer[i]) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+      }
+    }
+  }
+
+  return;
+}
+
+
+#ifdef DEBUG3
+static bool
+check_nucleotide (unsigned char nucleotide, char sequence) {
+  printf("%d %c\n",nucleotide,sequence);
+  switch (sequence) {
+  case 'A': if (nucleotide != 0) return true; break;
+  case 'C': if (nucleotide != 1) return true; break;
+  case 'G': if (nucleotide != 2) return true; break;
+  case 'T': if (nucleotide != 3) return true; break;
+  }
+  return false;
+}
+#endif
+
+#if 0
+static bool
+uncompress_mmap_nucleotides_wstatus (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+				     Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, startdiscard, enddiscard, ptr;
+  Genomecomp_T high, low, flags;
+  int i;
+#ifdef DEBUG3
+  char gbuffer_debug[1024];
+#endif
+
+  /* sequence = (char *) CALLOC(length+1,sizeof(char)); */
+
+#ifdef DEBUG3
+  Genome_uncompress_mmap(gbuffer_debug,blocks,startpos,endpos);
+#endif
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	if (flags & 0x01) {
+	  /* return false; */
+	}
+	*gbuffer++ = (unsigned char) (low & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 1, startdiscard %d, enddiscard %d\n",startdiscard,enddiscard);
+	  abort();
+	}
+#endif
+	flags >>= 1;
+	low >>= 2;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	if (flags & 0x01) {
+	  /* return false; */
+	}
+	*gbuffer++ = (unsigned char) (high & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 2\n");
+	  abort();
+	}
+#endif
+	flags >>= 1;
+	high >>= 2;
+	startdiscard++;
+      }
+    }
+    return true;
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	if (flags & 0x01) {
+	  /* return false; */
+	}
+	*gbuffer++ = (unsigned char) (low & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 3\n");
+	  abort();
+	}
+#endif
+	flags >>= 1;
+	low >>= 2;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      if (flags & 0x01) {
+	/* return false; */
+      }
+      *gbuffer++ = (unsigned char) (high & 0x03);
+#ifdef DEBUG3
+      if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	fprintf(stderr,"Case 4, startdiscard %d (after subtracting 16)\n",startdiscard);
+	abort();
+      }
+#endif
+      flags >>= 1;
+      high >>= 2;
+      startdiscard++;
+    }
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      if (flags) {
+	/* return false; */
+      }
+      for (i = 0; i < 16; i++) {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 5\n");
+	  abort();
+	}
+#endif
+	low >>= 2;
+      }
+      for ( ; i < 32; i++) {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 6\n");
+	  abort();
+	}
+#endif
+	high >>= 2;
+      }
+
+      ptr += 3;
+    }
+
+    if (enddiscard > 0) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      i = 0;
+      while (i < enddiscard && i < 16) {
+	if (flags & 0x01) {
+	  /* return false; */
+	}
+	*gbuffer++ = (unsigned char) (low & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 7\n");
+	  abort();
+	}
+#endif
+	flags >>= 1;
+	low >>= 2;
+	i++;
+      }
+      while (i < enddiscard) {
+	if (flags & 0x01) {
+	  /* return false; */
+	}
+	*gbuffer++ = (unsigned char) (high & 0x03);
+#ifdef DEBUG3
+	if (check_nucleotide(gbuffer[k-1],gbuffer_debug[k-1])) {
+	  fprintf(stderr,"Case 8\n");
+	  abort();
+	}
+#endif
+	flags >>= 1;
+	high >>= 2;
+	i++;
+      }
+    }
+  }
+
+  return true;
+}
+#endif
+
+
+static void
+uncompress_mmap_nucleotides (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+			     Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low;
+  int startdiscard, enddiscard, i;
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  /* printf("startdiscard = %d, enddiscard = %d\n",startdiscard,enddiscard); */
+  if (endblock == startblock) {
+    /* Special case */
+    if (startdiscard < 16) {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      low = blocks[ptr+1];
+#endif
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+	low >>= 2;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+#else
+      high = blocks[ptr];
+#endif
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+	high >>= 2;
+	startdiscard++;
+      }
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1];
+#endif
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+	low >>= 2;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      *gbuffer++ = (unsigned char) (high & 0x03);
+      high >>= 2;
+      startdiscard++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1];
+#endif
+      for (i = 0; i < 16; i++) {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+	low >>= 2;
+      }
+      for ( ; i < 32; i++) {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+	high >>= 2;
+      }
+
+      /* printf("Block %d assigned up to %d\n",ptr,k); */
+      ptr += 3;
+    }
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1];
+#endif
+    i = 0;
+    while (i < enddiscard && i < 16) {
+      *gbuffer++ = (unsigned char) (low & 0x03);
+      low >>= 2;
+      i++;
+    }
+    while (i < enddiscard) {
+      *gbuffer++ = (unsigned char) (high & 0x03);
+      high >>= 2;
+      i++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+  }
+
+#if 0
+  for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+    if (gbuffer[k] > 3) {
+      printf("startpos = %u, endpos = %u, k = %d\n",startpos,endpos,k);
+      printf("startblock %u, endblock %u\n",startblock,endblock);
+      for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+	printf("%u %d %d\n",ptr,k,gbuffer[k]);
+      }
+      abort();
+    }
+  }
+#endif
+
+  return;
+}
+
+
+/* Assign A => 0, C => 1, G => 2, T => 3, N/X => 4 */
+static void
+uncompress_mmap_int_string (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+			    Univcoord_T endpos) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  int startdiscard, enddiscard, i;
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+
+    if (startdiscard < 16) {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      low = blocks[ptr+1];
+#endif
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+#else
+      high = blocks[ptr];
+#endif
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (high & 0x03);
+	}
+	high >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+      }
+      high >>= 2;
+      flags >>= 1;
+      startdiscard++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (low & 0x03);
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = (unsigned char) (high & 0x03);
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+
+      /* printf("Block %d assigned up to %d\n",ptr,k); */
+      ptr += 3;
+    }
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    i = 0;
+    while (i < enddiscard && i < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (low & 0x03);
+      }
+      low >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    while (i < enddiscard) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = (unsigned char) (high & 0x03);
+      }
+      high >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+  }
+
+#if 0
+  for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+    if (gbuffer[k] > 3) {
+      printf("startpos = %u, endpos = %u, k = %d\n",startpos,endpos,k);
+      printf("startblock %u, endblock %u\n",startblock,endblock);
+      for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+	printf("%u %d %d\n",ptr,k,gbuffer[k]);
+      }
+      abort();
+    }
+  }
+#endif
+
+  return;
+}
+
+
+static void
+uncompress_mmap_int_string_convert (unsigned char *gbuffer, Genomecomp_T *blocks, Univcoord_T startpos, 
+				    Univcoord_T endpos, unsigned char *conversion) {
+  /* Chrpos_T length = endpos - startpos; */
+  Univcoord_T startblock, endblock, ptr;
+  Genomecomp_T high, low, flags;
+  int startdiscard, enddiscard, i;
+
+  ptr = startblock = startpos/32U*3;
+  endblock = endpos/32U*3;
+  startdiscard = startpos % 32;
+  enddiscard = endpos % 32;
+
+  if (endblock == startblock) {
+    /* Special case */
+#ifdef WORDS_BIGENDIAN
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+
+    if (startdiscard < 16) {
+#ifdef WORDS_BIGENDIAN
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+#else
+      low = blocks[ptr+1];
+#endif
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard && startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    if (enddiscard >= 16) {
+      startdiscard -= 16;
+      enddiscard -= 16;
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+#else
+      high = blocks[ptr];
+#endif
+      high >>= (startdiscard+startdiscard);
+      while (startdiscard < enddiscard) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (high & 0x03)];
+	}
+	high >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+
+  } else {
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    flags >>= startdiscard;
+    if (startdiscard < 16) {
+      low >>= (startdiscard+startdiscard);
+      while (startdiscard < 16) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+	startdiscard++;
+      }
+    }
+    startdiscard -= 16;
+    high >>= (startdiscard+startdiscard);
+    while (startdiscard < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (high & 0x03)];
+      }
+      high >>= 2;
+      flags >>= 1;
+      startdiscard++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+    ptr += 3;
+      
+    while (ptr < endblock) {
+#ifdef WORDS_BIGENDIAN
+      high = Bigendian_convert_uint(blocks[ptr]);
+      low = Bigendian_convert_uint(blocks[ptr+1]);
+      flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+      high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+      for (i = 0; i < 16; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (low & 0x03)];
+	}
+	low >>= 2;
+	flags >>= 1;
+      }
+      for ( ; i < 32; i++) {
+	if (flags & 0x01) {
+	  *gbuffer++ = (unsigned char) 4;
+	} else {
+	  *gbuffer++ = conversion[(int) (high & 0x03)];
+	}
+	high >>= 2;
+	flags >>= 1;
+      }
+
+      /* printf("Block %d assigned up to %d\n",ptr,k); */
+      ptr += 3;
+    }
+
+#ifdef WORDS_BIGENDIAN
+    high = Bigendian_convert_uint(blocks[ptr]);
+    low = Bigendian_convert_uint(blocks[ptr+1]);
+    flags = Bigendian_convert_uint(blocks[ptr+2]);
+#else
+    high = blocks[ptr]; low = blocks[ptr+1]; flags = blocks[ptr+2];
+#endif
+    i = 0;
+    while (i < enddiscard && i < 16) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (low & 0x03)];
+      }
+      low >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    while (i < enddiscard) {
+      if (flags & 0x01) {
+	*gbuffer++ = (unsigned char) 4;
+      } else {
+	*gbuffer++ = conversion[(int) (high & 0x03)];
+      }
+      high >>= 2;
+      flags >>= 1;
+      i++;
+    }
+    /* printf("Block %d assigned up to %d\n",ptr,k); */
+  }
+
+#if 0
+  for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+    if (gbuffer[k] > 3) {
+      printf("startpos = %u, endpos = %u, k = %d\n",startpos,endpos,k);
+      printf("startblock %u, endblock %u\n",startblock,endblock);
+      for (ptr = startpos, k = 0; ptr < endpos; ptr++, k++) {
+	printf("%u %d %d\n",ptr,k,gbuffer[k]);
+      }
+      abort();
+    }
+  }
+#endif
+
+  return;
+}
+
+
+/************************************************************************
+ *   Usage procedures
+ ************************************************************************/
+
+static T genome;
+static Genomecomp_T *genome_blocks;
+
+static T genomealt;
+static Genomecomp_T *genomealt_blocks;	/* Can be equal to genome_blocks, but not NULL */
+
+static Mode_T mode;
+static int circular_typeint = -1;
+
+static char *fwd_conversion;
+static char *rev_conversion;
+
+
+void
+Genome_setup (T genome_in, T genomealt_in, Mode_T mode_in, int circular_typeint_in) {
+  genome = genome_in;
+  genome_blocks = genome->blocks;
+  if (genomealt_in == NULL) {
+    genomealt = genome_in;
+    genomealt_blocks = genome->blocks;
+  } else {
+    genomealt = genomealt_in;
+    genomealt_blocks = genomealt->blocks;
+  }
+  mode = mode_in;
+  if (mode == STANDARD) {
+    fwd_conversion = "ACGT";
+    rev_conversion = "ACGT";
+  } else if (mode == CMET_STRANDED || mode == CMET_NONSTRANDED) {
+    fwd_conversion = "ATGT";
+    rev_conversion = "ACAT";
+  } else if (mode == ATOI_STRANDED || mode == ATOI_NONSTRANDED) {
+    fwd_conversion = "GCGT";
+    rev_conversion = "ACGC";
+  } else if (mode == TTOC_STRANDED || mode == TTOC_NONSTRANDED) {
+    fwd_conversion = "ACGC";
+    rev_conversion = "GCGT";
+  }
+  circular_typeint = circular_typeint_in;
+  return;
+}
+
+void
+Genome_user_setup (Genomecomp_T *genome_blocks_in) {
+  genome = (T) NULL;
+  genome_blocks = genome_blocks_in;
+  genomealt = (T) NULL;
+  genomealt_blocks = genome_blocks_in;
+  mode = STANDARD;
+  return;
+}
+
+
+
+static const Except_T gbufferlen_error = { "Insufficient allocation" };
+
+static bool
+fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
+	     Univ_IIT_T chromosome_iit, bool bitbybitp, const char defaultchars[], const char flagchars[]) {
+  Chrnum_T chrnum_left, chrnum_right, chrnumi;
+  Univcoord_T inbounds_low, inbounds_high, pos, low, high, maxoverlap, overlap;
+  Chrpos_T chrlength;
+  
+  *nunknowns = 0;
+  if (length == 0) {
+    *chrnum = 0;
+    return false;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+  if (left + length < left) {
+    debug(printf("Got negative left\n"));
+    while (left != 0U) {
+      *(gbuffer1++) = OUTOFBOUNDS;
+      *nunknowns += 1;
+      length--;
+      left++;
+    }
+  }
+
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      if (lseek(this->fd,left,SEEK_SET) < 0) {
+	perror("Error in fill_buffer");
+	exit(9);
+      }
+      read(this->fd,gbuffer1,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer1,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,this,left,left+length,defaultchars,flagchars);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      if (bitbybitp == true) {
+	uncompress_mmap_bitbybit(gbuffer1,this->blocks,left,left+length,defaultchars,flagchars);
+      } else {
+	Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+      }
+    }
+  }
+  gbuffer1[length] = '\0';
+
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+
+  /* Fix out of bounds resulting from crossing chromosomes */
+  if (chromosome_iit == NULL) {
+    debug(printf("No chr info because chromosome_iit is null\n"));
+    /* None provided, perhaps because aligning to user segment */
+  } else if ((chrnum_left = Univ_IIT_get_one(chromosome_iit,left,left)) == 
+	     (chrnum_right = Univ_IIT_get_one(chromosome_iit,left+length-1U,left+length-1U))) {
+    debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
+    *chrnum = chrnum_left;
+
+    /* Fix out of bounds resulting from going past last chromosome */
+    Univ_IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnum_left,circular_typeint);
+    if (left >= high) {
+      for (pos = 0; pos < length; pos++) {
+	gbuffer1[pos] = OUTOFBOUNDS;
+	*nunknowns += 1;
+      }
+    } else if (left+length >= high) {
+      for (pos = high-left; pos < length; pos++) {
+	gbuffer1[pos] = OUTOFBOUNDS;
+	*nunknowns += 1;
+      }
+    }
+
+  } else {
+    debug(printf("Chr at beginning = %d, at end = %d\n",chrnum_left,chrnum_right));
+    maxoverlap = 0;
+    for (chrnumi = chrnum_left; chrnumi <= chrnum_right; chrnumi++) {
+      Univ_IIT_interval_bounds(&low,&high,&chrlength,chromosome_iit,chrnumi,circular_typeint);
+      if (left > low) {
+	low = left;
+      }
+      if (left+length < high) {
+	high = left+length;
+      }
+      if ((overlap = high - low) > maxoverlap) {
+	*chrnum = chrnumi;
+	maxoverlap = overlap;
+	inbounds_low = low - left;
+	inbounds_high = high - left;
+      }
+    }
+    debug(printf("in-bounds at %llu..%llu\n",(unsigned long long) inbounds_low,(unsigned long long) inbounds_high));
+    for (pos = 0; pos < inbounds_low; pos++) {
+      gbuffer1[pos] = OUTOFBOUNDS;
+      *nunknowns += 1;
+    }
+    for (pos = inbounds_high; pos < length; pos++) {
+      gbuffer1[pos] = OUTOFBOUNDS;
+      *nunknowns += 1;
+    }
+    debug(printf("%s\n",gbuffer1));
+  }
+
+  return true;
+}
+
+
+
+bool
+Genome_fill_buffer (Chrnum_T *chrnum, int *nunknowns, T this, Univcoord_T left, Chrpos_T length, char *gbuffer1,
+		    Univ_IIT_T chromosome_iit) {
+  return fill_buffer(&(*chrnum),&(*nunknowns),this,left,length,gbuffer1,chromosome_iit,
+		     /*bitbybitp*/false,DEFAULT_CHARS,DEFAULT_FLAGS);
+}
+
+
+void
+Genome_fill_buffer_simple (T this, Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  int delta, i;
+  
+#if 0
+  assert(left + length >= left);
+#endif
+
+  /* Fix out of bounds resulting from negative numbers */
+  if (left + length < left) {
+    fprintf(stderr,"left %llu + length %u < left %llu\n",(unsigned long long) left,length,(unsigned long long) left);
+    delta = -left;
+    length -= delta;
+    for (i = 0; i < delta; i++) {
+      gbuffer1[i] = '*';	/* Don't use 'N', which works in dynamic programming */
+    }
+    gbuffer1[i] = '\0';
+    gbuffer1 += delta;
+    left = 0U;
+  }
+
+  if (length == 0) {
+    return;
+  }
+
+
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      if (lseek(this->fd,left,SEEK_SET) < 0) {
+	perror("Error in Genome_fill_buffer_simple");
+	exit(9);
+      }
+      read(this->fd,gbuffer1,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer1,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,this,left,left+length,global_chars,global_flags);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+#ifdef EXTRACT_GENOMICSEG
+      uncompress_mmap_bitbybit(gbuffer1,this->blocks,left,left+length,DEFAULT_FLAGS,A_FLAGS);
+#else
+      Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+length);
+#endif
+    }
+  }
+  gbuffer1[length] = '\0';
+
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+
+  return;
+}
+
+
+void
+Genome_fill_buffer_convert_fwd (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,fwd_conversion,X_FLAGS);
+  }
+  gbuffer1[length] = '\0';
+  return;
+}
+
+void
+Genome_fill_buffer_convert_rev (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,rev_conversion,X_FLAGS);
+  }
+  gbuffer1[length] = '\0';
+  return;
+}
+
+
+void
+Genome_fill_buffer_blocks (Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+#ifdef EXTRACT_GENOMICSEG
+    uncompress_mmap_bitbybit(gbuffer1,genome_blocks,left,left+length,DEFAULT_CHARS,A_FLAGS);
+#else
+    Genome_uncompress_mmap(gbuffer1,genome_blocks,left,left+length);
+#endif
+  }
+  gbuffer1[length] = '\0';
+  return;
+}
+
+void
+Genome_fill_buffer_blocks_noterm (Univcoord_T left, Chrpos_T length, char *gbuffer1, char *gbuffer2) {
+  
+  if (length > 0) {
+    assert(left + length >= left);
+    Genome_uncompress_mmap(gbuffer1,genome_blocks,left,left+length);
+    uncompress_mmap_snps_subst(gbuffer2,genome_blocks,genomealt_blocks,left,left+length);
+  }
+  /* gbuffer1[length] = '\0'; */
+  return;
+}
+
+
+void
+Genome_fill_buffer_simple_alt (T genome, T genomealt, Univcoord_T left, Chrpos_T length, char *gbuffer1) {
+  int delta, i;
+  
+#if 0
+  assert(left + length >= left);
+#endif
+
+  /* Fix out of bounds resulting from negative numbers */
+  if (left + length < left) {
+    fprintf(stderr,"left %llu + length %u < left %llu\n",(unsigned long long) left,length,(unsigned long long) left);
+    delta = -left;
+    length -= delta;
+    for (i = 0; i < delta; i++) {
+      gbuffer1[i] = '*';	/* Don't use 'N', which works in dynamic programming */
+    }
+    gbuffer1[i] = '\0';
+    gbuffer1 += delta;
+    left = 0U;
+  }
+
+  if (length == 0) {
+    return;
+  }
+
+
+  if (genomealt->compressedp == false) {
+    if (genomealt->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&genomealt->read_mutex);
+#endif
+      if (lseek(genomealt->fd,left,SEEK_SET) < 0) {
+	perror("Error in gmap, Genome_get_segment");
+	exit(9);
+      }
+      read(genomealt->fd,gbuffer1,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&genomealt->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer1,&(genomealt->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (genomealt->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&genomealt->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,genomealt,left,left+length,DEFAULT_CHARS,SNP_FLAGS);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&genomealt->read_mutex);
+#endif
+    } else {
+      uncompress_mmap_snps_subst(gbuffer1,genome->blocks,genomealt->blocks,left,left+length);
+    }
+  }
+  gbuffer1[length] = '\0';
+
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+
+  return;
+}
+
+
+void
+Genome_fill_buffer_nucleotides (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer) {
+  
+  if (length == 0) {
+    return;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+#if 0
+  if (left + length < left) {
+    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+    abort();
+  }
+#else
+  assert(left + length >= left);
+#endif
+
+  if (this->compressedp == false) {
+    fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work for non-compressed genomes\n");
+    exit(9);
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work under FILEIO access\n");
+      exit(9);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      uncompress_mmap_nucleotides(gbuffer,this->blocks,left,left+length);
+    }
+  }
+
+  gbuffer[length] = 0xFF;
+
+#if 0
+  for (i = 0; i <= length; i++) {
+    printf("%d ",gbuffer[i]);
+  }
+  printf("\n");
+#endif
+
+  return;
+}
+
+
+void
+Genome_fill_buffer_int_string (T this, Univcoord_T left, Chrpos_T length, unsigned char *gbuffer,
+			       unsigned char *conversion) {
+  
+  if (length == 0) {
+    return;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+#if 0
+  if (left + length < left) {
+    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+    abort();
+  }
+#else
+  assert(left + length >= left);
+#endif
+
+  if (this->compressedp == false) {
+    fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work for non-compressed genomes\n");
+    exit(9);
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer,&(this->chars[left]),length*sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      fprintf(stderr,"Procedure Genome_fill_buffer_nucleotides not designed to work under FILEIO access\n");
+      exit(9);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else if (conversion == NULL) {
+      uncompress_mmap_int_string(gbuffer,this->blocks,left,left+length);
+    } else {
+      uncompress_mmap_int_string_convert(gbuffer,this->blocks,left,left+length,conversion);
+    }
+  }
+
+  gbuffer[length] = 0xFF;
+
+#if 0
+  for (i = 0; i <= length; i++) {
+    printf("%d ",gbuffer[i]);
+  }
+  printf("\n");
+#endif
+
+  return;
+}
+
+
+char
+Genome_get_char (T this, Univcoord_T left) {
+  char c;
+  char gbuffer1[1];
+  
+  /* assert(left < 4000000000U); */
+
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      if (lseek(this->fd,left,SEEK_SET) < 0) {
+	perror("Error in Genome_get_char");
+	exit(9);
+      }
+      read(this->fd,gbuffer1,/*length*/1);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+
+    } else {
+      memcpy(gbuffer1,&(this->chars[left]),sizeof(char));
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer1,this,left,left+1,global_chars,global_flags);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      c = uncompress_one_char(this->blocks,left,/*flagchar*/'N',CHARTABLE);
+#ifdef EXTRACT_GENOMICSEG
+      Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+1);
+      assert(c == gbuffer1[0]);
+#endif
+      return c;
+    }
+  }
+
+  return gbuffer1[0];
+}
+
+
+/* Removed checks for uncompressed genome and fileio access */
+char
+Genome_get_char_lex (T this, Univcoord_T left, Univcoord_T genomelength, char chartable[]) {
+#ifdef EXTRACT_GENOMICSEG
+  char c;
+  char gbuffer1[1];
+#endif
+  
+  /* assert(left < 4000000000U); */
+
+  if (left >= genomelength) {
+    return (char) 0;
+  } else {
+#ifdef EXTRACT_GENOMICSEG
+    Genome_uncompress_mmap(gbuffer1,this->blocks,left,left+1);
+    assert(c == gbuffer1[0]);
+    return c;
+#else
+    /* Want 'X', because in building suffix array, the encoding was A(0), C(1), G(2), T(3), N(4) */
+    return uncompress_one_char(this->blocks,left,/*flagchar*/'X',chartable);
+#endif
+  }
+}
+
+
+
+
+char
+Genome_get_char_blocks (char *charalt, Univcoord_T left) {
+  char c;
+#ifdef EXTRACT_GENOMICSEG
+  char gbuffer1[1];
+#endif
+  
+  /* assert(left < 4000000000U); */
+
+  /* printf("Genome_get_char_blocks called with left = %u\n",left); */
+  if ((c = uncompress_one_char(genome_blocks,left,/*flagchar*/'N',CHARTABLE)) == 'N') {
+    *charalt = c;
+  } else {
+    *charalt = uncompress_one_char_ignore_flags(genomealt_blocks,left);
+  }
+#ifdef EXTRACT_GENOMICSEG
+  Genome_uncompress_mmap(gbuffer1,genome_blocks,left,left+1);
+  assert(c == gbuffer1[0]);
+#endif
+
+  return c;
+}
+
+
+void
+Genome_get_segment_blocks_right (char *segment, char *segmentalt, Univcoord_T left, Chrpos_T length, Univcoord_T chrhigh,
+				 bool revcomp) {
+  Chrpos_T out_of_bounds, i;
+
+  if (length == 0) {
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (left >= chrhigh) {
+    /* All out of bounds */
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (left + length >= chrhigh) {
+    out_of_bounds = left + length - chrhigh;
+    /* Cannot check i >= length - out_of_bounds when i is unsigned */
+    for (i = length - 1; i + out_of_bounds >= length; i--) {
+      segment[i] = '*';
+    }
+  } else {
+    out_of_bounds = 0;
+  }
+
+  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",left,revcomp); */
+  Genome_uncompress_mmap(segment,genome_blocks,left,left+length-out_of_bounds);
+  segment[length] = '\0';
+  if (revcomp == true) {
+    make_complement_inplace(segment,length);
+  }
+
+  if (genomealt_blocks == genome_blocks) {
+    strncpy(segmentalt,segment,length);
+    segmentalt[length] = '\0';
+  } else {
+    for (i = length - 1; i >= length - out_of_bounds; i--) {
+      segmentalt[i] = '*';
+    }
+    uncompress_mmap_snps_subst(segmentalt,genome_blocks,genomealt_blocks,left,left+length-out_of_bounds);
+    segmentalt[length] = '\0';
+    if (revcomp == true) {
+      make_complement_inplace(segmentalt,length);
+    }
+  }
+  
+  return;
+}
+
+
+void
+Genome_get_segment_blocks_left (char *segment, char *segmentalt, Univcoord_T right, Chrpos_T length, Univcoord_T chroffset,
+				bool revcomp) {
+  Chrpos_T out_of_bounds, i;
+
+  if (length == 0) {
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (right < chroffset) {
+    /* All out of bounds */
+    segment[0] = segmentalt[0] = '\0';
+    return;
+  } else if (right < chroffset + length) {
+    out_of_bounds = chroffset + length - right;
+    for (i = 0; i < out_of_bounds; i++) {
+      segment[i] = '*';
+    }
+  } else {
+    out_of_bounds = 0;
+  }
+
+  /* printf("Genome_get_segment_blocks called with left = %u, revcomp %d\n",right-length,revcomp); */
+  Genome_uncompress_mmap(&(segment[out_of_bounds]),genome_blocks,right-length+out_of_bounds,right);
+  segment[length] = '\0';
+  if (revcomp == true) {
+    make_complement_inplace(segment,length);
+  }
+
+  if (genomealt_blocks == genome_blocks) {
+    strncpy(segmentalt,segment,length);
+    segmentalt[length] = '\0';
+  } else {
+    for (i = 0; i < out_of_bounds; i++) {
+      segmentalt[i] = '*';
+    }
+    uncompress_mmap_snps_subst(&(segmentalt[out_of_bounds]),genome_blocks,genomealt_blocks,right-length+out_of_bounds,right);
+    segmentalt[length] = '\0';
+    if (revcomp == true) {
+      make_complement_inplace(segmentalt,length);
+    }
+  }
+  
+  return;
+}
+
+
+bool
+buffers_diff_p (char *buffer1, char *buffer2, int length) {
+  int i;
+
+  for (i = 0; i < length; i++) {
+    if (buffer1[i] != buffer2[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+
+Sequence_T
+Genome_get_segment (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
+		    bool revcomp) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  char *gbuffer;
+  
+  gbuffer = (char *) CALLOC(length+1,sizeof(char));
+
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer,chromosome_iit,
+	      /*bitbybitp*/false,DEFAULT_CHARS,DEFAULT_FLAGS);
+
+  if (revcomp == true) {
+    /* make_complement_buffered(gbuffer2,gbuffer1,length);*/
+    make_complement_inplace(gbuffer,length);
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  } else {
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  }
+
+
+}
+
+Sequence_T
+Genome_get_segment_alt (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
+			bool revcomp) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  char *gbuffer;
+  
+  gbuffer = (char *) CALLOC(length+1,sizeof(char));
+  
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer,chromosome_iit,
+	      /*bitbybitp*/true,DEFAULT_CHARS,SNP_FLAGS);
+
+  if (revcomp == true) {
+    /* make_complement_buffered(gbuffer2,gbuffer1,length); */
+    make_complement_inplace(gbuffer,length);
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  } else {
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer1,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  }
+}
+
+Sequence_T
+Genome_get_segment_snp (T this, Univcoord_T left, Chrpos_T length, Univ_IIT_T chromosome_iit,
+			bool revcomp) {
+  Chrnum_T chrnum;
+  int nunknowns;
+  char *gbuffer;
+  
+  gbuffer = (char *) CALLOC(length+1,sizeof(char));
+
+  fill_buffer(&chrnum,&nunknowns,this,left,length,gbuffer,chromosome_iit,
+	      /*bitbybitp*/true,SNP_CHARS,SNP_FLAGS);
+
+  if (revcomp == true) {
+    /* make_complement_buffered(gbuffer2,gbuffer1,length); */
+    make_complement_inplace(gbuffer,length);
+    debug(printf("Got sequence at %llu with length %u, revcomp\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  } else {
+    debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer,length,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer,length,/*copyp*/false);
+  }
+}
+
+
+Univcoord_T
+Genome_ntcounts (Univcoord_T *na, Univcoord_T *nc, Univcoord_T *ng, Univcoord_T *nt,
+		 T this, Univcoord_T left, Univcoord_T length) {
+  char *gbuffer, *p;
+  Univcoord_T i;
+  
+  *na = *nc = *ng = *nt = 0;
+
+  if (length == 0) {
+    return 0;
+  }
+
+  /* Fix out of bounds resulting from negative numbers */
+#if 0
+  if (left + length < left) {
+    fprintf(stderr,"left %u + length %u < left %u\n",left,length,left);
+    abort();
+  }
+#else
+  assert(left + length >= left);
+#endif
+
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+      gbuffer = (char *) CALLOC(length,sizeof(char));
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      if (lseek(this->fd,left,SEEK_SET) < 0) {
+	perror("Error in gmap, Genome_get_segment");
+	exit(9);
+      }
+      read(this->fd,gbuffer,length);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+      p = &(gbuffer[0]);
+      for (i = 0; i < length; i++) {
+	switch (*p) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	p++;
+      }
+      FREE(gbuffer);
+
+    } else {
+      p = &(this->chars[left]);
+      for (i = 0; i < length; i++) {
+	switch (*p) {
+	case 'A': case 'a': (*na)++; break;
+	case 'C': case 'c': (*nc)++; break;
+	case 'G': case 'g': (*ng)++; break;
+	case 'T': case 't': (*nt)++; break;
+	}
+	p++;
+      }
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      ntcounts_fileio(&(*na),&(*nc),&(*ng),&(*nt),
+		      this,left,left+length,global_chars,global_flags);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      Genome_ntcounts_mmap(&(*na),&(*nc),&(*ng),&(*nt),
+			   this->blocks,left,left+length,global_chars,global_flags);
+    }
+  }
+
+  debug(printf("Got sequence at %llu with length %u, forward\n",(unsigned long long) left,length));
+
+  return (*na) + (*nc) + (*ng) + (*nt);
+}
+
+
+
+
+#if 0
+int
+Genome_next_char (T this) {
+  char gbuffer[2];
+  
+  if (this->compressedp == false) {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      read(this->fd,gbuffer,1);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+      return (int) gbuffer[0];
+
+    } else {
+      return *(this->ptr++);
+    }
+
+  } else {
+    if (this->access == FILEIO) {
+#ifdef HAVE_PTHREAD
+      pthread_mutex_lock(&this->read_mutex);
+#endif
+      uncompress_fileio(gbuffer,this,this->left,this->left+1U,DEFAULT_CHARS,DEFAULT_FLAGS);
+#ifdef HAVE_PTHREAD
+      pthread_mutex_unlock(&this->read_mutex);
+#endif
+    } else {
+      Genome_uncompress_mmap(gbuffer,this->blocks,this->left,this->left+1U);
+    }
+    this->left += 1U;
+    return (int) gbuffer[0];
+  }
+}
+#endif
+
+
+
+#if 0
+/* sbuffer is the strain buffer, with coordinates low--high.  gbuffer1
+   has the reference sequence in the forward direction.  The reference
+   sequence has coordinates left + length.  The calling procedure has
+   ordered the indices in descending genomic position, so that right
+   shifting works. */
+Sequence_T
+Genome_patch_strain (int *indices, int nindices, IIT_T altstrain_iit, 
+		     Chrpos_T refL, Chrpos_T reflen,
+		     bool revcomp, char *gbuffer1, char *gbuffer2, char *gbuffer3,
+		     int gbuffer3len) {
+  Chrpos_T refR, srcL, srcR, matR;
+  Interval_T interval;
+  char *dest, *src, *matbuffer, *shiftdest, *shiftsrc, *restofheader;
+  int index, i, matlen, patchlen, shiftlen, expansion;
+  bool allocp;
+  
+  assert(reflen <= gbuffer3len);
+  refR = refL + reflen;
+  debug2(printf("refL=%u refR=%u reflen=%u\n",refL,refR,reflen));
+
+  /* Work in gbuffer3 */
+  memcpy(gbuffer3,gbuffer1,reflen);
+
+  for (i = 0; i < nindices; i++) {
+    index = indices[i];
+    interval = IIT_interval(altstrain_iit,index);
+    srcL = Interval_low(interval);
+    srcR = Interval_high(interval) + 1;	/* Intervals are inclusive */
+    matbuffer = IIT_annotation(&restofheader,altstrain_iit,index,&allocp); /* Holds the sequence */
+    matlen = IIT_annotation_strlen(altstrain_iit,index);
+    matR = srcL + matlen;
+
+    /* Truncate srcR and matR */
+    if (srcR > refR) {
+      srcR = refR;
+    }
+    if (matR > refR) {
+      matR = refR;
+    }
+    expansion = matR - srcR;
+
+    /* Find dest and src */
+    if (srcL < refL) {
+      dest = &(gbuffer3[0]);
+      src = &(matbuffer[refL-srcL]);
+      patchlen = matR - refL;
+    } else {
+      dest = &(gbuffer3[srcL-refL]);
+      src = &(matbuffer[0]);
+      patchlen = matR - srcL;
+    }
+    if (allocp == true) {
+      FREE(restofheader);
+    }
+    debug2(printf("srcL=%u matR=%u srcR=%u matlen=%u patchlen=%d expansion=%d\n",
+		  srcL,matR,srcR,matlen,patchlen,expansion));
+
+    /* If patchlen < 0, then matR is to left of refL and we are done */
+    if (patchlen > 0) {
+      memcpy(dest,src,patchlen*sizeof(char));
+      if (expansion < 0) {
+	/* Contraction: shouldn't occur because gmapindex will fill in with x's */
+	dest += patchlen;
+	while (expansion < 0) {
+	  *dest++ = 'x';
+	  expansion++;
+	}
+      } else if (expansion > 0) {
+	dest += patchlen;
+	src += patchlen;
+	shiftlen = refR - matR - expansion;
+	shiftsrc = dest;
+	shiftdest = shiftsrc + expansion;
+	memmove(shiftdest,shiftsrc,shiftlen*sizeof(char));
+	memcpy(dest,src,expansion*sizeof(char));
+	debug2(printf("  shifted %d\n",shiftlen));
+      }
+    }
+  }
+  debug2(printf("\n"));
+
+  if (revcomp == true) {
+    make_complement_buffered(gbuffer2,gbuffer3,reflen);
+    /* FREE(sequence); */
+    debug(printf("Got sequence at %u with length %u, revcomp\n",refL,reflen));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer2,reflen,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer2,reflen,/*copyp*/false);
+  } else {
+    debug(printf("Got sequence at %u with length %u, forward\n",refL,reflen));
+    debug1(Sequence_print(stdout,Sequence_genomic_new(gbuffer3,reflen,/*copyp*/false),false,60,true));
+    return Sequence_genomic_new(gbuffer3,reflen,/*copyp*/false);
+  }
+}
+#endif
+
+

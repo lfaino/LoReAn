@@ -1,0 +1,10 @@
+#! @SHELL@
+
+if test -z "$srcdir"; then
+  srcdir=.
+fi
+. ${srcdir}/defs
+
+${top_builddir}/util/fa_coords -o coords.chr17test ${srcdir}/ss.chr17test
+diff coords.chr17test ${srcdir}/coords1.test.ok
+

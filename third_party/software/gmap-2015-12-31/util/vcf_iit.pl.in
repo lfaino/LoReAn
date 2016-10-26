@@ -1,0 +1,72 @@
+#! @PERL@
+
+use Getopt::Std;
+getopts("v:");
+
+
+while (defined($line = <>)) {
+      if ($line =~ /^\#/) {
+	  # Skip
+      } else {
+	  chop $line;
+	  @fields = split /\t/,$line;
+	  $chr = $fields[0];
+	  $chrpos = $fields[1];
+	  $id = $fields[2];
+	  $ref_allele = $fields[3];
+	  $alt_allele = $fields[4];
+
+	  $version = get_info("dbSNPBuildID",$fields[7]);
+	  if (defined($opt_v) && $version > $opt_v) {
+	      $wantp = 0;
+	  } elsif (defined(get_info("VLD",$fields[7]))) {
+	      # Validated
+	      $wantp = 1;
+	  } elsif (defined(get_info("SLO",$fields[7]))) {
+	      # Submitter link-out
+	      $wantp = 1;
+	  } elsif (defined(get_info("GNO",$fields[7]))) {
+	      # Individual genotype
+	      $wantp = 0;
+	  } else {
+	      $wantp = 1;
+	  }
+	  if ($wantp == 1 && $ref_allele =~ /^[ACGT]$/ && $alt_allele =~ /^[ACGT]$/) {
+	      if ($ref_allele lt $alt_allele) {
+		  print ">$id $chr:$chrpos ";
+		  print $ref_allele . $alt_allele;
+		  print "\n";
+	      } elsif ($alt_allele lt $ref_allele) {
+		  print ">$id $chr:$chrpos ";
+		  print $alt_allele . $ref_allele;
+		  print "\n";
+	      } else {
+		  print STDERR "Ref allele $ref_allele and alt allele $alt_allele for $id at $chr:$chrpos are the same\n";
+	      }
+	  }
+      }
+}
+
+exit;
+
+
+sub get_info {
+    my ($desired_key, $info) = @_;
+
+    foreach $binding (split ";",$info) {
+	if ($binding =~ /(\S+)=(\S+)/) {
+	    $key = $1;
+	    $value = $2;
+	    if ($key eq $desired_key) {
+		return $value;
+	    }
+	} else {
+	    $key = $binding;
+	    if ($key eq $desired_key) {
+		return 1;
+	    }
+	}
+    }
+    return;
+}
+

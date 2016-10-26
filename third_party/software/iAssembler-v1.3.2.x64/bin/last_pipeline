@@ -1,0 +1,2525 @@
+#!/usr/bin/perl -w
+=head1 NAME
+
+ last_pipeline - the last step of iAssembler 
+
+=head1 DESCRIPTION
+
+ This script is the last step of iAssembler, including member position ch-
+ eck, rename the results of assembly. Detail functions of the script were 
+ descripted at SUB(subroutine) part.
+ 
+ Author : Yi zheng
+ E-mail : yz357@cornell.edu
+ Update : 04/26/2011
+
+=cut
+use strict;
+use IO::File;
+use Bio::SeqIO;
+use Bio::SearchIO;
+use Getopt::Std;
+
+my $usage = q/
+Last Pipeline V0.2 update 04-26-2011
+
+USAGE:
+	last_pipeline [-e <EST>] [-u <uniseq>] [-c <contig_member>] [-i <unmatched_number>] [-p <id_prefix>] [-s <start_number>] [-l <number_length>] [-f <cmf_mode>] [-o <output unigene>] [-t <output contig_member>] [-b <output mp_list>] [-d <id_map>] [-g <last_mp_disable>]
+
+Description:
+	
+	parameter:
+	-input files
+		-e: Cleaned EST sequences;
+		-u: unique sequences after perl assembly;
+		-c: contig member file after perl assembly;
+
+	-input parameters
+		-i: unmatched number		<< default : 5 >>
+		    (if unmatched seqs more than this numbers, reassembly; if unmatched seqs less than this numbers, rename and output results;)
+		-p: prefix id			<< default : UN >>
+		-s: start number		<< default : 1 >>
+		-l: number length 		<< default : same as seq number >>
+		-f: output cmf mode(1 or 2)	<< default : 2 >>
+			1: contig1  m1  m2  m3 ... mN;
+			2: m1 \t c1 \n, m2 \t c1 \n, .... mN \t c1 \n;
+
+	-output files
+		-o: output unigene 		<< default : unigene_seq >>
+		-t: output contig_member_file	<< default : contig_member >>
+		-b: output member_position_list << default : unigene_mp >>
+		-d: output member_position_stat << default : member_position_stat >>
+
+	Note:run as a standalone script.
+	Note:none of check condition.
+
+/;
+
+#################################################################
+# Input Parameters						#
+#################################################################
+die $usage."\n" if (@ARGV<1);
+
+my %options;
+
+getopts('e:u:c:p:s:l:f:o:t:b:d:a:g', \%options) || die "$usage\nError getting options!";
+
+my $clean_EST	= $options{e} || die "$usage\nYou must input '-e clean EST'!";
+
+my $perl_uniseq	= $options{u} || die "$usage\nYou must input '-u uniseq'!";
+
+my $perl_cmf	= $options{c} || die "$usage\nYou must input '-c est_fasta'!";
+
+my $id_prefix	= $options{p} || "UN";
+
+my $start_num	= $options{s} || 1;
+
+my $num_len	= $options{l};
+
+my $cmf_mode	= $options{f} || 1;
+
+my $o_unigene	= $options{o} || "unigene_seq.fasta";
+
+my $o_cmf	= $options{t} || "contig_member";
+
+my $o_mp	= $options{b} || "unigene_mp";
+
+my $o_mp_stat	= $options{d} || "member_position_stat";
+
+my $o_sam	= $options{a} || "unigene.sam";
+
+#################################################################
+# envriment parameters						#
+#################################################################
+my $working_dir = $ENV{'working_dir'};
+my $current_dir = $ENV{'current_dir'};
+my $debug_mode = $ENV{'debug_mode'};
+my $log_file = $ENV{'log_file'};
+
+#################################################################
+# Import parameters from ENV					#
+#################################################################
+my ($max_end_clip, $min_identity, $min_overlap, $blast_param, $blast_program);
+
+if ( $ENV{'blast_param'} )	{ $blast_param = $ENV{'blast_param'}; }
+if ( $ENV{'blast_program'} )	{ $blast_program = $ENV{'blast_program'}; }
+if ( $ENV{'max_end_clip'} )	{ $max_end_clip = $ENV{'max_end_clip'}; }
+if ( $ENV{'min_identity'} ) 	{ $min_identity = $ENV{'min_identity'}; }
+if ( $ENV{'min_overlap'} )	{ $min_overlap  = $ENV{'min_overlap'}; }
+
+#################################################################
+# Main Program Begin                                            #
+#################################################################
+my $start_time = localtime();
+my $last_start = qq'
+Quality check..... ( $start_time )
+';
+write_log($last_start) if $debug_mode == 1;
+
+my ($est_seq_hash, $est_len_hash) = seq2hash($clean_EST, 2);
+
+#################################################################
+# Init Loop							#
+#################################################################
+my $unmatch = 1; #initial number of unmatch members
+my $in      = 0; #initial order of iterative
+my ($ip, $ix, $prefix_m);
+
+my $id_map = "$working_dir/unigene_idmap"; 	# tab delimited file, new unigene id and old unique sequence id
+
+my $pre_unmatch; my $last_return;
+my %unmatch_id; my %pre_unmatch_id; my %fix_seq; my %pre_fix_seq;
+
+my $type2error = 0;
+
+my ($input_seq, $input_cmf, $output_seq, $output_cmf, $match_seq, $match_cmf, $member_pos, $member_sam, $fixed_seq, $nextin_seq, $nextin_cmf);
+
+#################################################################
+# Loop Start							#
+#################################################################
+while($unmatch > 0)
+{
+	$in++;				# get order for different cycle, i
+	$ip = $in - 1;			# get order for previous cycle,	 i previous
+	$ix = $in + 1;			# get order for next cycle, i next
+	$prefix_m = get_prefix_m($in);	# get prefix for different cycle
+
+	#########################################################
+	# prepare file for cycle				#
+	#########################################################
+	$input_seq  = "$working_dir/perl_in_seq".$in;	# perl seq file before assembly 
+	$input_cmf  = "$working_dir/perl_in_cmf".$in; 	# perl cmf file before assembly
+	$output_seq = "$working_dir/perl_ot_seq".$in;	# perl seq file after assembly
+	$output_cmf = "$working_dir/perl_ot_cmf".$in;	# perl cmf file after assembly
+	$match_seq  = "$working_dir/perl_mc_seq".$in;	# perl seq file after assembly without unmatch member
+	$match_cmf  = "$working_dir/perl_mc_cmf".$in;	# perl cmf file after assembly without unmatch member
+	$member_pos = "$working_dir/perl_mpf".$in;	# member position file
+	$member_sam = "$working_dir/perl_sam".$in;	# member sam format file
+	$fixed_seq  = "$working_dir/perl_fx_seq".$in;	# perl seq file after assembly without unmatch member, unigene is fixed
+	$nextin_seq = "$working_dir/perl_in_seq".$ix;	# perl seq file next assembly
+	$nextin_cmf = "$working_dir/perl_in_cmf".$ix;	# perl cmf file next assembly
+
+	# asign initial input file with cap3.uniseq and cap3.cmf
+	if ($in == 1) {
+		system("cp $perl_uniseq $input_seq");
+		system("cp $perl_cmf $input_cmf");
+	}
+
+	# print unmatched member seq for final assembly
+	if ( $type2error == 1 )
+	{
+		if ( scalar(keys(%pre_unmatch_id)) > 0)
+		{
+			my $pre_unmatch_seq = "$working_dir/unmatched_seq";
+			my $unfh = IO::File->new(">".$pre_unmatch_seq) || die "Can not open unmatched sequences file $pre_unmatch_seq $!\n";
+                	foreach my $umcid (sort keys %pre_unmatch_id)
+                	{
+                        	print $unfh ">".$umcid."\n".$$est_seq_hash{$umcid}."\n";
+                	}
+			$unfh->close;
+        	}
+        	else
+        	{
+                	die "Error at previous unmatch number, it must more than 0\n";
+        	}
+	}
+
+	#########################################################
+	# perform perl assembly                                 #
+	# if type2error is 1, perform final perl assembly       #
+	# using seq and cmf file without unmatch as input       #
+	#########################################################
+        my $perl_assembly_command;
+
+        if ($type2error ne "1")
+        {
+                $perl_assembly_command = "perl_pipeline 1#$input_seq#$input_cmf 2#$output_seq#$output_cmf 1 4#-p_".$prefix_m;
+        }
+	elsif ($type2error == 1)
+	{	
+		$perl_assembly_command = "perl_pipeline 1#$input_seq#$input_cmf 2#$output_seq#$output_cmf 2 4#-u_2_-p_".$prefix_m;
+	}
+	else
+	{
+		die "Error at type2error type: $type2error\n";
+	}
+
+        system($perl_assembly_command) && die "Error at $perl_assembly_command $!\n";
+
+        #########################################################
+        # member position and produce sam file			#
+        #########################################################
+
+	if ($in == 1)
+	{
+		#########################################################
+		# member position and produce sam file for 1 assembly	#
+		#########################################################
+		%unmatch_id = ();
+		%unmatch_id = member_position($output_seq, $est_seq_hash, $est_len_hash, $output_cmf, $member_pos, $member_sam);
+	}
+	else
+	{
+		#########################################################
+		# compare seq and cmf previous and next perl assembly   #
+		# Produce changed seqs and cmf file for member position #
+		#########################################################
+		if ( $type2error ne "1" ){ %pre_unmatch_id = %unmatch_id; } 
+		%unmatch_id = ();
+
+		#%unmatch_id = member_position($output_seq, $est_seq_hash, $est_len_hash, $output_cmf, $member_pos, $member_sam);
+		my ($pre_member_pos, $pre_member_sam);
+		my %in_fix_seq;
+		if ($type2error == 1)
+		{
+			my $ipp = $ip - 1;  if ($ipp < 1) { $ipp = 1; }
+			$pre_member_pos = "$working_dir/perl_mpf".$ipp;
+			$pre_member_sam = "$working_dir/perl_sam".$ipp;
+			%in_fix_seq = %pre_fix_seq;
+		}
+		else
+		{
+			$pre_member_pos = "$working_dir/perl_mpf".$ip;
+			$pre_member_sam = "$working_dir/perl_sam".$ip;
+			%in_fix_seq = %fix_seq;
+		}
+		#print scalar(keys(%pre_fix_seq))."\t".scalar(keys(%fix_seq))."\t".scalar(keys(%in_fix_seq))."\n";
+		%unmatch_id = compare_member_position($pre_member_pos, $pre_member_sam, $input_cmf, $output_cmf, $output_seq, $member_pos, $member_sam, $est_seq_hash, $est_len_hash, \%in_fix_seq);
+
+	}
+
+	#########################################################
+	# decide final cycle base on unmatched info             #
+	#########################################################
+
+	$unmatch = scalar(keys(%unmatch_id));
+
+	if ($in == 1)
+	{
+		$pre_unmatch = $unmatch + 1;
+	}
+	else
+	{
+		$pre_unmatch = scalar(keys(%pre_unmatch_id));
+	}
+
+	write_log($in."\t".scalar(keys(%unmatch_id))."\t".scalar(keys(%pre_unmatch_id))."\n") if $debug_mode == 1;
+	#print "Type I error info:".$in."\t".scalar(keys(%unmatch_id))."\t".scalar(keys(%pre_unmatch_id))."\n";
+
+	if ( $unmatch > 0 )
+	{
+		write_log("\nAfter $in re-assembly in cycle $prefix_m, $unmatch members are unmatched (Type I)!\n") if $debug_mode == 1;
+
+		#################################################
+		# more unmatch member, compare with pre unmatch	#
+		#################################################
+
+		#################################################
+        	# correct type I error base on unmatched info	#
+        	#################################################
+		change_result(\%unmatch_id, $output_cmf, $match_cmf, $output_seq, $clean_EST, $match_seq);
+
+		#################################################
+		# correct unigene base using sam file           #
+		#################################################
+		#system("cp $match_seq $fixed_seq");
+		%pre_fix_seq = %fix_seq; %fix_seq = ();
+		%fix_seq = base_correct($match_seq, $member_sam ,$fixed_seq); #just correct base to save time
+
+		if ($type2error == 1)
+		{
+			$last_return = 't';
+			write_log("The number of unmatched IDs is no more than the one from previous quality check cycle.\nAssembling Finished!\n") if $debug_mode == 1;
+			last;
+		}
+		
+		#################################################
+		# exit it of unmatch > pre_unmatch		#
+		#################################################
+		if ( $unmatch >= $pre_unmatch )
+		{
+			if ($type2error ne "1")
+			{
+				#################################
+				# prepare file for next assembly#
+				#################################
+				system("cp $input_seq $nextin_seq");
+				system("cp $input_cmf $nextin_cmf");
+
+				$type2error = 1;
+			}
+		}
+		else
+		{
+			#########################################
+			# prepare file for next assembly	#
+			#########################################
+			system("cp $fixed_seq $nextin_seq");
+			system("cp $match_cmf $nextin_cmf");
+		}
+
+	}
+	elsif ( $unmatch == 0 )
+	{
+		#################################################
+		# no unmatch member, finish assembly		#
+		#################################################
+		write_log("\nAfter $in re-assembly in cycle $prefix_m, no members are unmatched (Type I)!\n") if $debug_mode == 1;
+		$last_return = 'p';
+
+		#################################################
+	        # correct unigene base using sam file           #
+		#################################################
+		last;
+	}
+	else
+	{
+		die "Error at number of unmatch member: $unmatch\n";
+	}
+}
+#########################################################################
+# Loop End; ----> output result
+#########################################################################		
+if ($last_return eq "p")
+{
+	# rename the output result
+	rename_pipeline($output_seq, $output_cmf, $id_prefix, $start_num, $num_len, $cmf_mode, $o_unigene, $o_cmf, $id_map, $member_pos, $o_mp, $member_sam, $o_sam);
+}
+elsif ($last_return eq "t")
+{
+	rename_pipeline($fixed_seq, $match_cmf, $id_prefix, $start_num, $num_len, $cmf_mode, $o_unigene, $o_cmf, $id_map, $member_pos, $o_mp, $member_sam, $o_sam);
+}
+else
+{
+	die "Error at last return : $last_return\n";
+}
+#produce stat data for member position result
+#mp_stat($o_mp, $o_mp_stat);
+
+#sort sam file and output
+my $end_time = localtime();
+my $last_end = qq'
+=========================================================================
+Quality Check and Error Correction Process End ($end_time)
+=========================================================================
+';
+write_log($last_end) if $debug_mode == 1;
+
+#################################################################
+# kentnf:subroutine 						#
+#################################################################
+
+=head1 SUBROUTINE PART
+
+=head2 comparse_assembly_result 
+
+ Function: compare unique sequences and contig member file before and af-
+
+ ter perl assembler and find the changed members and contigs, these chan-
+ ged membmers and contigs are assembled by Perl Assembler. For saving ti-
+ me, using these changed results for member position check. So input the 
+ befor and after data, output is the file for next member position check 
+ .
+
+ Input: unique sequences before Perl Assembler
+	contig member file before Perl Assembler
+	unique sequences after Perl Assembler
+	contig member file after Perl Assembler
+
+ Return: unique sequences for next member position check
+	 contig member file for next member position check
+	 est id should be deleted form member position result (hash)
+eggruby
+=cut
+sub compare_member_position
+{
+	my ($pre_member_pos, $pre_member_sam, $input_cmf, $output_cmf, $output_seq, $member_pos, $member_sam, $est_seq_hash, $est_len_hash, $fix_seq) = @_;
+
+	#($pre_member_pos, $pre_member_sam, $input_cmf, $output_cmf, $output_seq, $member_pos, $member_sam, $est_seq_hash, $est_len_hash);
+
+	#########################################################
+	# compare the two cmf file				#
+	#########################################################
+	my %hash1; my %same_cmf; my %diff_cmf; my $diff_cmf_file = "$working_dir/diff_cmf";
+	
+	my $cmf_in = IO::File->new($input_cmf) || die "Can not open input cmf $input_cmf \n";
+	while(<$cmf_in>)
+	{
+		chomp;
+		my @a = split(/\t/, $_);
+
+		my $line = "";
+		foreach my $a (sort @a)
+		{
+			$line.="\t".$a;
+		}
+
+		$hash1{$a[0]} = $line;
+	}
+	$cmf_in->close;
+
+	my $cmf_dif = IO::File->new(">".$diff_cmf_file) || die "Can not open different cmf file $diff_cmf_file\n";
+	my $cmf_out = IO::File->new($output_cmf) || die "Can not open output cmf $output_cmf \n";
+	while(<$cmf_out>)
+	{
+		chomp;
+		my @a = split(/\t/, $_);
+		my @b = split(/\t/, $_, 2);
+
+		my $line = "";
+		foreach my $a (sort @a)
+		{
+			$line.="\t".$a;
+		}
+
+		# cmf info are same
+		# creat hash of sam cmf for borrow mp amd sam
+		if (defined $hash1{$a[0]} && $hash1{$a[0]} eq $line)
+		{
+			if ( defined $$fix_seq{$b[0]})
+			{
+				$diff_cmf{$b[0]} = $b[1];
+				print $cmf_dif $_."\n";
+			}
+			else
+			{
+				$same_cmf{$b[0]} = $b[1];
+			}
+		}	
+
+		# cmf info are diff 
+		# produce file for member position
+		else
+		{
+			$diff_cmf{$b[0]} = $b[1];
+			print $cmf_dif $_."\n";
+		}
+	}
+	$cmf_out->close;
+	$cmf_dif->close;
+
+	#########################################################
+	# prepare sequences file for member position		#
+	#########################################################
+	my $diff_seq_file = "$working_dir/diff_seq";
+
+	my $seq_dif = IO::File->new(">".$diff_seq_file) || die "Can not open different output seq file\n";
+
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$output_seq);
+	while(my $inseq = $in->next_seq)
+	{
+		if (defined $diff_cmf{$inseq->id})
+		{
+			print $seq_dif ">".$inseq->id."\n".$inseq->seq."\n";
+		}
+	}
+
+	$seq_dif->close;
+
+	my %unmatch_member = member_position($diff_seq_file, $est_seq_hash, $est_len_hash, $diff_cmf_file, $member_pos, $member_sam );
+
+	#########################################################
+	# get sam amd mp file from previous 			#
+	#########################################################
+	# diff cmf member to hash
+	my %sh;
+	foreach my $cid (sort keys %same_cmf)
+	{
+		my @a = split(/\t/, $same_cmf{$cid});
+		foreach my $a (@a)
+		{
+			$sh{$a} = 1;
+		}
+	}
+
+	my $fh1 = IO::File->new(">>".$member_pos) || die "Can not open member position file $member_pos\n";
+	my $fh2 = IO::File->new(">>".$member_sam) || die "Can not open sam file $member_sam\n";
+
+	my $fh3 = IO::File->new($pre_member_pos) || die "Can not open $pre_member_pos \n";
+	while(<$fh3>)
+	{
+		my @a = split(/\t/, $_);
+		if (defined $sh{$a[0]})
+		{
+			print $fh1 $_;
+		}
+	}
+	$fh3->close;
+
+	my $fh4 = IO::File->new($pre_member_sam) || die "Can not open $pre_member_sam\n";
+	while(<$fh4>)
+	{
+		my @b = split(/\t/, $_);
+		if (defined $sh{$b[0]})
+		{
+			print $fh2 $_;
+		}
+	}	
+	$fh4->close;
+
+	return %unmatch_member;
+}
+
+=head2 supply_mp
+
+
+ Function: parse last member position result and get unchanged mp results;
+ 
+ Input:	last member position result (file name)
+	unmatched id (hash)
+
+ Return: supply member position result (scalar)
+=cut
+sub supply_mp
+{
+	my ($last_mp, $last_sam, $del_est, $unmatched_id, $this_cmf) = @_;
+
+	my $unchanged_mp; my $unchanged_sam;
+
+	my %this_member;
+	my $cmf_fh = IO::File->new($this_cmf) || die "can nto open contig member file: $this_cmf\n";
+	while(<$cmf_fh>)
+	{
+		chomp;
+		my @a = split(/\t/, $_);
+		for(my $i=1; $i<@a; $i++) { $this_member{$a[$i]} = 1; }
+	}
+	$cmf_fh->close;
+
+	my $mp_fh = IO::File->new($last_mp) || die "Can not open member position result: $last_mp \n";
+	while(<$mp_fh>) 
+	{
+		my @mp = split(/\t/, $_, 2);
+
+		if (defined $$del_est{$mp[0]} || $$unmatched_id{$mp[0]})
+		{
+			#write_log("changed mp result id:".$mp[0]."\n") if $debug_mode == 1;
+		}
+		else
+		{
+			if ( defined $this_member{$mp[0]} ) { $unchanged_mp.=$_; }
+		}
+	}
+	$mp_fh->close;
+
+	my $sam_fh = IO::File->new($last_sam) || die "Can not open member position result: $last_sam \n";
+        while(<$sam_fh>)
+        {
+                my @sam = split(/\t/, $_, 2);
+
+                if (defined $$del_est{$sam[0]} || $$unmatched_id{$sam[0]})
+                {
+                        #print "changed sam result id:".$mp[0]."\n" if $debug_mode == 1;
+                }
+                else
+                {
+			if ( defined $this_member{$sam[0]} ) { $unchanged_mp.=$_; }
+                }
+        }
+        $sam_fh->close;
+	return ($unchanged_mp, $unchanged_sam);
+}
+
+=head2 compare_unmatch_id
+
+ Function: compare two unmatched ids hash, one is previous ids hash, another is now id hash, if they are same or not
+
+ Input: previous ids (hash);
+	now ids (hash);
+
+ Return: 0 if the two hashes are different;
+	 1 if the two hashes are same;
+=cut
+sub compare_unmatch_id
+{
+	my ($pre_unmatch, $this_unmatch) = @_;
+
+	my %after_unmatch = %$this_unmatch;
+	my %before_unmatch = %$pre_unmatch;
+	my %third_unmatch = %after_unmatch;
+	my %forth_unmatch = %before_unmatch;
+
+	my $is_same;
+
+
+	write_log("Before: B ".scalar(keys(%forth_unmatch))."\t A ".scalar(keys(%third_unmatch))."\n") if $debug_mode == 1;
+
+
+	foreach my $before_id (sort keys %before_unmatch)
+	{
+		delete $third_unmatch{$before_id};
+	}
+	foreach my $after_id (sort keys %after_unmatch)
+	{
+		delete $forth_unmatch{$after_id};
+	}
+
+	write_log("After : B ".scalar(keys(%forth_unmatch))."\t A ".scalar(keys(%third_unmatch))."\n") if $debug_mode == 1;
+
+
+	if ( scalar(keys(%forth_unmatch)) == 0 && scalar(keys(%third_unmatch)) == 0 )
+	{
+		$is_same = 1;
+	}
+	else
+	{
+		$is_same = 0;
+	}
+
+	return $is_same;
+}
+
+=head2
+
+ Function: member position check, new way, blast all against all
+
+ Input: contig sequence (file name)
+	est sequnece (hash)
+	est length (hash)
+	contig member file (file name)
+	member position result (file name)
+	sam result (file name)
+
+ Return: unmatched id (hash)
+=cut
+sub member_position
+{
+	my ($input_seq, $est_seq_hash, $est_len_hash, $input_cmf, $output_list, $output_sam) = @_;
+
+	#########################################################
+	# put input contigs and membersseq data to hash		#
+	#########################################################
+
+	my ($cluster_seq, $cluster_len) = &seq2hash($input_seq, 2);
+
+	my %cluster_seq = %$cluster_seq; my %cluster_len = %$cluster_len;
+
+	my %mem_seq = %$est_seq_hash; my %mem_len = %$est_len_hash;
+
+	my %parse_len = ();	# parse length hash, keys is contig and member id, value is theirs length.
+	my %member_contig = ();	# member contig to hash, keys is membmer id, value is contig id.
+
+	#delete the output file that produced last time, because we use >> to produce the list file;
+	if (-e $output_list) {	unlink($output_list); }
+
+	# produce database and sequence file for megablast base one membmer position file.	
+	# for singletons produce member position info directly.
+	# and pass sequence length info to mega blast result.
+
+	#########################################################
+	# using all contigs blast against all members		#
+	#########################################################
+
+	# temp blast input and output file, temp_seq is member seqs, temp_db is contig seqs, temp_result is blast result;
+	my $temp_seq = "$working_dir/temp_seq";
+	my $temp_db = "$working_dir/temp_db";
+	my $temp_result = "$working_dir/temp_result";
+
+	if (-e $temp_seq)	{ unlink("$temp_seq"); }
+	if (-e $temp_db )	{ unlink("$temp_db");  }
+	if (-e $temp_result)	{ unlink("$temp_result"); }
+
+	my $temp_seq_fh = IO::File->new(">$temp_seq") || die "Can not open temp sequences file $!\n";
+	my $temp_db_fh  = IO::File->new(">$temp_db")  || die "Can not open temp database  file $!\n";
+	
+	my $singlet_mp = "";  my $singlet_sam = "";
+
+	my $cm_fh = IO::File->new($input_cmf) || die "Can not open contig member file $input_cmf $!\n";
+	while(my $cm_line = <$cm_fh>)
+	{
+		chomp($cm_line);
+		my @a = split ("\t",$cm_line);
+
+	    	if (scalar(@a) > 2)
+	    	{
+			print $temp_db_fh ">$a[0]\n$cluster_seq{$a[0]}\n";
+                	$parse_len{$a[0]} = $cluster_len{$a[0]};
+
+			for (my $i = 1; $i < @a; $i++)
+			{
+				if ($a[$i] && $mem_seq{$a[$i]})  { 
+					print $temp_seq_fh ">$a[$i]\n$mem_seq{$a[$i]}\n";
+					$parse_len{$a[$i]} = $mem_len{$a[$i]};
+					$member_contig{$a[$i]} = $a[0];
+				}
+				else { 
+					die "Error! have no seq $a[$i] in query\n"; 
+				}
+			}
+		}
+		elsif ( scalar(@a) eq "2" )
+		{
+			$singlet_mp.="$a[1]\t$mem_len{$a[1]}\t$a[0]\t$cluster_len{$a[0]}\t1\t$mem_len{$a[1]}\t1\t$cluster_len{$a[0]}\t1\t100.00\n";
+			$singlet_sam.="$a[1]\t0\t$a[0]\t1\t255\t$mem_len{$a[1]}M\t*\t0\t0\t$$est_seq_hash{$a[1]}\t*\tAS:i:$mem_len{$a[1]}\tEV:Z:0.0\n";
+		}
+		else
+		{
+			die "Error! Contig Mmember File $input_cmf has no membmer or no info in line: $cm_line\n";
+		}
+	}
+	$cm_fh->close;
+	$temp_seq_fh->close;
+	$temp_db_fh->close;
+
+	# megablast, all contigs blast against all members
+	my $format_command = "formatdb -i $temp_db -p F";
+	system($format_command) && die "Error at membmer position format database: $format_command .\n";
+
+	my $blast_command;
+	if ($blast_program eq "blastn")
+	{
+		$blast_command = "blastall -i $temp_seq -d $temp_db -p blastn -o $temp_result $blast_param";
+	}
+	elsif ($blast_program eq "megablast")
+	{
+		$blast_command = "megablast -i $temp_seq -d $temp_db -p $min_identity -o $temp_result $blast_param -v 50 -b 50";
+	}
+	else
+	{ print "Wrong Blast Program $blast_program\n"; }
+	
+	system($blast_command) && die "Error at member position blast.\n";
+
+	#################################################################################################
+	# after megablast, parse blast result to produce the membmer position result base on cmf file.	#
+	# after megablast, parse normal blast result using new function without SearchIO;		#
+	#################################################################################################
+	my ($contig_mp, $unmatched_id, $left_member_contig, $contig_sam) = member_blast_parse_n($temp_result, $est_seq_hash, \%member_contig, , 11);
+
+	#########################################################################
+	# member position check using old way for checking left member contig	#
+	#########################################################################
+	my ($left_mp, $left_unmatched_id, $left_sam) = member_position_old($left_member_contig, $cluster_seq, $cluster_len);
+
+	my $mp_fh = IO::File->new(">".$output_list) || die "Can not open output file $output_list $!\n";
+	#print $mp_fh $contig_mp.$left_mp.$singlet_mp;
+	print $mp_fh $contig_mp.$singlet_mp;
+	$mp_fh->close;
+
+	#store sam format info to file
+	my $sa_fh = IO::File->new(">".$output_sam) || die "Can not open output file $output_sam $!\n";
+	#print $sa_fh $contig_sam.$left_sam.$singlet_sam;
+	print $sa_fh $contig_sam.$singlet_sam;
+	$sa_fh->close;
+
+	# put left unmatched info to unmatched id hash
+	my %unmatch_id = %$unmatched_id;
+
+	foreach my $left_un_id (sort keys %$left_member_contig)
+	{
+		$unmatch_id{$left_un_id} = 1;
+	}
+
+	# print unmatched id info
+	#foreach my $umid (sort keys %unmatch_id)
+	#{
+	#	#write_log("unmatched id\t$umid\n") if $debug_mode == 1;
+	#}
+
+	#delete temp file
+	#unlink 'temp_db','temp_db.nhr','temp_db.nin','temp_db.nsq','formatdb.log','temp_result','temp_seq';
+	unlink "$temp_db","$working_dir/temp_db.nhr","$working_dir/temp_db.nin", "$working_dir/temp_db.nsq",'formatdb.log',"$temp_result","$temp_seq";
+	return %unmatch_id;
+}
+
+=head2 member_position_old
+
+ Function: member position check, old way, blast one against one
+
+ Input: left member contig hash (hash) = contig member file
+        cluster sequences (hash) = contig file
+        cluster length (hash) = contig file
+
+ Return: left member position (scalar)
+	 unmatched id (hash)
+=cut
+sub member_position_old
+{
+	my ($left_mem_ctg, $cluster_seq, $cluster_len) = @_;
+	
+	my $mp_est = "$working_dir/single_est";
+	my $mp_db  = "$working_dir/single_db";
+	my $mp_result = "$working_dir/single_result";
+
+	my $left_mp = ""; my %un_id; my $sam = "";
+
+	my $old_blast_param = $blast_param;
+
+	$old_blast_param =~ s/\s+-e\s+1e-5//;
+
+	foreach my $mem_id (sort keys %$left_mem_ctg)
+	{
+		my $ctg_id = $$left_mem_ctg{$mem_id};
+		
+		my %member_contig;
+		$member_contig{$mem_id} = $ctg_id;
+
+		my $efh = IO::File->new(">".$mp_est) || die "Can not open single est file for member position: $mp_est \n";
+		print $efh ">".$mem_id."\n".$$est_seq_hash{$mem_id}."\n";
+		$efh->close;
+
+		my $dfh = IO::File->new(">".$mp_db)  || die "Can not open single db file for member position: $mp_db \n";
+		print $dfh ">".$ctg_id."\n".$$cluster_seq{$ctg_id}."\n";
+		$efh->close;
+
+		my $format_command = "formatdb -i $mp_db -p F";
+		system($format_command) && die "Error at membmer position format database: $format_command .\n";
+
+		#this is important to edit it, they must be same on cluster and as2seq code
+		my $blast_command;
+		if ($blast_program eq "blastn")
+		{
+			$blast_command = "blastall -i $mp_est -d $mp_db -p blastn -o $mp_result $old_blast_param";	
+		}
+		elsif ($blast_program eq "megablast")
+		{
+			$blast_command = "megablast -i $mp_est -d $mp_db -p $min_identity -o $mp_result $old_blast_param";
+		}
+		else
+		{ print "Wrong Blast Program $blast_program\n"; }
+
+		system($blast_command) && die "Error at member position blast.\n";
+
+		# if member_blast_parse mode eq 2 left will be unmatched
+		my ($contig_mp, $unmatched_id, $left_member_contig, $old_contig_sam) = member_blast_parse_n($mp_result, $est_seq_hash, \%member_contig, 2);
+		#my ($contig_mp, $unmatched_id, $left_member_contig) = member_blast_parse("$mp_result", \%parse_len, \%member_contig);
+		
+
+		if ( scalar(keys(%$left_member_contig)) == 0 )
+		{
+			$left_mp.=$contig_mp;
+		}
+		else
+		{
+			#print "Old member position way dose not work on data $mem_id $ctg_id, so they are unmatched! \n";
+			$un_id{$mem_id} = 1;
+		}
+
+		if ( scalar(keys(%$unmatched_id)) == 1)
+		{
+			$un_id{$mem_id} = 1;
+		}
+
+		$sam.= $old_contig_sam;
+	}
+	return($left_mp, \%un_id, $sam);
+}
+
+=head2 change_result
+
+ Function: change the results of Perl Assembler for next step
+
+ Input: unmatched ids (hash)
+	input contig member file (file name)
+	output contig member file (file name)
+	input contig sequences (file name)
+	input est sequences ($file name)
+	output contig sequences (file name)
+
+ Return: none; output contig member file and contig sequence is the result of this function
+=cut
+sub change_result
+{
+	my $usage = "\n&change_result(ids[hash], input_cmf, output_cmf, input_seq, input_est, output_seq)\n\n";
+
+	my ($ids, $input_cmf, $output_cmf, $input_seq, $input_est, $output_seq) = @_; # || die $usage;
+	
+	my %unmatch_id = %$ids;
+	my %del_contig = ();
+	my %del_member = ();
+
+	#foreach my $k (sort keys %unmatch_id){ print $k."\n"};
+	#write_log($output_cmf."s\n") if $debug_mode == 1;
+
+	### STEP 1 ### del member from cmf and produce new cmf
+	### After del, if members less than 2, delete this contig
+
+	my $ocmf_fh = IO::File->new($input_cmf) || die "CHANGE RESULT:Can not open old contig member file $input_cmf $!\n";
+	my $ncmf_fh = IO::File->new(">".$output_cmf) || die "CHANGE RESULT: Can not open new contig member file $output_cmf $!\n";
+
+	while(my $ocmf_line = <$ocmf_fh>)
+	{
+		my $line_cmf;
+		my $member_num = 0;
+
+		if($ocmf_line =~ m/\w+/)
+		{
+			chomp($ocmf_line);
+			my @mm = split(/\t/, $ocmf_line);
+			$line_cmf.=$mm[0];
+
+			my $im;
+			for($im=1; $im<@mm; $im++)
+			{
+				unless(defined $unmatch_id{$mm[$im]})
+				{
+					$line_cmf.= "\t".$mm[$im];
+					$member_num++;
+				}
+			}
+
+			#After del unmatched members, if the left members more than 2, keep it, less than 2, del it and contig, keep the delete contig info for next reproduce new unique sequence for clustering and assembling.
+			if ($member_num >= 2)
+			{
+				print $ncmf_fh $line_cmf."\n";
+			}
+			else
+			{
+				$del_contig{$mm[0]} = 1;
+				for(my $dm=1; $dm<@mm; $dm++)
+				{
+					unless(defined $unmatch_id{$mm[$dm]})
+					{
+						$del_member{$mm[$dm]} = 1;
+					}
+				}
+			}
+		}
+		
+	}
+	$ncmf_fh->close;
+	$ocmf_fh->close;
+
+	### STEP 2 ### get unmatch id seq from seq and produce new seiq
+	
+	my %cluster_seq = &seq2hash($input_seq);
+	my %mem_seq = %$est_seq_hash;
+
+	my $nseq_fh = IO::File->new(">".$output_seq) || die "Can not open new sequence file $! \n";
+
+	foreach my $cid (sort keys %cluster_seq)
+	{
+		unless (defined $del_contig{$cid})
+		{ 
+			print $nseq_fh ">".$cid."\n".$cluster_seq{$cid}."\n";
+		}
+	}
+
+	foreach my $mid (sort keys %mem_seq)
+	{
+		if (defined $unmatch_id{$mid} || defined $del_member{$mid})
+		{
+			print $nseq_fh ">".$mid."\n".$mem_seq{$mid}."\n";
+		}
+	}
+
+	$nseq_fh->close;
+}
+
+#########################################################################
+# if the input fas seq file have 1000 seqs, the return num is 4         #
+#########################################################################
+sub get_seq_num_len
+{
+	my $file = shift;
+	my $seq_num = 0;
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$file);
+	while(my $inseq = $in->next_seq)
+	{
+		$seq_num++;
+	}
+	my $len = length($seq_num);
+	return $len;
+}
+
+
+#########################################################################
+# put sequence file to hash						#
+# mode 1 hash : id <=> seq						#
+# mode 2 hash : id <=> seq && id <=> length				#
+#########################################################################
+sub seq2hash
+{
+	my $seq_file = shift;
+	my $mode = shift || 1;
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$seq_file);
+	my %seq_hash=();
+	my %len_hash=();
+	my @out;
+
+	while(my $inseq = $in->next_seq){
+		my $seq_id = $inseq->id; my $seq_seq = $inseq->seq; my $seq_len = $inseq->length;
+		$seq_hash{$seq_id} = $seq_seq;
+		if ($mode ne "1") { $len_hash{$seq_id} = $seq_len; }
+	}
+	if ($mode eq "1") { return %seq_hash; }
+	else		  { return (\%seq_hash,\%len_hash);}
+}
+
+#########################################################################
+# parse blast file and get the info for every unigene blast 		#
+#########################################################################
+=head2 member_blast_parse_n
+
+ Function: parse megablast normal result Fast (without SearchIO) (new version)
+
+ Input: blast reuslt, member sequences, member contig, mode
+
+ Output: 
+
+=cut
+sub member_blast_parse_n
+{
+	my ($blast_result, $mem_seq, $mem_ctg, $mode) = @_;
+
+	my %um_id; my $out_mp = ""; my $out_sam = "";
+
+	#################################################################
+	# Begin Parse blast result, produce member position result	#
+	#################################################################
+
+	my ($one_query, $query_name, $query_length, $hit_name, $hit_length, $is_hit, $is_hsp, $hsp_order, $query_record, $score, $evalue, $strand, $sam_strand, $identity, $query_string, $hit_string, $query_start, $query_end, $hit_start, $hit_end, $overlap, $query_to_end, $hit_to_end, $cigar_char, $qseq );
+	$hsp_order = 0;
+	my @cigar; my @cmaux;
+
+	my %hsp = ();
+	$is_hsp = 1;
+	
+	my $bfh = IO::File->new($blast_result) || "Can not open blast result file: $blast_result $!\n";
+	while(<$bfh>)
+	{
+		chomp;
+		# Result Part 
+		# Query Name, Query Length
+		if ($mode == 2 && /No hits found/)
+		{
+			last;
+		}
+		elsif (/Query=\s(\S+)/ || eof)
+		{
+			#########################################
+			# Parse last hsp record to hash		#
+			#########################################
+			if ($hsp_order > 0)
+			{
+				my $hsp_info =  $query_name."\t".$query_length."\t".
+						$hit_name."\t".$hit_length."\t".
+						$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+						$query_start."\t".$query_end."\t".$query_string."\t".
+						$hit_start."\t".$hit_end."\t".$hit_string."\t".
+						$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info;	 #print $hsp_order."\tquery\t".$hsp_info."\n" if $query_name eq 'C135DAF000003';
+			}
+			#########################################
+			# parse hsp to produce sam and mp	#
+			#########################################
+			if (scalar(keys(%hsp)) > 0)
+			{
+				my $unmatch = 1; # switch on for find unmatch info;
+
+				# produce sam and member position file
+				foreach my $hsp_num (sort {$a<=>$b} keys %hsp)
+				{
+					my @one_hit = split(/\t/, $hsp{$hsp_num});
+					#print $hsp_num."\t".$hsp{$hsp_num}."\n";
+					unless( scalar(@one_hit) == 16 ) { die "Error! the parsed blast may lost some info:\n $hsp{$hsp_num} \n"; }
+					
+					my ($query_name, $query_length, $hit_name, $hit_length, $score, $evalue, $identity, $strand,
+					    $query_start, $query_end, $query_string, $hit_start, $hit_end, $hit_string, $overlap, $sam_strand) = 
+					   ($one_hit[0], $one_hit[1], $one_hit[2], $one_hit[3], $one_hit[4], $one_hit[5], $one_hit[6], $one_hit[7],
+					    $one_hit[8], $one_hit[9], $one_hit[10],$one_hit[11],$one_hit[12],$one_hit[13],$one_hit[14], $one_hit[15]);
+
+					my $query_to_end = $query_length - $query_end;
+					my $hit_to_end = $hit_length - $hit_end;
+
+					$identity =~ s/%//;	# percentage identity
+
+					#if ($query_name eq 'C135DAF000003') { die; }
+
+                                	#this is for member position and sam file;
+                                	if (defined $$mem_ctg{$query_name} && ($$mem_ctg{$query_name} eq $hit_name) && ($query_name ne $hit_name) )
+                                	{
+					    if ( $query_start <= $max_end_clip && $query_to_end < $max_end_clip && $identity >= $min_identity )
+					    {
+						# produce member position
+                                                $out_mp.=$one_hit[0]."\t".$one_hit[1]."\t".$one_hit[2]."\t".$one_hit[3]."\t".
+						$one_hit[8]."\t".$one_hit[9]."\t".$one_hit[11]."\t".$one_hit[12]."\t".
+						$one_hit[7]."\t".$one_hit[6]."\n";
+
+						#produce sam 
+						@cmaux = (0, 0, 0, '');
+						@cigar = ();
+						push(@cigar, ($query_start-1) . "S") if ($query_start > 1);
+						my $cigar = aln2cm(\@cigar, \$query_string, \$hit_string, \@cmaux);
+						push(@$cigar, $query_to_end . "S") if ($query_to_end > 0);
+
+                                                if ($strand == 1)
+                                                {
+							$qseq = $$mem_seq{$query_name};
+                                                }
+                                                else
+                                                {
+							@$cigar = reverse(@$cigar);
+							$qseq = reverse($$mem_seq{$query_name});
+							$qseq =~ tr/atgcrymkswATGCRYMKSW/tacgyrkmswTACGYRKMSW/;
+						}
+
+						$cigar_char = join('', @$cigar);
+						$out_sam.=$query_name."\t".$sam_strand."\t".$hit_name."\t".$hit_start."\t255\t".$cigar_char."\t*\t0\t0\t".$qseq."\t*\tAS:i:".$score."\tEV:Z:".$evalue."\n";
+						delete $$mem_ctg{$query_name};
+						$unmatch = 0; 	#switch off unmatched searching
+						last;
+					    }
+					}
+				}
+
+				if ($unmatch == 1)
+				{
+					foreach my $hsp_num (sort {$a<=>$b} keys %hsp)
+					{
+						my @one_hit = split(/\t/, $hsp{$hsp_num});
+                                        	#print $hsp_num."\t".$hsp{$hsp_num}."\n";
+                                        	my ($query_name, $query_length, $hit_name, $hit_length, $score, $evalue, $identity, $strand,
+                                            	$query_start, $query_end, $query_string, $hit_start, $hit_end, $hit_string, $overlap, $sam_strand) =
+                                           	($one_hit[0], $one_hit[1], $one_hit[2], $one_hit[3], $one_hit[4], $one_hit[5], $one_hit[6], $one_hit[7],
+                                            	$one_hit[8], $one_hit[9], $one_hit[10],$one_hit[11],$one_hit[12],$one_hit[13],$one_hit[14], $one_hit[15]);
+
+                                        	my $query_to_end = $query_length - $query_end;
+                                        	my $hit_to_end = $hit_length - $hit_end;
+
+						$identity =~ s/%//;
+						if (defined $$mem_ctg{$query_name} && $$mem_ctg{$query_name} eq $hit_name)
+                                        	{
+                                            		if ( $query_start > $max_end_clip || $query_to_end >= $max_end_clip || $identity < $min_identity )
+                                            		{
+								$um_id{$query_name} = 1;
+					    		}
+						}
+					}
+				}
+			}
+
+			#########################################
+			# start a new query			#
+			#########################################
+			%hsp = ();
+			$hsp_order = 0;
+			$query_name = ""; $query_length = ""; $hit_name = ""; $hit_length = "";
+			$query_name = $1;
+		}
+		elsif (/\s+\((\S+)\sletters\)/)
+		{
+			$query_length = $1;
+			$query_length =~ s/,//ig;
+		}
+
+		# Hit Part
+		# Hit Name, Hit Length
+		elsif (/>(\S+)/)
+		{
+			#########################################
+			# hsp info to hash			#
+			#########################################
+			if ($hsp_order > 0)
+			{
+			my $hsp_info =  $query_name."\t".$query_length."\t".
+					$hit_name."\t".$hit_length."\t".
+					$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+					$query_start."\t".$query_end."\t".$query_string."\t".
+					$hit_start."\t".$hit_end."\t".$hit_string."\t".
+					$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info; #print $hsp_order."\thit\t".$hsp_info."\n" if $query_name eq "C135DAF000003";
+				$is_hsp = 0;
+			}
+			#########################################
+			# new hit start				#
+			#########################################
+			$hit_name = ""; $hit_length = "";
+			$hit_name = $1;
+
+                        #if ($query_name ne $hit_name) {	$is_hit = 1; }  else  { $is_hit = 0; }
+		}
+		elsif (/\s+Length = (\d+)/)
+		{
+			$hit_length = $1;
+		}
+
+		# HSP Part
+		# Score, Evalue, Identity, Strand, Query Start, Query End, Hit Start, Hit End, Query String, Hit String
+		elsif (/Score =\s+(\S+) bits.+Expect(\(\d+\))? = (\S+)/)
+		{
+			#print $_."\t$is_hit\t$hsp_order\n";
+			#########################################
+			# hsp record to hash			#
+			#########################################
+			if ($hsp_order > 0 && $is_hsp == 1)
+			{
+				my $hsp_info = 	$query_name."\t".$query_length."\t".
+						$hit_name."\t".$hit_length."\t".
+						$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+						$query_start."\t".$query_end."\t".$query_string."\t".
+						$hit_start."\t".$hit_end."\t".$hit_string."\t".
+						$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info; #print $hsp_order."\thsp\t".$hsp_info."\n" if $query_name eq "C135DAF000003";
+			}
+			#########################################
+			# for new hsp record			#
+			#########################################
+			$is_hsp = 1;
+			$hsp_order++;
+			$score = $1; $evalue = $3;
+			$evalue = "1$evalue" if ($evalue =~ m/^e/);
+			$query_string = ""; $hit_string = "";
+			$query_start = 0; $query_end = 0; $hit_start = 0; $hit_end = 0;
+		}
+		elsif (/\s+Identities = (\d+)\/(\d+)\s+\((\S+)\)/ && $hsp_order >= 1)
+		{
+			$identity = $1/$2*100;
+			$identity = sprintf("%.".(2)."f", $identity);
+			if ( $1 > $2 ) { $overlap = $1; } else { $overlap = $2; }
+		}
+		elsif (/\s+Strand = (\S+) \/ (\S+)/ && $hsp_order >= 1)
+		{
+			if ( $2 eq "Plus" ) { $strand = 1; $sam_strand = 0; } else { $strand = -1; $sam_strand |= 0x10; }
+		}	
+		elsif (/Query\:\s(\d+)\s+(\S+)\s(\d+)/ && $hsp_order >= 1) 
+		{
+			$query_string .= $2;
+          		if ($query_start == 0) { $query_start = $1; }
+          		$query_end = $3;
+		} 
+		elsif (/Sbjct\:\s(\d+)\s+(\S+)\s(\d+)/ && $hsp_order >= 1) 
+		{
+			$hit_string .= $2;
+			if ( $strand == -1 )
+			{
+				if ($hit_end == 0) { $hit_end = $1 };
+				$hit_start = $3;
+			}
+			else
+			{
+				if ($hit_start == 0) { $hit_start = $1 };
+				$hit_end = $3;
+			}
+		}
+		else
+		{
+			next;
+		}
+	}
+	$bfh->close;
+
+	#################################################################
+	# End Parse blast result, produce member position result	#
+	#################################################################
+	#print "No. unmatched sequences". scalar(keys(%um_id))."\n";
+	#print "No. left member ctg". scalar(keys(%$mem_ctg))."\n";
+	#foreach my $mid (sort keys %$mem_ctg)
+	#{
+		#print $mid."\t".$$mem_ctg{$mid}."\n";
+	#}
+	# the out_mp didn't have unmatched membmer position results
+	# the unmatched id hash
+	# the member contig hash didn't have member position results
+	return ( $out_mp, \%um_id, $mem_ctg, $out_sam);
+}
+
+sub aln2cm
+{
+	my ($cigar, $q, $s, $cmaux) = @_;
+	my $l = length($$q);
+	for (my $i = 0; $i < $l; ++$i)
+	{
+		my $op;
+		# set $op
+		if (substr($$q, $i, 1) eq '-') { $op = 2; }
+		elsif (substr($$s, $i, 1) eq '-') { $op = 1; }
+		else { $op = 0; }
+
+		# for CIGAR
+		if ($cmaux->[0] == $op) 
+		{
+			++$cmaux->[1];
+		} 
+		else 
+		{
+			push(@$cigar, $cmaux->[1] . substr("MID", $cmaux->[0], 1));
+			$cmaux->[0] = $op; 
+			$cmaux->[1] = 1;
+		}
+	}
+	push(@$cigar, $cmaux->[1] . substr("MID", $cmaux->[0], 1));
+	return $cigar;
+}
+
+=head2 member_blast_parse
+
+ Function: parse megablast normal result Fast (old version, -m 8)
+
+ Input: blast reuslt, member sequences, member contig, mode
+
+ Output: 
+
+=cut
+sub member_blast_parse
+{
+	# input: megablast result; parse_len: length info in hash; mem_ctg: contig member info in hash.
+	my ($input, $parse_len, $mem_ctg) = @_;
+
+	my %parse_len = %$parse_len;
+	my %mem_ctg   = %$mem_ctg;
+
+	my $out_mp = "";
+
+	my %unique_mem = ();
+
+	my %um_id = ();
+
+	my $bfh = IO::File->new($input) || die "Can not open the blast result $!\n";
+	while(my $line_bfh = <$bfh>)
+	{
+		my @mm = split(/\t/, $line_bfh);
+
+		my $query_id = $mm[0];
+		my $hit_id = $mm[1];
+
+		if (defined $unique_mem{$query_id})
+		{
+			next;
+		}
+		else
+		{
+		    if ($hit_id eq $mem_ctg{$query_id})
+		    {
+			delete $mem_ctg{$query_id};
+
+			my $query_length = $parse_len{$query_id};
+			my $hit_length = $parse_len{$hit_id};
+
+			my $hsp_identity = $mm[2];
+
+			my $query_start = $mm[6];
+			my $query_end = $mm[7];
+			my $hit_start = $mm[8];
+			my $hit_end = $mm[9];
+
+			my $strand = 1;
+			if ($hit_start > $hit_end ) 
+			{ 
+				$strand = -1; $hit_start = $mm[9]; $hit_end = $mm[8];
+			}
+
+			#check the unmatched members
+			my $query_to_end = $query_length - $query_end;
+			if ($query_start > $max_end_clip || $query_to_end >= $max_end_clip)
+			{
+				$um_id{$query_id} = 1;
+                  	}
+			elsif ( $hsp_identity < $min_identity)
+			{
+				$um_id{$query_id} = 1;
+			}
+			else
+			{
+				$out_mp.=$query_id."\t".$query_length."\t".$hit_id."\t".$hit_length."\t".$query_start."\t".$query_end."\t".$hit_start."\t".$hit_end."\t".$strand."\t".$hsp_identity."\n";
+			}
+
+			$unique_mem{$query_id} = 1;
+		    }
+		}
+	}
+	$bfh->close || die "Can not close megablast result. $!\n";
+
+	if ( scalar(keys(%mem_ctg)) > 0)
+	{
+		#foreach my $aaa (sort keys %mem_ctg) {  write_log("Left members have no result in 2nd mp result:$aaa.\n") if $debug_mode == 1; }
+	}
+	
+	# the out_mp didn't have unmatched membmer position results
+	# the unmatched id hash
+	# the member contig hash didn't have member position results
+	return ( $out_mp, \%um_id, \%mem_ctg );
+}
+
+#########################################################################
+# Subroutine: get [A...Z], Perl Prefix_m				#
+#########################################################################
+
+sub get_prefix_m
+{
+	my $num = shift;
+	my @a = ('J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','A','B','C','D','E','F','G','H','I','J');
+	my $char = $a[$num];
+	return $char;
+}
+
+
+#this didn't use
+sub parse_parameter
+{
+	my $para = shift;
+	my %phash = ();
+
+	my @mpara = split(/_/, $para);
+
+	my $ip;
+	for($ip=0; $ip<@mpara; $ip = $ip+2)
+	{
+		if ($mpara[$ip] =~ m/-/ && $mpara[$ip+1])
+		{
+
+			#print $mpara[$ip].$mpara[$ip+1]."\n";
+			$phash{$mpara[$ip]} = $mpara[$ip+1];
+		}
+		else
+		{
+			print "Error at pipeline config file parameter input of rename_pipeline\n";
+			die $usage;
+		}
+	}
+	return %phash;
+}
+
+=head2 rename_pipeline
+
+ Function: rename the final result of assembly.
+
+ Input: input sequences
+	input contig member file
+
+	prefix id (para_p), default UN;
+	start number (para_s), default 1;
+	number length (para_l), default as seq number length;
+	output cmf mode (para_m), default 1;
+	 
+	output sequneces, default unigene_seq
+	output contig member files, default contig_member
+	output id match file, (old id : new id)
+
+ Return: none
+=cut
+sub rename_pipeline
+{
+	my ($input_seq, $input_cmf, $para_p, $para_s, $para_l, $para_m, $output_seq, $output_cmf, $output_mid, $mp_s, $mp_e, $sam_s, $sam_e )= @_;
+
+	#########################################################
+	# preparation part 					#
+	#########################################################
+
+	# 1. put member position info, sam info and contig sequences to hash
+	my %tmp_mp_hash; 	# using this hash at selection step
+	my %tmp_sam_hash;	# using this hash at selection step
+	my %member_position_hash;	
+	my %save_sam;
+
+	my $smfh = IO::File->new($mp_s) || die "can not open temp member position file: $mp_s\n";
+	while(<$smfh>)
+	{
+		chomp;
+		my @smm = split(/\t/, $_);
+		$tmp_mp_hash{$smm[2]."\t".$smm[0]} = $_;
+	}
+	$smfh->close;
+
+	my $safh = IO::File->new($sam_s) || die "can not open temp sam file: $sam_s\n";
+	while(<$safh>)
+	{
+		chomp;
+		my @sam = split(/\t/, $_);
+		$tmp_sam_hash{$sam[2]."\t".$sam[0]} = $_;
+	}
+	$safh->close;
+
+	my %contig_hash = seq2hash($input_seq); #using this hash at correction step;
+
+	# 2. prepare parameters; 2.1 check the length of SeqID; 2.2 check the start of unid;
+	my $def_l = get_seq_num_len($input_seq);
+
+	if ($para_l < $def_l ){ $para_l = $def_l; }
+	
+	my $i_start; if ($para_s > 1) { $i_start = $para_s-1; } else { $i_start = 0;}
+	
+	#########################################################
+	# main part						#
+	#########################################################
+	
+	# select member position info base on contig member file
+	my %select_mp_hash;  my %sam_hash;
+	my %cmf_hash; 		# using this hash at correction step
+
+	my $in_cf = IO::File->new($input_cmf)  || die "Can not open input cmf file $input_cmf $! \n";
+	while(my $in_cf_line = <$in_cf>)
+	{
+		if ($in_cf_line =~ m/\w+/)
+		{
+			chomp($in_cf_line);
+			my @m1 = split(/\t/, $in_cf_line);
+			my @m2 = split(/\t/, $in_cf_line, 2);
+			$cmf_hash{$m2[0]} = $m2[1];
+			
+			for(my $j=1; $j<@m1; $j++) 
+			{ 
+				if ( defined $tmp_mp_hash{$m1[0]."\t".$m1[$j]} && $tmp_sam_hash{$m1[0]."\t".$m1[$j]} )
+				{
+					my @m2 = split(/\t/, $tmp_mp_hash{$m1[0]."\t".$m1[$j]} );
+					my $cl = length($m2[3]);
+					my $start = add_zero($m2[6], $cl);
+ 					my $end = add_zero($m2[7], $cl);
+
+					$select_mp_hash{$m1[0]."\t".$start."\t".$end."\t".$m1[$j]} = $tmp_mp_hash{$m1[0]."\t".$m1[$j]};
+					$member_position_hash{$m1[0]."\t".$m1[$j]} = $tmp_mp_hash{$m1[0]."\t".$m1[$j]};
+					$sam_hash{$m1[0]."\t".$m1[$j]} = $tmp_sam_hash{$m1[0]."\t".$m1[$j]};
+				}
+				else
+				{
+					print "Error! contig member info line: \"$in_cf_line\" do not have member position info. \n";
+				}
+			}
+		}
+	}
+	$in_cf->close;
+
+	# check the select member position info and produce info for correcting it.
+	my %def_uid; my %mem_pos; my $ik; my %correct_mp;
+
+	foreach my $kk (sort keys %select_mp_hash)
+	{
+		$ik++;
+		my @mm = split(/\t/, $select_mp_hash{$kk} );
+
+		if ($ik eq scalar(keys(%select_mp_hash)) ) 
+		{ 
+			$mem_pos{$kk} = $mm[3];
+		}
+
+		if ($ik eq scalar(keys(%select_mp_hash)) || !defined $def_uid{$mm[2]} )
+		{
+			$def_uid{$mm[2]} = 1;
+			
+			# find error information
+			if ($ik > 1)
+			{
+				# a new unigene line, check begin
+				my ($from, $to) = (0, 0);
+
+				my @pos_array = sort(keys(%mem_pos));
+
+				foreach my $a1 (sort keys(%mem_pos))
+				{
+					#print $a1."\ta1\t".$mem_pos{$a1}."\t$ik\n";
+				}
+
+				foreach my $a2 (@pos_array)
+				{
+					#print $a2."\ta2\t$ik\n";
+				}
+
+
+				my $unigene_length = $mem_pos{$pos_array[1]};
+
+				#print $unigene_length."\tUnigene_length\t$ik\n";
+
+				my $max_mem = scalar(@pos_array);
+
+				my $uid = "";
+
+				for(my $i=0; $i<@pos_array; $i++)
+				{
+					my @pos = split(/\t/, $pos_array[$i]);
+
+					$uid = $pos[0];
+
+					if ($i == 0) # put first start and end info to from and to;
+					{ 
+						$from = $pos[1]; $to = $pos[2];
+
+						if ($pos[1] != 1) { 
+							#print "$pos[0] : $pos[3] : $max_mem : $i : Error! member start at $pos[1] .\n";
+							$correct_mp{$uid} = "$pos[1]";
+						}
+					}
+					else
+					{
+						if ($pos[1] <= $to )
+						{
+							if ( $pos[2] > $to ) { $to = $pos[2]; }	
+							if ( $pos[2] == $unigene_length ) { $to = $pos[2]; last; }
+						}
+						else
+						{
+							if (defined $correct_mp{$uid})  { $correct_mp{$uid} .= "\t$to\t$pos[1]"; }
+							else 				{ $correct_mp{$uid} = "001\t$to\t$pos[1]"; }
+							if ( $pos[2] > $to ) { $to = $pos[2]; }
+						}
+					}
+				}
+
+				if ($to ne $unigene_length)
+				{
+					#print " : none : $max_mem : none : Error! end at $to, unigene len: $unigene_length .\n";
+					if (defined $correct_mp{$uid})  { $correct_mp{$uid} .= "\t$to"; }
+					else				{ $correct_mp{$uid} = "001\t$to"; }
+				}
+				else
+				{
+					if (defined $correct_mp{$uid})  { $correct_mp{$uid} .= "\t$to"; }	
+				}
+			}
+
+			# after process member position info in one unigene
+			%mem_pos = ();
+			$mem_pos{$kk} = $mm[3];
+		}
+		else # if defined $def_uid{$mm[2]}
+		{
+			$mem_pos{$kk} = $mm[3];
+		}
+	}
+
+	# correct error info.
+	foreach my $kid (sort keys %correct_mp)
+	{
+		my @part = split(/\t/, $correct_mp{$kid} );
+		
+		#################################################
+		# process part info				#
+		#################################################
+
+		for(my $ip=0; $ip<@part; $ip=$ip+2)
+		{
+			my $start = $part[$ip];
+			my $end = $part[$ip+1];
+
+			#########################################
+			# correct sequences			#
+			#########################################
+
+			my $new_seq_id = $kid."_$ip";
+
+			$contig_hash{$new_seq_id} = substr($contig_hash{$kid}, $start-1, $end-$start+1);
+
+			my $con_len = $end-$start+1;	
+			#########################################
+			# correct member position & cmf file	#
+			#########################################
+
+			my @members = split(/\t/, $cmf_hash{$kid});
+
+			foreach my $mid (@members)
+			{
+				my @mp_info = ();
+				if (defined $member_position_hash{$kid."\t".$mid})
+				{
+					@mp_info = split(/\t/, $member_position_hash{$kid."\t".$mid});
+				}
+				else
+				{
+					print "Error! do not have mp info with member : $mid and contig : $kid\n";
+				}
+
+				my @sam_info = ();
+				if (defined $sam_hash{$kid."\t".$mid})
+				{
+					@sam_info = split(/\t/, $sam_hash{$kid."\t".$mid});
+				}
+				else
+				{
+					print "Error! do not have sam info with member : $mid and contig : $kid\n";
+				}
+
+				my $mp_start = $mp_info[6];
+				my $mp_end = $mp_info[7];
+
+				if ($mp_start >= $start && $mp_end <= $end)
+				{
+					if (defined $cmf_hash{$new_seq_id}){$cmf_hash{$new_seq_id}.= "\t".$mid;}else{$cmf_hash{$new_seq_id}=$mid;}
+
+					my $corrected_mp_start = $mp_start-$start+1;
+					my $corrected_mp_end = $mp_end-$start+1;
+
+					$member_position_hash{$new_seq_id."\t".$mid} = "$mid\t$mp_info[1]\t$new_seq_id\t$con_len\t$mp_info[4]\t$mp_info[5]\t$corrected_mp_start\t$corrected_mp_end\t$mp_info[8]\t$mp_info[9]"; 
+
+					my $corrected_sam_start = $sam_info[3]-$start+1;
+
+					$sam_hash{$new_seq_id."\t".$mid} = "$mid\t$sam_info[1]\t$new_seq_id\t$corrected_sam_start\t$sam_info[4]\t$sam_info[5]\t$sam_info[6]\t$sam_info[7]\t$sam_info[8]\t$sam_info[9]\t$sam_info[10]\t$sam_info[11]\t$sam_info[12]";
+				}
+			}
+			#print "$kid $start $end\n" if $debug_mode == 1;
+		}
+		#delete original error contig member info and contig info
+		#delete original error member position info and sam info;
+		my @delmem = split(/\t/, $cmf_hash{$kid});
+		foreach my $delmid (@delmem) {
+			delete $member_position_hash{$kid."\t".$delmid};
+			delete $sam_hash{$kid."\t".$delmid};
+		}
+		delete $contig_hash{$kid};
+		delete $cmf_hash{$kid};
+	}
+
+	# output info
+	my $out_sf = IO::File->new(">".$output_seq) || die "Can not open output seq file $output_seq $! \n";
+	my $out_cf = IO::File->new(">".$output_cmf) || die "Can not open output cmf file $output_cmf $! \n";
+	my $out_id = IO::File->new(">".$output_mid) || die "Can not open output mid file $output_mid $! \n";
+	my $out_mp = IO::File->new(">".$o_mp)       || die "Can not open output mp  file $o_mp $! \n";
+	my $out_sa = IO::File->new(">".$o_sam)      || die "Can not open output sam file $o_sam $! \n";
+		
+	my %id_hash; # store id hash table
+	my %contig_len;
+
+	foreach my $contig_id (sort keys %cmf_hash)
+	{
+		#produce newid
+		my $n = "";
+		$i_start++;
+		my $i_length = length($i_start);
+		while($i_length < $para_l) {$n.="0"; $i_length++;}
+		my $newid = $para_p.$n.$i_start;
+						
+		#################################################
+		# output id map file (contig part)		#
+		#################################################
+		print $out_id "$newid\t$contig_id\n";
+		$id_hash{$contig_id} = $newid;
+
+		#################################################
+		# output unigene file (contig part)		#
+		#################################################
+		if (defined $contig_hash{$contig_id})
+		{
+			print $out_sf ">$newid\n".uc($contig_hash{$contig_id})."\n";
+			$contig_len{$contig_id} = length($contig_hash{$contig_id});
+		}
+		delete $contig_hash{$contig_id};
+
+		#################################################
+		# output cmf file (contig part)			#
+		#################################################
+		print $out_cf "$newid\t$cmf_hash{$contig_id}\n";
+
+		#################################################
+		# output mp and sam (contig part)		#
+		#################################################
+		my @m = split(/\t/, $cmf_hash{$contig_id});
+
+		foreach my $mid (@m)
+		{
+			if (defined $member_position_hash{$contig_id."\t".$mid})
+			{
+				my @mp = split(/\t/,$member_position_hash{$contig_id."\t".$mid});
+				print $out_mp "$mp[0]\t$mp[1]\t$newid\t$mp[3]\t$mp[4]\t$mp[5]\t$mp[6]\t$mp[7]\t$mp[8]\t$mp[9]\n";
+			}
+			else
+			{
+				print "Error! Do not have member position info in rename function output part: $contig_id $mid\n";
+			}
+
+			if (defined $sam_hash{$contig_id."\t".$mid})
+			{
+				my @sam = split(/\t/,$sam_hash{$contig_id."\t".$mid});
+				my $rlen = $contig_len{$contig_id};
+				my $pos;
+                        	my $l = length($sam[3]);
+				my $zero = "";
+				for(my $ii=0; $ii<$rlen-$l; $ii++) { $zero.="0"; }
+				$pos = $zero.$sam[3];
+
+				$save_sam{$newid.$pos.$sam[0]} = "$sam[0]\t$sam[1]\t$newid\t$sam[3]\t$sam[4]\t$sam[5]\t$sam[6]\t$sam[7]\t$sam[8]\t$sam[9]\t$sam[10]\t$sam[11]\t$sam[12]"; 
+			}
+			else
+			{
+				print "Error! Do not have sam info in rename function output part: $contig_id $mid\n";
+			}
+		}
+		
+
+
+	}
+
+	#resort sam order;
+	foreach my $sam_id (sort keys %save_sam)
+	{
+		print $out_sa $save_sam{$sam_id}."\n";
+	}
+
+	foreach my $singlet_id (sort keys %contig_hash)
+	{
+		#produce new unid
+		my $n = "";
+		$i_start++;
+		my $i_length = length($i_start);			
+		while( $i_length<$para_l ) { $n.="0"; $i_length++; }
+		my $newid = $para_p.$n.$i_start;
+
+		my $seq_len = length($contig_hash{$singlet_id});
+
+		#################################################
+		# output id map file (singlet part)		#
+		#################################################
+		print $out_id "$newid\t$singlet_id\n";
+		$id_hash{$singlet_id} = $newid;
+
+		#################################################
+		# output cmf file (singlet part)		#
+		#################################################
+		print $out_cf "$newid\t$singlet_id\n";
+
+		#################################################
+		# output unigene file (singlet part)		#
+		#################################################
+
+		print $out_sf ">$newid\n".uc($contig_hash{$singlet_id})."\n";
+
+		#################################################
+		# output mp file (singlet part)			#
+		#################################################
+		print $out_mp "$singlet_id\t$$est_len_hash{$singlet_id}\t$newid\t$seq_len\t1\t$$est_len_hash{$singlet_id}\t1\t$seq_len\t1\t100.00\n";
+		
+		#################################################
+		# output sam file (singlet part)		#
+		#################################################
+		print $out_sa "$singlet_id\t0\t$newid\t1\t255\t$$est_len_hash{$singlet_id}M\t*\t0\t0\t$$est_seq_hash{$singlet_id}\t*\tAS:i:$$est_len_hash{$singlet_id}\tEV:Z:0.0\n";
+	}
+
+	$out_id->close;
+	$out_cf->close;
+	$out_sf->close;
+	$out_mp->close;
+	$out_sa->close;
+}
+
+sub add_zero
+{
+	my ($digi, $len) = @_;
+
+	my $rdigi;
+
+	my $zl = $len - length($digi);
+
+	my $zero = "";
+
+	if ($zl > 0 )
+	{
+		for(my $i=0; $i<$zl; $i++)
+		{
+			$zero.="0";
+		}
+		$rdigi = $zero.$digi;
+	}
+	else
+	{
+		$rdigi = $digi;
+	}
+	return $rdigi;
+}
+
+sub borrow_sam
+{
+	my ($ids, $sam_s, $sam_e) = @_;
+
+	my %id_hash; my %id_record; my %sam; my $rlen = 6;
+
+	my $ifh = IO::File->new($ids) || die "can not open id map file: $ids\n";
+	while(<$ifh>)
+	{
+		chomp;
+		my @imm = split(/\t/, $_);
+		$id_hash{$imm[1]} = $imm[0];
+	}
+	$ifh->close;
+	
+	my $smfh = IO::File->new($sam_s) || die "can not open temp mp file: $sam_s\n";
+	while(<$smfh>)
+	{
+		chomp;
+		my @smm = split(/\t/, $_);
+		
+		if (defined $id_hash{$smm[2]})
+		{
+			my $pos;
+                        my $l = length($smm[3]);
+                        my $zero = "";
+                        for(my $ii=0; $ii<$rlen-$l; $ii++)
+                        {
+                                $zero.="0";
+                        }
+                        $pos = $zero.$smm[3];
+
+			$sam{$id_hash{$smm[2]}.$pos.$smm[0]} = "$smm[0]\t$smm[1]\t$id_hash{$smm[2]}\t$smm[3]\t$smm[4]\t$smm[5]\t$smm[6]\t$smm[7]\t$smm[8]\t$smm[9]\t$smm[10]\t$smm[11]\t$smm[12]\n";
+			$id_record{$smm[2]} = 1;
+		}
+		else
+		{
+			#print "Error! Do not have new id: $_ , you can amend it after assembley\n";
+		}
+	}
+	$smfh->close;
+
+	my ($cseq, $clen) = seq2hash($o_unigene, 2);
+
+	foreach my $oid (sort keys %id_hash)
+	{
+		unless (defined $id_record{$oid})
+		{
+			$sam{$id_hash{$oid}} = "$oid\t0\t$id_hash{$oid}\t1\t255\t$$est_len_hash{$oid}M\t*\t0\t0\t$$est_seq_hash{$oid}\t*\tAS:i:$$est_len_hash{$oid}\tEV:Z:0.0\n";
+		}
+	}
+
+	my $emfh = IO::File->new(">".$sam_e) || die "can not open out mp file: $sam_e\n";
+
+	foreach my $k (sort keys %sam)
+	{
+		print $emfh $sam{$k};
+	}
+	$emfh->close;	
+}
+
+=head2 mp_stat
+
+ Function: get member position statistic info
+
+ Input: final member position result (file name)
+	member position statistic output (file name)
+
+ Return: none
+=cut
+sub mp_stat
+{
+	my $mp_file = shift;
+	my $mp_stat_file = shift;
+
+	my @stat;
+	my $mpfh = IO::File->new($mp_file) || die "Can not open $mp_file\n";
+	while(my $line_mp = <$mpfh>)
+	{
+		chomp($line_mp);
+		my @ms = split(/\t/, $line_mp);
+		
+		#assign array id for length
+		my $slen = $ms[1]; my $ilen;
+		my $clen = length($slen);
+
+		if    ($clen > 3 ) { $ilen = 6; }
+		elsif ($clen < 3 ) { $ilen = 1; }
+		else
+		{
+			my $first_num = substr($slen,0,1);
+			if ($first_num < 5 ) { $ilen = $first_num + 1; } else { $ilen = 6; }
+		}
+
+		#assign arry id for identity
+		my $siden = $ms[9]; my $iiden;
+		if 	($siden >=99 )			{ $iiden = 1; }
+		elsif	($siden >=98 && $siden <99 )	{ $iiden = 2; }
+		elsif	($siden >=97 && $siden <98 )	{ $iiden = 3; }
+		elsif	($siden >=96 && $siden <97 )	{ $iiden = 4; }
+		elsif	($siden >=95 && $siden <96 )	{ $iiden = 5; }
+		elsif	($siden >=94 && $siden <95 )	{ $iiden = 6; }
+		elsif	($siden >=93 && $siden <94 )	{ $iiden = 7; }	
+		elsif	($siden >=92 && $siden <93 )	{ $iiden = 8; }
+		elsif	($siden >=91 && $siden <92 )	{ $iiden = 9; }
+		elsif	($siden >=90 && $siden <91 )	{ $iiden = 10; }
+		else					{ $iiden = 11; }
+		$stat[$ilen][$iiden]++;
+	}
+	$mpfh->close;
+
+	my $msfh = IO::File->new(">".$mp_stat_file) || die "Can not open $mp_stat_file\n";
+	print $msfh "Len/%ID\t100-99\t99-98\t98-97\t97-96\t96-95\t95-94\t94-93\t93-92\t92-91\t91-90\t<90\n";
+
+	for(my $x=1; $x<=6; $x++)
+	{
+		my $char_len;
+		if ($x < 6) { my $xi = $x-1; $char_len = $xi."00-".$x."00"; }
+		else	    { $char_len = ">500"; }
+		print $msfh $char_len;
+
+		for(my $y=1; $y<=11; $y++)
+		{
+			if ($stat[$x][$y]) { print $msfh "\t".$stat[$x][$y]; }
+			else		   { print $msfh "\t0"; }
+		}
+		print $msfh "\n";
+	}
+
+	$msfh->close;
+}
+
+=head2 write_log
+
+ Function: write log information to log files.
+
+ Input: content of log information
+
+ Return: none
+=cut
+sub write_log
+{
+        my $content = shift;
+        my $fh = IO::File->new(">>".$log_file) || die "Can not write info to log file $! \n";
+        print $fh $content;
+        $fh->close;
+}
+
+=head2 base_correct
+
+ Function: correct unigene base using sam alignment info
+
+ Input: $match_seq, $member_sam ,$fixed_seq
+
+ Return: none
+=cut
+sub base_correct
+{
+	my ($unigene_in, $sam_in, $out_seq) = @_;
+	#base_correct($match_seq, $match_cmf, $member_sam ,$fixed_seq)
+	my %fix_seq;
+
+	my %fixed_all;
+	#################################################################
+	# unigene to hash                                               #
+	#################################################################
+	my %unigene_in_seq;
+	my %unigene_in_len;
+	
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$unigene_in);
+	while(my $inseq = $in->next_seq)
+	{
+		$unigene_in_seq{$inseq->id} = $inseq->seq;
+		$unigene_in_len{$inseq->id} = $inseq->length;
+	}
+
+	#########################################################
+        # extract cmf info from sam or cmf file			#
+        #########################################################
+	my @one_unigene_sam = (); my $pre_uid;
+
+	my $oseq = IO::File->new(">".$out_seq) || die "Can not open uni out file $out_seq\n";
+
+	my %fixed_unigene;
+
+        my $fh = IO::File->new($sam_in) || die "Can not open sam file: $sam_in $!\n";
+        while(<$fh>)
+        {
+                chomp;
+                my @a = split(/\t/, $_);
+
+                # fix the deletion
+                if (!$pre_uid)
+                {
+                        $pre_uid = $a[2];
+                        push(@one_unigene_sam, $_);
+                }
+                elsif (($a[2] ne $pre_uid) || eof )
+                {
+                        if (eof && $a[2] eq $pre_uid) { push(@one_unigene_sam, $_); }
+                        #################################################
+                        # process the sam info of one unigene           #
+                        #################################################
+                        if (scalar(@one_unigene_sam) > 1 )
+                        {
+                                my ($new_seq, $fixed) = parse_sam(\@one_unigene_sam, $pre_uid, $unigene_in_seq{$pre_uid}, $unigene_in_len{$pre_uid});
+
+                                # put all fixed info to new hash;
+                                if ( scalar(keys(%$fixed)) > 0 )
+                                {
+                                        foreach my $key (sort keys %$fixed)
+                                        {
+                                                $fixed_all{$key} = $$fixed{$key};
+
+                                                my @ff = split(/\t/, $key);
+
+                                                $fixed_unigene{$ff[0]} = 1; 
+                                        }
+
+					if (defined $unigene_in_seq{$pre_uid} )
+                                        {
+						print $oseq ">$pre_uid\n$new_seq\n";
+
+						if ($unigene_in_seq{$pre_uid} ne $new_seq)
+						{
+							$fix_seq{$pre_uid} = 1;
+						}
+					}
+                                }
+                        }
+
+                        #################################################
+                        # start a new info unigene sam                  #
+                        #################################################
+                        @one_unigene_sam = ();
+
+                        $pre_uid = $a[2];
+
+                        push(@one_unigene_sam, $_);
+                }
+                else
+                {
+                        push(@one_unigene_sam, $_);
+                }
+        }
+        $fh->close;
+
+	foreach my $uid (sort keys %unigene_in_seq)
+	{
+		unless(defined $fixed_unigene{$uid})
+		{
+			print $oseq ">$uid\n".$unigene_in_seq{$uid}."\n";
+		}
+	}
+
+        $oseq->close;
+
+        # important info for check base
+        #print "Fixed base at cycle $order....\n";
+        #foreach my $kk (sort keys %fixed_all)
+        #{
+        #       #print $kk."\t".$fixed_all{$kk}."\n";
+        #}
+
+        #################################################################
+        # re-mapping and generate new sam and mp info, off this func    #
+        #################################################################
+
+        # end
+
+        return %fix_seq;
+}
+
+
+sub parse_sam
+{
+        my ($one_sam, $unigene_id, $unigene_seq, $unigene_len) = @_;
+
+        my %fixed;
+
+        #########################################################
+        # convert one sam file to BMP format                    #
+        #########################################################
+        my ($alignment, $deletion, $insertion) = convert_sam($one_sam, $unigene_seq, $unigene_len);
+        my @bmp = @$alignment;
+
+        #foreach my $kk (sort keys %$insertion)
+        #{
+                #print $unigene_id."\t".$kk."\t".$$insertion{$kk}."\tfor_debug\n";
+        #}
+
+        #########################################################
+        # fix the unigene sequences                             #
+        #########################################################
+        my $unigene_fixed_seq;
+
+        for (my $pos=0; $pos<$unigene_len; $pos++)
+        {
+                # get base from uniseq
+                my $b = substr($unigene_seq, $pos, 1);
+
+                # get bases from one column
+                my @chr = ();
+                foreach my $sq (@bmp)
+                {
+                        my $c = substr($sq, $pos, 1);   #print $c."\t$dpos\n";
+                        unless ($c eq "*" ) { push(@chr, $c); }
+                }
+
+                # decide the base of unigene, fix deletion and mismatch
+                my $cov = scalar(@chr);
+                my %base;
+                foreach my $c (@chr)
+                {
+                        if      ($c =~ m/A/i) { $base{"A"}++;}
+                        elsif   ($c =~ m/T/i) { $base{"T"}++;}
+                        elsif   ($c =~ m/C/i) { $base{"C"}++;}
+                        elsif   ($c =~ m/G/i) { $base{"G"}++;}
+                        elsif   ($c =~ m/-/i) { $base{"-"}++;}
+                        else    {  }
+                }
+                my $max_base = max(\%base);
+
+                #print $dpos."\t".$max_base."\t".$base{$max_base}."\t$cov\n"; # change it to an report file;
+                $unigene_fixed_seq.= $max_base;
+
+                if ($b ne $max_base)
+                {
+                        $fixed{$unigene_id."\t".$pos."\t".$b."\t".$max_base} = "DELMIS";
+                        #print $unigene_id."\t".$pos."\t".$b."\t".$max_base."\n";
+                }
+
+                # decide the base of insertion
+                my $in_pos = $pos+1;
+
+                if (defined $$insertion{$in_pos})
+                {
+                        #print $cov."\t".$$insertion{$in_pos}."\n";
+                        my $insert_base = max_base($$insertion{$in_pos}, $cov);
+
+			unless ($insert_base eq "N")
+			{
+                        	$unigene_fixed_seq.=$insert_base;
+			}
+
+                        if ($insert_base ne "" && $insert_base ne "N" && $insert_base ne "n" )
+                        {
+                                $fixed{$unigene_id."\t".$in_pos."\tI\t".$insert_base} = "INSERT";
+                                #print $unigene_id."\t".$in_pos."\tI\t".$insert_base."\n";
+                        }
+                }
+        }
+
+        #print $seq."\n".$uniseq_fix_del."\n"; print length($uniseq_fix_del)."\n"; print $pos_del."\n";
+        $unigene_fixed_seq =~ s/-//ig;
+
+        return ($unigene_fixed_seq, \%fixed);
+}
+
+=head2 convert_sam
+Function: convert sam to multi-alignment with indel info.
+=cut
+sub convert_sam
+{
+        my ($sam_in, $uniseq, $length) = @_;
+
+        #########################################################
+        # collect insertion info                                #
+        #########################################################
+        my %insert;
+        foreach my $line (@$sam_in)
+        {
+                my @a = split(/\t/, $line);
+                my $cigar = $a[5];
+                my $uni_pos = $a[3]-1;  # using uni pos to point the insertion position at unigene and creat hash unsing this pos
+                my $sub_pos = 0;        # using sub pos to point the insertion position at EST seq to extract base
+
+                if ($cigar =~ /\dI/)
+                {
+                        my $l = length($cigar);
+                        my $m = "";
+                        for (my $i=0; $i<$l; $i++)
+                        {
+                                my $c = substr($cigar, $i, 1);
+                                if ($c =~ m/\d/)
+                                {
+                                        $m = $m.$c;
+                                }
+                                else
+                                {
+                                        if ($c =~ m/S/) # the pos
+                                        {
+                                                $uni_pos = $uni_pos;
+                                                $sub_pos = $sub_pos + $m;
+                                                $m = "";
+                                        }
+                                        elsif ($c =~ m/M/)
+                                        {
+                                                $uni_pos = $uni_pos + $m;
+                                                $sub_pos = $sub_pos + $m;
+                                                $m = "";
+                                        }
+                                        elsif ($c =~ m/D/)
+                                        {
+                                                $uni_pos = $uni_pos + $m;
+                                                $sub_pos = $sub_pos;
+                                                $m = "";
+                                        }
+                                        elsif ($c =~ m/I/)
+                                        {
+                                                $uni_pos = $uni_pos;
+                                                for(my $j=1; $j<=$m; $j++)
+                                                {
+                                                        $sub_pos = $sub_pos + 1;
+                                                        my $chr = substr($a[9], $sub_pos-1, 1);
+
+                                                        if ($m == 1)
+                                                        {       # every EST has one insert at one position
+                                                                $insert{$a[0]."\t".$uni_pos} = $chr;
+                                                        }
+                                                        elsif ($m > 1)
+                                                        {
+                                                                my $step_pos = $uni_pos+$j;
+                                                                $insert{$a[0]."\t".$step_pos} = $chr;
+                                                        }
+                                                        else
+                                                        {
+                                                                die "Error at insert length: $cigar\n";
+                                                        }
+                                                }
+                                                $m = "";
+                                        }
+                                        else
+                                        {
+                                                print "error at parse $line cigar\n";
+                                        }
+                                }
+                        }
+                }
+                # check insertion position for debug
+                #print "$cigar\t$a[3]\n$a[9]\n"; foreach my $a (sort {$a<=>$b} keys %insert) { print $a."\t".$insert{$a}."\n"; }
+                #die;
+        }
+
+        #########################################################
+        # remove the head of insert key                         #
+        #########################################################
+        my %insert2;    # hash for insert position and bases in this position
+
+        foreach my $ikey (sort keys %insert)
+        {
+                my @aa = split(/\t/, $ikey);
+
+		if ($insert{$ikey} ne "N" && $insert{$ikey} ne "n")
+		{
+                	if (defined $insert2{$aa[1]})
+                	{
+                        	$insert2{$aa[1]}.="\t".$insert{$ikey};
+                	}
+                	else
+                	{
+                        	$insert2{$aa[1]} = $insert{$ikey};
+                	}
+		}
+        }
+
+        # check the num of insertion for debug
+        foreach my $in_pos (sort {$a<=>$b} keys %insert2)
+        {
+                my @base = split(/\t/, $insert2{$in_pos});
+                if (scalar(@base) <= 1)
+                {
+                        delete $insert2{$in_pos};
+                }
+        }
+        #foreach my $in_pos (sort {$a<=>$b} keys %insert) { print $in_pos."\t".$insert{$in_pos}."\n"; }
+
+        #########################################################
+        # generate alignment with deletion and blank info       #
+        #########################################################
+        my @alignment;
+        my %delete_pos;
+        foreach my $line (@$sam_in)
+        {
+                my @a = split(/\t/, $line);
+
+                # process cigar
+                my $cigar = $a[5];
+
+                my $subseq = $a[9];
+                my $alnseq = "";
+
+                # fill the head blank info
+                for(my $i=1; $i<$a[3]; $i++)
+                {
+                        $alnseq.="*";
+                }
+
+                # fix the alignment seq using indel info
+                my %insert = ();
+                my %delete = ();
+                my $pos = $a[3]-1;
+                my $pos_sb = 0;
+                my $pos_de = $a[3]-1;   # arrow to find deletion position
+
+                my $m = "";
+                for (my $i=0; $i<length($cigar); $i++)
+                {
+                        my $c = substr($cigar, $i, 1);
+                        if ($c =~ m/\d/) {
+                                $m = $m.$c;
+                        }
+                        else {
+                                if ($c =~ m/S/)
+                                {
+                                        $pos_de = $pos_de;
+                                        $pos_sb = $pos_sb + $m;
+                                        $m = "";
+                                }
+                                elsif ($c =~ m/M/)
+                                {
+                                        my $match = substr($subseq, $pos_sb, $m);
+                                        $alnseq = $alnseq.$match;
+
+                                        $pos_de = $pos_de + $m;
+                                        $pos_sb = $pos_sb + $m;
+                                        $pos = $pos + $m;
+                                        $m = "";
+                                }
+                                elsif ($c =~ m/D/)
+                                {
+                                        for (my $j=1; $j<=$m; $j++)
+                                        {
+                                                $alnseq.="-";
+                                                my $de = $pos_de+$j;
+                                                $delete{$de} = $a[0];
+                                                $delete_pos{$de} = 1;
+                                        }
+                                        $pos_de = $pos_de + $m;
+                                        $pos = $pos + $m;
+                                        $m = "";
+                                }
+
+                                elsif ($c =~ m/I/)
+                                {
+                                        $pos_de = $pos_de;
+                                        $pos_sb = $pos_sb + $m;
+
+                                        for (my $j=1; $j<=$m; $j++)
+                                        {
+                                                my $in = $pos+$j;
+                                                $insert{$in} = $a[0];
+                                        }
+
+                                        $pos = $pos + $m;
+                                        $m = "";
+                                }
+                        }
+                }
+
+                # fill the tail info
+                my $cc = $length-length($alnseq);
+                for(my $k=0; $k<$cc; $k++) { $alnseq.="*"; }
+
+                push (@alignment, $alnseq);
+
+        #print $line."\n"; foreach my $in (sort keys %insert) { print "Insert\t".$in."\t$insert{$in}\t"; print length($a[9])."\t$cigar_len\n"; } # die;
+        #print $line."\n"; foreach my $de (sort keys %delete) { print "Delete\t".$de."\t$delete{$de}\t"; print length($a[9])."\t$cigar_len\n"; }  # die;
+        }
+
+        #print $uniseq."\t".length($uniseq)."\n";
+        #foreach my $aln (@alignment) { #print $aln."\t".length($aln)."\n"; }
+        #foreach my $dp (sort {$a<=>$b} keys %delete_pos) { #print $dp."\t".$delete_pos{$dp}."\n"; }
+
+        return (\@alignment, \%delete_pos, \%insert2);
+}
+
+=head2 max
+Function return the key of max value of hash
+=cut
+sub max
+{
+        my $in = shift;
+        my $max_key = ""; my $max_value = 0;
+
+        foreach my $k (sort keys %$in)
+        {
+                my $value = $$in{$k};
+
+                if ($k eq "-")
+                {
+                        if ($value > $max_value)
+                        {
+                        	$max_value = $value;
+                        	$max_key = $k;
+                        }
+                }
+                else
+                {
+                        if ($value >= $max_value)
+                        {
+                               	$max_value = $value;
+                                $max_key = $k;
+                        }
+                }
+        }
+        return $max_key;
+}
+
+=head2 max_base
+Function: return max base of insertion
+=cut
+sub max_base
+{
+        my ($base, $cov) = @_;
+
+        my $return_base = "";
+
+        my @b = split(/\t/, $base);
+
+        my $dash = $cov - scalar(@b);
+
+        # give num to every base
+        my %base_num;
+
+        foreach my $b (@b)
+        {
+                if ( defined $base_num{$b} )
+                {
+                        $base_num{$b}++;
+                }
+                else
+                {
+                        $base_num{$b} = 1;
+                }
+        }
+
+        # decide which one is best
+        my $max_bas = "";
+        my $max_num = 0;
+        foreach my $b (sort keys %base_num)
+        {
+                if ($base_num{$b} > $max_num)
+                {
+                        $max_bas = $b;
+                        $max_num = $base_num{$b};
+                }
+        }
+
+        # report file to check the error
+        #print $cov."\t".$dash."\t".scalar(@b)."\t".$max_bas."\t".$max_num."\t||\t".$base."\n";
+
+        if ($max_num >= $dash)
+        {
+                $return_base = $max_bas;
+        }
+
+        #print $return_base."\n";
+
+        return $return_base;
+}

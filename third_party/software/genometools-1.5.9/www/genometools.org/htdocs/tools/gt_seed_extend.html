@@ -1,0 +1,237 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
+<title>GenomeTools - manual page for GT-SEED_EXTEND(1)</title>
+<link rel="stylesheet" type="text/css" href="style.css">
+<link rel="stylesheet" href="..//style.css" type="text/css" />
+</head>
+<body>
+<div id="menu">
+<ul>
+<li><a href="../index.html">Overview</a></li>
+<li><a href="../pub/">Download</a></li>
+<li><a href="https://github.com/genometools/genometools">Browse source</a></li>
+<li><a href="../mailman/listinfo/gt-users">Mailing list</a></li>
+<li><a href="http://github.com/genometools/genometools/issues/">Issue tracker</a></li>
+<li><a href="../documentation.html">Documentation</a></li>
+  <ul class="submenu">
+    <li><a id="current" href="../tools.html">Tools</a></li>
+    <li><a href="../manuals.html">Manuals</a></li>
+    <li><a href="../libgenometools.html">C API</a></li>
+    <li><a href="../docs.html"><tt>gtscript</tt> docs</a></li>
+    <li><a href="../contract.html">Development Contract</a></li>
+    <li><a href="../contribute.html">Contribute</a></li>
+  </ul>
+<li><a href="../annotationsketch.html"><tt>AnnotationSketch</tt></a></li>
+<li><a href="../cgi-bin/gff3validator.cgi">GFF3 validator</a></li>
+<li><a href="../license.html">License</a></li>
+</ul>
+</div>
+<div id="main">
+<div class="sect1">
+<h2 id="_name">NAME</h2>
+<div class="sectionbody">
+<div class="paragraph"><p>gt-seed_extend - Calculate local alignments using the seed and extend algorithm.</p></div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_synopsis">SYNOPSIS</h2>
+<div class="sectionbody">
+<div class="paragraph"><p><strong>gt seed_extend</strong> [option &#8230;] encseq_basename [encseq_basename]</p></div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_description">DESCRIPTION</h2>
+<div class="sectionbody">
+<div class="dlist"><dl>
+<dt class="hdlist1">
+<strong>-ii</strong> [<em>string</em>]
+</dt>
+<dd>
+<p>
+Input index for encseq encoded sequences
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-qii</strong> [<em>string</em>]
+</dt>
+<dd>
+<p>
+Query input index (encseq)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-seedlength</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Minimum length of a seed
+default: logarithm of input length to the basis alphabet size
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-diagbandwidth</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Logarithm of diagonal band width (for filter) (default: 6)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-mincoverage</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Minimum coverage in two neighbouring diagonal bands (for filter)
+default: 2.5 x seedlength
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-maxfreq</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Maximum frequency of a k-mer (for filter) (default: undefined)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-memlimit</strong> [<em>string</em>]
+</dt>
+<dd>
+<p>
+Maximum memory usage to determine the maximum frequency of a k-mer (for filter) (default: undefined)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-extendxdrop</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Extend seed to both sides using xdrop algorithm, /noptional parameter specifies sensitivity (default: 97)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-xdropbelow</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Specify xdrop cutoff score (0 means automatically defined depending on minidentity)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-extendgreedy</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Extend seed to both sides using greedy algorithm,
+optional parameter specifies sensitivity (default: 97)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-l</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Minimum alignment length (for seed extension) (default: undefined)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-minidentity</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Minimum identity of matches (for seed extension) (default: 80)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-a</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+show alignments/sequences (optional argument is number of columns per line) (default: 70)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-no-reverse</strong> [<em>yes|no</em>]
+</dt>
+<dd>
+<p>
+do not compute matches on reverse complemented strand (default: no)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-no-forward</strong> [<em>yes|no</em>]
+</dt>
+<dd>
+<p>
+do not compute matches on forward strand (default: no)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-parts</strong> [<em>value</em>]
+</dt>
+<dd>
+<p>
+Divide data into specified number of parts (default: 1)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-kmerfile</strong> [<em>yes|no</em>]
+</dt>
+<dd>
+<p>
+Use pre-calculated k-mers from file (if exist) (default: yes)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-v</strong> [<em>yes|no</em>]
+</dt>
+<dd>
+<p>
+be verbose (default: no)
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-help</strong> 
+</dt>
+<dd>
+<p>
+display help and exit
+</p>
+</dd>
+<dt class="hdlist1">
+<strong>-version</strong> 
+</dt>
+<dd>
+<p>
+display version information and exit
+</p>
+</dd>
+</dl></div>
+</div>
+</div>
+<div class="sect1">
+<h2 id="_reporting_bugs">REPORTING BUGS</h2>
+<div class="sectionbody">
+<div class="paragraph"><p>Report bugs to &lt;<a href="mailto:gt-users@genometools.org">gt-users@genometools.org</a>&gt;.</p></div>
+</div>
+</div>
+<div id="footer">
+Copyright &copy; 2007-2016 The <i>GenomeTools</i> authors.
+</div>
+</div>
+<!-- Piwik -->
+<script type="text/javascript">
+var pkBaseURL = "https://zenlicensemanager.com/piwik/";
+document.write(unescape("%3Cscript src='" + pkBaseURL + "piwik.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script type="text/javascript">
+try {
+var piwikTracker = Piwik.getTracker(pkBaseURL + "piwik.php", 5);
+piwikTracker.trackPageView();
+piwikTracker.enableLinkTracking();
+} catch( err ) {}
+</script><noscript><p><img src="https://zenlicensemanager.com/piwik/piwik.php?idsite=5" style="border:0" alt="" /></p></noscript>
+<!-- End Piwik Tracking Tag -->
+</body>
+</html>

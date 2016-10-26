@@ -1,0 +1,5 @@
+# To rename a chromosome, edit each occurrence of that chromosome in the gmap_coordinates
+# The strain column has information copied from NCBI md files, but is not otherwise used by gmap_setup
+# To exclude a contig, place a '#' sign at the beginning of the line
+#contig	gmap_coordinates	linear/circular	strain
+chr17test	chr17test:1..200000	linear

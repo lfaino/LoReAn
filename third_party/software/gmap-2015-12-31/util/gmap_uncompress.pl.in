@@ -1,0 +1,633 @@
+#! @PERL@
+# $Id: gmap_uncompress.pl.in,v 1.21 2010-07-21 21:51:57 twu Exp $
+
+use warnings;
+
+use IO::File;
+use Getopt::Std;
+undef($opt_F);			# Flip so that genome sequence is first
+undef($opt_4);			# sim4-style output
+undef($opt_I);			# invert mode
+undef($opt_f);			# format
+getopts("F4I:f:");
+
+if (defined($opt_4)) {
+  $date = `/usr/bin/date`;
+  chop $date;
+}
+
+if (defined($opt_I)) {
+  $invertmode = $opt_I;
+} else {
+  $invertmode = 0;
+}
+
+$opt_F = 1;
+
+if (defined($opt_f) && $opt_f eq "9") {
+  $print_coordinates_p = 1;
+} else {
+  $print_coordinates_p = 0;
+}
+
+
+my $gsequence;
+
+@coordinates = ();
+@agreements = ();
+@exonlengths = ();
+@intronlengths = ();
+@intronends = ();
+while (defined($line = <>)) {
+  $line =~ s/\r\n/\n/;
+  chop $line;
+  if ($line =~ /^>/) {
+    if ($#coordinates >= 0) {
+      process_one($header,\@coordinates,\@agreements,\@intronlengths,\@intronends);
+    }
+    $line =~ s/^>//;
+    $header = $line;
+    @coordinates = ();
+    @agreements = ();
+    @exonlengths = ();
+    @intronlengths = ();
+    @intronends = ();
+  } else {
+    $line =~ s/^\t//;		# BerkeleyDB retrievals won't have this tab
+    ($coords,$agree,$exonlength,$intronlength,$intronend) = split /\t/,$line;
+    push @coordinates,$coords;
+    push @agreements,$agree;
+    if (defined($exonlength)) {
+      push @exonlengths,$exonlength;
+    }
+    if (defined($intronlength)) {
+      push @intronlengths,$intronlength;
+    }
+    if (defined($intronend)) {
+      push @intronends,$intronend;
+    }
+  }
+}
+if ($#coordinates >= 0) {
+  process_one($header,\@coordinates,\@agreements,\@intronlengths,\@intronends);
+}
+
+exit;
+
+
+sub cdna_direction {
+  my ($agreements) = @_;
+
+  $nfwd = $nrev = 0;
+  for ($i = 0; $i <= $#{$agreements}; $i++) {
+    $agree = $ {$agreements}[$i];
+    ($intron) = $agree =~ /.+(.)/;
+    if ($intron eq ">" || $intron eq ")" || $intron eq "]") {
+      $nfwd++;
+    } elsif ($intron eq "<" || $intron eq "(" || $intron eq "[") {
+      $nrev++;
+    }
+  }
+  if ($nfwd == 0 && $nrev == 0) {
+    return "indeterminate";
+  } elsif ($nfwd > $nrev) {
+    return "sense";
+  } elsif ($nrev > $nfwd) {
+    return "antisense";
+  } else {
+    return "indeterminate";
+  }
+}
+
+
+sub process_one {
+  my ($header, $coordinates, $agreements, $intronlengths, $intronends) = @_;
+  my ($i);
+
+  ($cdna_acc,$genomevers,$path,$cdnalength,$nexons,$coverage,$pctidentity,
+   $cdnarange,$genomerange,$chrrange,$strand,$flags) = split " ",$header;
+  ($cdnastart,$cdnaend) = $cdnarange =~ /(\d+)\D+(\d+)/;
+  $cdnamatchlen = $cdnaend - $cdnastart + 1;
+  ($chr,$chrstart,$chrend) = $chrrange =~ /(\S+):(\d+)\D+(\d+)/;
+  if ($strand eq "+") {
+    $genomelength = $chrend - $chrstart + 1;
+  } else {
+    $genomelength = $chrstart - $chrend + 1;
+  }
+
+  ($genheader,$fwdsequence) = get_genomic_sequence($genomevers,$chrrange);
+  @ {$gsequence} = split '',$fwdsequence;
+
+  print ">$cdna_acc";
+  if (defined($flags)) {
+    print " $flags";
+  }
+  print "\n";
+
+  if ($print_coordinates_p == 0) {
+    print "Paths (1):\n";
+    print "  Path 1: query $cdnarange ($cdnamatchlen bp) => chr $chrrange ($genomelength bp)\n";
+    print "    cDNA direction: " . cdna_direction($agreements) . "\n";
+    print "    Genomic pos: $genomevers:$genomerange ($strand strand)\n";
+    print "    Number of exons: $nexons\n";
+    print "    Coverage: $coverage (query length: $cdnalength bp)\n";
+    print "    Percent identity: $pctidentity\n";
+    print "\n";
+
+    print "Alignments:\n";
+    print "  Alignment for path 1:\n";
+    print "\n";
+
+    if ($strand eq "-" && $invertmode == 2) {
+      for ($i = $#{$coordinates}; $i >= 0; $i--) {
+	$coords = $ {$coordinates}[$i];
+	$agree = $ {$agreements}[$i];
+	if ($i == 0) {
+	  $intron = "*";
+	} else {
+	  ($intron) = $ {$agreements}[$i-1] =~ /.+(.)/;
+	  $intron =~ tr/><][)(/<>[]()/;
+	}
+	($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
+	print_exon("+",$chr,$chrend,$chrstart,$cdsend,$cdsstart,$pct,$intron);
+      }
+    } else {
+      for ($i = 0; $i <= $#{$coordinates}; $i++) {
+	$coords = $ {$coordinates}[$i];
+	$agree = $ {$agreements}[$i];
+	($intron) = $agree =~ /.+(.)/;
+	($chrstart,$chrend,$cdsstart,$cdsend,$pct) = split " ",$coords;
+	print_exon($strand,$chr,$chrstart,$chrend,$cdsstart,$cdsend,$pct,$intron);
+      }
+    }
+    print "\n";
+  }
+
+  uncompress($coordinates,$agreements,$intronends,$intronlengths,$gsequence,
+	     $chr,$strand);
+  return;
+}
+
+
+sub print_exon {
+  my ($strand, $chr, $chrpos1, $chrpos2, $exonpos1, $exonpos2, $pct, $intron) = @_;
+
+  if (defined($opt_F)) {
+    print "    $strand$chr:$chrpos1-$chrpos2  ($exonpos1-$exonpos2)   $pct%";
+  } else {
+    print "    $exonpos1-$exonpos2  ($strand$chr:$chrpos1-$chrpos2)   $pct%";
+  }
+  if ($intron eq '>') {
+    print " ->\n";
+  } elsif ($intron eq '<') {
+    print " <-\n";
+  } elsif ($intron eq '=') {
+    print " ==\n";
+  } elsif ($intron eq '#') {
+    print " ##\n";
+  } elsif ($intron eq ')') {
+    print " -)\n";
+  } elsif ($intron eq '(') {
+    print " (-\n";
+  } elsif ($intron eq ']') {
+    print " -]\n";
+  } elsif ($intron eq '[') {
+    print " [-\n";
+  } elsif ($intron eq '-') {
+    print " --\n";
+  } elsif ($intron eq '*') {
+    print "\n";
+  }
+  return;
+}
+
+
+sub print_sim4header {
+  print "$date [SNAP]\n";
+  printf ("seq1 = %s, %d bp\n",$chrrange,$genomelength);
+  printf ("seq2 = fasta (%s), %d bp\n",$cdna_acc,$cdnalength);
+  print "\n";
+  print ">$genheader\n";
+  print ">$cdna_acc\n";
+  print "\n";
+
+  if ($strand eq "-") {
+    # Strictly, this isn't correct
+    print "(complement)\n\n";
+  }
+
+  print "strand:       $strand;";
+  print "path:         $path\n";
+  print "exon no:      $nexons\n";
+  print "coverage:     $coverage%\n";
+  print "pct identity: $pctidentity%\n";
+
+  return;
+}
+
+
+sub parse_tokens {
+  my ($string) = @_;
+  my (@meta, $meta, $metacount, $i, $token);
+  my @tokens = ();
+
+  @meta = split " ",$string;
+  foreach $meta (@meta) {
+    if ($meta =~ /(.+)!(\d+)/) {
+      $token = $1;
+      $metacount = $2;
+      for ($i = 0; $i < $metacount; $i++) {
+	push @tokens,$token;
+      }
+    } else {
+      push @tokens,$meta;
+    }
+  }
+  return @tokens;
+}
+
+
+sub uncompress {
+  my ($coordinates, $agreements, $intronends, $intronlengths, $gsequence, 
+      $chr, $strand) = @_;
+  my ($i, $g);
+  
+  my @sequence1 = ();
+  my @agreement = ();
+  my @sequence2 = ();
+  my @gpos = ();
+  my @cpos = ();
+
+  $g = 0;
+  for ($segno = 0; $segno <= $#coordinates; $segno++) {
+    $coords = $ {$coordinates}[$segno];
+    ($genomestart,$genomeend,$cdsstart,$cdsend) = $coords =~ /(\d+) (\d+) (\d+) (\d+)/;
+    if ($genomestart < $genomeend) {
+      $gpos = $genomestart;
+    } else {
+      $gpos = -$genomestart;
+    }
+    if ($cdsstart < $cdsend) {
+      $cpos = $cdsstart;
+    } else {
+      $cpos = -$cdsstart;
+    }
+    
+    @tokens = parse_tokens($ {$agreements}[$segno]);
+    $final_token = pop @tokens;
+    foreach $token (@tokens) {
+      ($runlength,$adj) = $token =~ /(\d+)(.+)/;
+      for ($i = 0; $i < $runlength; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @sequence1,$ {$gsequence}[$g];
+	push @agreement,"|";
+	push @sequence2,$ {$gsequence}[$g++];
+	$gpos++;
+	$cpos++;
+      }
+      push @gpos,$gpos;
+      push @cpos,$cpos;
+      if ($adj =~ /\^(.)/ || $adj =~ /i(.)/) {
+	push @sequence1,' ';
+	push @agreement,'-';
+	push @sequence2,$1;
+	$cpos++;
+      } elsif ($adj eq 'v' || $adj eq '.d') {
+	$gpos++;
+	push @sequence1,$ {$gsequence}[$g++];
+	push @agreement,'-';
+	push @sequence2,' ';
+      } elsif ($adj eq '?') {	# Obsolete
+	push @sequence1,'N';
+	push @agreement,' ';
+	push @sequence2,'N';
+	$gpos++;
+	$cpos++;
+	$g++;
+      } elsif ($adj =~ /N(.)/) { # Replaced by Nx.
+	push @sequence1,'N';
+	push @agreement,' ';
+	push @sequence2,$1;
+	$gpos++;
+	$g++;
+      } elsif ($adj eq 'n') {	# Replaced by .xN
+	$gpos++;
+	push @sequence1,$ {$gsequence}[$g++];
+	push @agreement,' ';
+	push @sequence2,'N';
+	$cpos++;
+      } elsif ($adj =~ /x(.)/) {
+	$gpos++;
+	push @sequence1,$ {$gsequence}[$g++];
+	push @agreement,' ';
+	push @sequence2,$1;
+	$cpos++;
+      } elsif ($adj =~ /:(.)/) {
+	$gpos++;
+	push @sequence1,$ {$gsequence}[$g++];
+	push @agreement,':';
+	push @sequence2,$1;
+	$cpos++;
+      } else {
+	print STDERR "Can't parse $adj\n";
+	exit(9);
+      }
+    }
+
+    ($runlength,$adj) = $final_token =~ /(\d+)(.+)/;
+    for ($i = 0; $i < $runlength; $i++) {
+      push @gpos,$gpos;
+      push @cpos,$cpos;
+      push @sequence1,$ {$gsequence}[$g];
+      push @agreement,"|";
+      push @sequence2,$ {$gsequence}[$g++];
+      $gpos++;
+      $cpos++;
+    }
+    if ($adj eq '#') {
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @agreement,$adj;
+      }
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @agreement,'.';
+      }
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @agreement,$adj;
+      }
+
+      if (defined($ {$intronlengths}[$segno])) {
+	push @sequence1,stringify($ {$intronlengths}[$segno]);
+      } else {
+	push @sequence1,"         ";
+      }
+
+      ($genomeend) = $ {$coordinates}[$segno] =~ /\d+ \d+ \d+ (\d+)/;
+      ($genomestart) = $ {$coordinates}[$segno+1] =~ /\d+ \d+ (\d+)/;
+      push @sequence2,stringify(abs($genomeend - $genomestart) - 1);
+
+    } elsif ($adj eq '>' || $adj eq '<' || $adj eq ')' || $adj eq '(' || 
+	$adj eq ']' || $adj eq '[' || $adj eq '-' || $adj eq '=') {
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @sequence1,$ {$gsequence}[$g++];
+	$gpos++;
+	push @agreement,$adj;
+      }
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @sequence1,'.';
+	push @agreement,'.';
+      }
+      $gpos = ($gpos - 3) + $ {$intronlengths}[$segno] - 3;
+      $g = ($g - 3) + $ {$intronlengths}[$segno] - 3;
+      for ($i = 0; $i < 3; $i++) {
+	push @gpos,$gpos;
+	push @cpos,$cpos;
+	push @sequence1,$ {$gsequence}[$g++];
+	$gpos++;
+	push @agreement,$adj;
+      }
+      if (defined($ {$intronlengths}[$segno])) {
+	push @sequence2,stringify($ {$intronlengths}[$segno]);
+      } else {
+	push @sequence2,"         ";
+      }
+    } elsif ($adj eq '*') {
+      # Do nothing
+    } else {
+      print STDERR "Can't parse $adj\n";
+      exit(9);
+    }
+  }
+
+  if ($strand eq "-") {
+    if ($invertmode == 2) {
+      @gpos = reverse(@gpos);
+      @cpos = reverse(@cpos);
+      $sequence1 = join('',reverse(@sequence1));
+      $agreement = join('',reverse(@agreement));
+      $sequence2 = join('',reverse(@sequence2));
+      $sequence1 =~ tr/ACGT/TGCA/;
+      $agreement =~ tr/><][)(/<>[]()/;
+      $sequence2 =~ tr/ACGT/TGCA/;
+    } elsif ($invertmode == 1) {
+      @gpos = reverse(@gpos);
+      @cpos = reverse(@cpos);
+      $sequence1 = join('',reverse(@sequence1));
+      $agreement = join('',reverse(@agreement));
+      $sequence2 = join('',reverse(@sequence2));
+    } else {
+      $sequence1 = join('',@sequence1);
+      $agreement = join('',@agreement);
+      $sequence2 = join('',@sequence2);
+    }
+  } else {
+    $sequence1 = join('',@sequence1);
+    $agreement = join('',@agreement);
+    $sequence2 = join('',@sequence2);
+  }
+
+  if ($print_coordinates_p == 1) {
+    print_coordinates($sequence1,$agreement,$sequence2,\@gpos,\@cpos,$chr,$strand);
+  } else {
+    print_alignment($sequence1,$agreement,$sequence2,\@gpos,\@cpos,$chr,$strand);
+  }
+
+  return;
+}
+
+
+sub print_alignment {
+  my ($sequence1, $agreement, $sequence2, $gpositions, $cpositions, $chr, $strand) = @_;
+  my ($length, $i);
+  my $dots = "    .    :    .    :    .    :    .    :    .    :";
+
+  @pieces = split "DONOTSPLIT",$agreement;
+  $pos = 0;
+  foreach $agreement_piece (@pieces) {
+    $length = length($agreement_piece);
+    $sequence1_piece = substr($sequence1,$pos,$length);
+    $sequence2_piece = substr($sequence2,$pos,$length);
+    $agreement_piece =~ s/---\.\.\.---/===...===/g;
+
+    for ($i = 0; $i < $length - 50; $i += 50) {
+      $gpos = $ {$gpositions}[$i];
+      $cpos = $ {$cpositions}[$i];
+      printf ("%14d %s\n",$i,$dots);
+      if ($strand eq "+") {
+	$chrstring = sprintf("+%s:%d",$chr,$gpos);
+      } elsif ($strand eq "-") {
+	if ($invertmode == 2) {
+	  $chrstring = sprintf("+%s:%d",$chr,abs($gpos));
+	} else {
+	  $chrstring = sprintf("-%s:%d",$chr,abs($gpos));
+	}
+      } else {
+	undef $chrstring;
+      }
+      if (defined($opt_F)) {
+	printf ("%14s %s\n",$chrstring,substr($sequence1_piece,$i,50));
+	printf ("%14s %s\n","",substr($agreement_piece,$i,50));
+	printf ("%14d %s\n",$cpos,substr($sequence2_piece,$i,50));
+      } else {
+	printf ("%14d %s\n",$cpos,substr($sequence2_piece,$i,50));
+	printf ("%14s %s\n","",substr($agreement_piece,$i,50));
+	printf ("%14s %s\n",$chrstring,substr($sequence1_piece,$i,50));
+      }
+      print "\n";
+    }
+    if ($length - $i > 0) {
+      $gpos = $ {$gpositions}[$i];
+      $cpos = $ {$cpositions}[$i];
+      $taildots = substr($dots,0,$length - $i);
+      $taildots =~ s/\s+$//;
+      printf ("%14d %s\n",$i,$taildots);
+      if ($strand eq "+") {
+	$chrstring = sprintf("+%s:%d",$chr,$gpos);
+      } elsif ($strand eq "-") {
+	if ($invertmode == 2) {
+	  $chrstring = sprintf("+%s:%d",$chr,abs($gpos));
+	} else {
+	  $chrstring = sprintf("-%s:%d",$chr,abs($gpos));
+	}
+      } else {
+	undef $chrstring;
+      }
+      if (defined($opt_F)) {
+	printf ("%14s %s\n",$chrstring,substr($sequence1_piece,$i,$length - $i));
+	printf ("%14s %s\n","",substr($agreement_piece,$i,$length - $i));
+	printf ("%14d %s\n",$cpos,substr($sequence2_piece,$i,$length - $i));
+      } else {
+	printf ("%14d %s\n",$cpos,substr($sequence2_piece,$i,$length - $i));
+	printf ("%14s %s\n","",substr($agreement_piece,$i,$length - $i));
+	printf ("%14s %s\n",$chrstring,substr($sequence1_piece,$i,$length - $i));
+      }
+      print "\n";
+    }
+    $pos += $length + 9;	# 9 is length of "===...===";
+  }
+
+  return;
+}
+
+
+sub print_coordinates {
+  my ($sequence1, $agreement, $sequence2, $gpositions, $cpositions, $chr, $strand) = @_;
+  my ($length, $i);
+
+  @pieces = split "DONOTSPLIT",$agreement;
+  $pos = 0;
+  foreach $agreement_piece (@pieces) {
+    $length = length($agreement_piece);
+    $sequence1_piece = substr($sequence1,$pos,$length);
+    $sequence2_piece = substr($sequence2,$pos,$length);
+
+    for ($i = 0; $i < $length; $i++) {
+      $agreement = substr($agreement_piece,$i,1);
+      if ($agreement eq "|" || $agreement eq " " || $agreement eq "-") {
+	$gpos = $ {$gpositions}[$i];
+	$cpos = $ {$cpositions}[$i];
+	printf ("%d %s\t",$cpos,substr($sequence2_piece,$i,1));
+	if ($strand eq "+") {
+	  printf ("+%s:%d ",$chr,$gpos);
+	} elsif ($strand eq "-") {
+	  if ($invertmode == 2) {
+	    printf ("+%s:%d ",$chr,abs($gpos));
+	  } else {
+	    printf ("-%s:%d ",$chr,abs($gpos));
+	  }
+	}
+	printf ("%s\n",substr($sequence1_piece,$i,1));
+      }
+    }
+
+    $pos += $length + 9;	# 9 is length of "===...===";
+  }
+
+  return;
+}
+
+
+sub get_genomic_sequence {
+  my ($genomevers, $genomic_acc) = @_;
+  my ($FP, $line);
+
+  if (1) {
+    $FP = new IO::File("@BINDIR@/get-genome -d $genomevers $genomic_acc |");
+
+  } elsif (-e $genomic_acc) {
+    $FP = new IO::File($genomic_acc);
+  } elsif ($genomic_acc =~ /^GA_/) {
+    # Genentech-specific
+    $FP = new IO::File("/usr/local/seq/bin/get-celera $genomic_acc |");
+  } elsif ($genomic_acc =~ /^NT_/) {
+    # Genentech-specific
+    $FP = new IO::File("/usr/local/seq/bin/hum.genome $genomic_acc |");
+  } elsif ($genomic_acc =~ /^DNA/) {
+    # Genentech-specific
+    $FP = new IO::File("/usr/local/seq/bin/getseq -F sst.$genomic_acc |");
+  } elsif ($genomic_acc =~ /^affy\.(\S+)/ || $genomic_acc =~ /^(HGU\S+)/) {
+    # Genentech-specific
+    $FP = new IO::File("/usr/local/seq/bin/getseq affy.$1 |");
+  } else {
+    # Genentech-specific
+    $FP = new IO::File("/usr/local/seq/bin/getseq gen.$genomic_acc |");
+  }
+
+  if (!defined($header = <$FP>) || $header !~ /^>/) {
+    undef $header;
+    undef $fwdsequence;
+  } else {
+    $header =~ s/\r\n/\n/;
+    chop $header;
+    $header =~ s/^>//;
+
+    $fwdsequence = "";
+    while (defined($line = <$FP>)) {
+      if ($line !~ /^[><]/) {
+	$line =~ s/\r\n/\n/;
+	chop $line;
+	$line =~ s/\s//g;
+	$fwdsequence .= uc($line);
+      }
+    }
+  }
+
+  close($FP);
+  return ($header, $fwdsequence);
+}
+
+
+sub stringify {
+  my ($n) = @_;
+
+  if ($n !~ /\d/) {
+    return "         ";
+  } elsif ($n < 10) {
+    return "    $n    ";
+  } elsif ($n < 100) {
+    return "   $n    ";
+  } elsif ($n < 1000) {
+    return "   $n   ";
+  } elsif ($n < 10000) {
+    return "  $n   ";
+  } elsif ($n < 100000) {
+    return "  $n  ";
+  } elsif ($n < 1000000) {
+    return " $n  ";
+  } elsif ($n < 10000000) {
+    return " $n ";
+  } else {
+    return "         ";
+  }
+}
+

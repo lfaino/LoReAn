@@ -1,0 +1,44 @@
+######
+agcttttcattctgactgcaacgggcaatatgtctctgtgtggattaaaaaaagagtgtctgatagcagcttctgaactg
+   |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+---ttttcattctgactgcaacgggcaatatgtctctgtgtggattaaaaaaagagtgtctgatagcagcttctgaactg
+gttacctgccgtgagtaaattaaaattttattgacttaggtcactaaatactttaaccaatataggcatagcgcacagac
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+gttacctgccgtgagtaaattaaaattttattgacttaggtcactaaatactttaaccaatataggcatagcgcacagac
+agataaaaattacagagtacacaacatccatgaaacgcattagcaccaccattaccaccaccatcaccattaccacaggt
+||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
+agataaaaattacagagtacacaacatccatgaaacgcattagcaccaccattaccaccaccatcaccattaccacaggt
+aacggtgcgggctgacgcgtacaggaaacacagaaaaaag
+||||||||||||||||||||||||||||||||||||||||
+aacggtgcgggctgacgcgtacaggaaacacagaaaaaag
+######
+agcttttcattctgactgcaacgggcaatatgtctctgtgtggattaaaaaaagagtgtctgatagcagcttctgaactg
+                                                                                
+--------------------------------------------------------------------------------
+gttacctgccgtgagtaaattaaaattttattgacttaggtcactaaatactttaaccaatataggcatagcgcacagac
+                                                                                
+--------------------------------------------------------------------------------
+agataaaaattacagagtacacaacatccatgaaacgcattagcaccaccattaccaccaccatcaccattaccacaggt
+                                                                               |
+------------------------------------------------------------------------------nt
+aacggtgcgggctgacgcgtacaggaaacacagaaaaaag
+     |      |      |                    
+-----t------t------t-------------------n
+######
+--------------------------------------------------------------------------------
+                                                                                
+ttttcattctgactgcaacgggcaatatgtctctgtgtggattaaaaaaagagtgtctgatagcagcttctgaactggtt
+--------------------------------------------------------------------------------
+                                                                                
+acctgccgtgagtaaattaaaattttattgacttaggtcactaaatactttaaccaatataggcatagcgcacagacaga
+---------------------------------------------------------------------------nt---
+                                                                            |   
+taaaaattacagagtacacaacatccatgaaacgcattagcaccaccattaccaccaccatcaccattaccacaggtaac
+--t------t------t---------nc---------
+  |      |      |          |         
+ggtgcgggctgacgcgtacaggaaacacagaaaaaag
+######
+nttttnc
+ ||||  
+ntttt-n
+# wildcards are represented by n

@@ -1,0 +1,17 @@
+#! @SHELL@
+
+if test -z "$srcdir"; then
+  srcdir=.
+fi
+. ${srcdir}/defs
+
+
+${top_builddir}/src/iit_store -o iittest ${srcdir}/fa.iittest
+#diff iittest.iit ${srcdir}/iittest.iit.ok
+
+${top_builddir}/src/iit_get iittest.iit 20000 > iit_get.out
+diff iit_get.out ${srcdir}/iit_get.out.ok
+
+${top_builddir}/src/iit_dump iittest.iit > iit_dump.out
+diff iit_dump.out ${srcdir}/fa.iittest
+

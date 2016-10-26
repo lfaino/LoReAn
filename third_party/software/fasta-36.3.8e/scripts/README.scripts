@@ -1,0 +1,84 @@
+
+  $Id: README.scripts 1258 2014-05-02 13:27:07Z wrp $
+  $Revision: 1258 $
+
+May 13, 2013
+
+This directory contains a variety of scripts that work with the two
+scripting options for the FASTA programs:
+
+-e expand_script.pl
+
+and
+
+-V \!annotate_script.pl
+
+All these scripts use a mysql database that provides a mapping between
+the sequence identifiers provided by the sequence library and the
+additional sequences (-e) or annotations (-V) that are generated.
+Thus, the scripts will NOT work as written because they reference
+mysql databases that are only available inside the University of
+Virginia.
+
+Scripts for sequence library expansion:
+
+expand_uniref50.pl -- produces new sequences from the
+   Uniref50 mapping of Uniref50 to Uniprot.
+
+expand_links.pl -- produce new sequences from a custom-built database
+  of protein links
+links2sql.pl -- build the file of protein accessions to linked accessions
+
+exp_up_ensg.pl -- (human sequences only) use the ENSEMBL to Uniprot
+  mapping to extract alternative splice isoforms.
+
+The expansion scripts expect a file name for a file that contains:
+
+sp|P09488|GSTM1<tab>1e-100
+...
+
+The file is then opened, read, and the accessions extracted and used
+to find the linked sequences.
+
+================
+
+Scripts for library annotation:
+
+The annotation scripts are very similar to the expansion scripts, but
+have the option of either (1) taking the name of a file sequence
+annotations, e.g.
+
+  annot_script.pl annot_file
+
+or (2) taking an argument that is a single sequence identifier:
+
+  annot_script.pl 'sp|P09488|GSTM1_HUMAN'  ('|' must be escaped for  many shells)
+
+Three annotation scripts are available:
+
+  ann_feats2l.pl - get features and domains from local Uniprot database
+  ann_feats2ipr.pl -- get features from Uniprot and domains from a local Uniprot/Interpro database
+
+  ann_pfam.pl -- get domains (only) from local copy of Pfam SQL database
+  ann_pfam_www.pl -- get domains (only) from Pfam web services
+
+  ann_feats_up_www.pl -- get features/domains from Uniprot gff3 server (http://www.uniprot.org/uniprot/P0948.gff)
+
+The Uniprot gff service does not provide information on the actual sequence changes associated with mutants and variants:
+P09488	UniProtKB	Natural variant	210	210	.	.	.	ID=VAR_014497;Dbxref=dbSNP:rs449856	
+P09488	UniProtKB	Mutagenesis	7	7	.	.	.	Note=Reduces catalytic activity 100-fold.	
+However, the Uniprot XML service does provide this information, so a second resource:
+
+  ann_feats_up_www2.pl -- get features/domains from EMBL/EBI XSLT conversion of Uniprot XML:
+
+ http://www.ebi.ac.uk/Tools/dbfetch/dbfetch/uniprotkb/P09488/gff2
+
+Provides substitution information, as well as links to references:
+
+P09488	UniProtKB	natural_variant_site	210	210	.	.	.	Note "S -> T" ; Note "UniProtKB FT ID: VAR_014497" ; Note "dbSNP:rs449856" ; Link "http://www.ensembl.org/Homo_sapiens/Variation/Explore?v=rs449856" ; Link "http://www.ncbi.nlm.nih.gov/SNP/snp_ref.cgi?type=rs&rs=449856"
+P09488	UniProtKB	mutated_variant_site	7	7	.	.	.	Note "Y -> F" ; Note "Reduces catalytic activity 100- fold" ; Link "http://www.ncbi.nlm.nih.gov/pubmed/16548513"
+
+All the annotation scripts offer  -h and --help options.
+
+================
+

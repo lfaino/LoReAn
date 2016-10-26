@@ -1,0 +1,13 @@
+>NM_004448   Homo sapiens v-erb-b2 erythroblastic leukemia viral oncogene homolog 2, neuro/glioblastoma derived oncogene homolog (avian) (ERBB2), transcript variant 1, mRNA. 4624 bp, mRNA, linear, PRI 20-DEC-2004
+Paths (1):
+  Path 1: query 1..4624 (4624 bp) => genome chr17test:109,781..138,442 (28662 bp)
+    cDNA direction: sense
+    Genomic pos: chr17test:109,781..138,442 (+ strand)
+    Accessions: chr17test:109,781..138,442 (out of 200000 bp)
+    Number of exons: 27
+    Coverage: 100.0 (query length: 4624 bp)
+    Trimmed coverage: 100.0 (trimmed length: 4624 bp, trimmed region: 1..4624)
+    Percent identity: 100.0 (4624 matches, 0 mismatches, 0 indels, 0 unknowns)
+    Translation: 2..4006 (1334 aa)
+    Amino acid changes: 
+

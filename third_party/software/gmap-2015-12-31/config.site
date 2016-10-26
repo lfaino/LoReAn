@@ -1,0 +1,156 @@
+#! /bin/sh
+
+### This file is part of GMAP.  It allows you to provide values for
+### the configuration process.  To set variables, uncomment the
+### VAR=DEFAULT lines and set DEFAULT according to your needs.
+
+########################################################################
+### Configuration options
+########################################################################
+
+## The directory where the binary files will go (without the "/bin" at
+## the end).  For example, if you want the gmap program to be
+## installed as /usr/local/bin/gmap, the prefix is "/usr/local".  The
+## directory must be an absolute path, so "." and "~" are not allowed.
+##
+## If you want to install in this build directory for testing purposes,
+## specify prefix=`pwd` (with two backward quotes).  If you don't specify
+## anything for prefix, it defaults to /usr/local.
+##
+## prefix=/usr/local
+
+
+## The directory where the GMAP genome database files go.  Each genome
+## must be set up (with the gmap_setup program) before gmap can map and
+## align against that genome.  Each genome will get its own
+## subdirectory in this directory.
+##
+## Note: at run time, the user may choose to override this directory
+## by (1) providing a -D flag to gmap, (2) setting the GMAPDB
+## environment variable, or (3) creating a configuration file .gmaprc
+## with the line GMAPDB=<directory>.
+##
+## Make sure there is adequate disk space in this directory; for
+## example, the human genome will need about 3 gigabytes.
+##
+## If you don't specify anything for with_gmapdb, it defaults to 
+## ${prefix}/share.
+##
+## with_gmapdb=/path/to/gmapdb
+
+
+## Popcnt support.  By default, the configure program will test your computer
+## for popcnt and related commands (for fast bit counting), and if so, enable those
+## commands to speed up the program.  If you plan to configure the package
+## on one computer and then run the programs on another computer, you may
+## need to disable this feature.  To disable the feature, specify --disable-popcnt
+## or uncomment the line below and change the answer to "disable_popcnt".
+##
+## enable_popcnt
+
+
+## SIMD support.  By default, the configure program will test your
+## computer for SIMD commands (e.g., Intel SSE commands), and if so,
+## enable those commands to speed up the program.  If you plan to
+## configure the package on one computer and then run the programs on
+## another computer, you may need to disable this feature.  To disable
+## all SIMD support, specify --disable-simd or uncomment the line
+## below and change the answer to "disable_simd".  Or you may disable
+## individual types of SIMD commands, as listed below.
+##
+## enable_simd
+## enable_sse2
+## enable_sse4.1
+
+
+## Optional zlib support (needed only for reading gzip-compressed files).  By
+## default, the configure program will test to see if you have a
+## working zlib library and if so, enable the feature.  If you want to
+## disable the feature, specify --disable-zlib or uncomment the line
+## below and change the answer to "disable_zlib".
+##
+## enable_zlib
+
+
+## Optional bzlib support (needed only for reading bzip2-compressed files).  By
+## default, the configure program will test to see if you have a
+## working bzlib library and if so, enable the feature.  If you want to
+## disable the feature, specify --disable-bzlib or uncomment the line
+## below and change the answer to "disable_bzlib".
+##
+## enable_bzlib
+
+
+## The command for the C compiler.  If unspecified, the GNU configure
+## procedure will search for a suitable compiler, first for gcc and
+## then for cc.  To override this choice, specify the name of your
+## preferred C compiler here, for example, 'c89'.  
+## CC=gcc
+## or may want to specify another compiler
+## CC=/usr/bin/cc
+
+
+## Debugging and optimization options for the C compiler.  Use this to
+## specify CFLAGS for the version of the C compiler specified above.
+## If unspecified, defaults to '-O3' for fastest speed.  The configure
+## script will also test whether -mpopcnt works and apply it if
+## possible.  For Macintosh machines, you may need to add -m64 for
+## the programs to work.
+## CFLAGS='-O3'
+## CFLAGS='-O3 -m64'   (for Macintosh machines)
+
+
+## Debugging and optimization options for the MPICC compiler, used
+## for the MPI versions of the programs.
+## MPI_CFLAGS='-mpitrace'
+
+
+## Search directory for header files ('-IDIR') and any other
+## miscellaneous options for the C preprocessor and compiler.
+## CPPFLAGS=-I/usr/local/include
+
+
+## Path ('-L') and any other miscellaneous options for the linker.
+## '-L' options set here will be prepended to LD_LIBRARY_PATH (or its
+## system equivalent) at run time.
+## For systems with shared libraries:
+## LDFLAGS='-L/usr/local/lib -rpath /usr/local/lib'
+## For most other systems, including the gcc compiler
+## LDFLAGS='-L/usr/local/lib'
+
+
+## Special flags (in addition to CFLAGS and LIBS) that may be needed
+## for pthreads The configure program will attempt to determine these
+## automatically, but will also try any flags you supply here.
+## PTHREAD_CFLAGS=
+## PTHREAD_LIBS=
+
+
+## Make name.  Set this if you want to use a make by another name.
+## For example, if your GNU make is called 'gmake', use 'MAKE=gmake'.
+## MAKE=/usr/bin/make
+
+
+## Location of Perl.  Some of the utility programs require Perl
+## with working versions of IO::File and Getopt::Std.  The configure
+## program will attempt to find a working version of Perl in your
+## PATH, but you may need to or wish to specify a particular version
+## of perl here, by providing its full path
+## 
+## PERL=/usr/local/bin/perl
+
+
+## Maximum read length for GSNAP, defined at compile-time.  If this is
+## not set here, then a default value of 250 will be used
+##
+## MAX_READLENGTH=250
+
+
+## Header and library files for support of the external Goby library
+##    from the Campagne lab at Cornell (optional)
+## Requires the user to obtain and compile the libraries from
+##    http://campagnelab.org/software/goby.
+## Expects the header files to be in /path/to/goby/include and
+##    the library files to be in /path/to/goby/lib
+##
+## with_goby=/path/to/goby

@@ -1,0 +1,1 @@
+-Wall -Wno-sign-compare -ansi -pedantic -g -ggdb -O3   -DZIPINPUT -std=c++0x -DCOMPGENEPRED -DSQLITE

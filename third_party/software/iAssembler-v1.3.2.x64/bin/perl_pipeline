@@ -1,0 +1,1348 @@
+#!/usr/bin/perl -w 
+
+=head1 NAME
+
+ perl_pipeline - Perl Assember Pipeline, using blast and perl to assemble ESTs
+
+=head1 DESCRIPTION
+
+ This script will assembly input sequenses using blast and perl. Detail functions of the script were 
+ descripted at SUB(subroutine) part.
+
+ Author : Yi zheng
+ E-mail : yz357@cornell.edu
+ 
+ Update : 03/29/2011
+
+ Add function to remove some type II errors. The error correction will stop at T status. 
+ Just using unmatched sequences to perform assembly at final step if stop at T.
+
+ Using circle to control this function, if the circle is 2, this function is on.
+=cut
+use strict;
+use Cwd;
+use File::Path;
+use Bio::SeqIO;
+use Bio::SearchIO;
+use IO::File;
+use Bio::Seq;
+
+my $usage = qq'
+Perl Assembly Quick Version 0.02 Update 03/29/2011
+
+USAGE:
+	perl_pipeline    input   output   circle  parameter
+	Note:Just run as a pipeline, not as a standalone script
+';
+
+my $input = shift || die $usage;	# input sequence
+
+my $output = shift || die $usage;
+
+my $circle = shift || die $usage;
+
+my $parameter = shift || die $usage;
+
+my $working_dir = $ENV{'working_dir'};
+my $current_dir = $ENV{'current_dir'};
+my $debug_mode = $ENV{'debug_mode'};
+my $log_file = $ENV{'log_file'};
+
+my $start_time = localtime();
+my $perl_start = qq'
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Assembling Clusters ...... ( $start_time )
+
+';
+write_log($perl_start) if $debug_mode == 1;
+
+#########################################################################
+# parse input: 1st input is fasta file; 2nd input is cmf file		#
+#########################################################################
+my @input_array = split(/#/, $input);
+
+my $input_seq = $input_array[1];
+my $input_cmf = $input_array[2] if ($input_array[2]);
+
+#to check if the file is exist;
+unless(-s $input_seq) { print "\nInput uniseq file $input_seq not exist!"; die $usage; }
+
+#########################################################################
+# parse output: 1st output is uniseq; 2nd output is cmf file		#
+#########################################################################
+my @output_array = split(/#/, $output);
+
+my $output_seq = $output_array[1] || "$working_dir/perl.uniseq";
+my $output_cmf = $output_array[2] || "$working_dir/perl.cmf";
+
+#########################################################################
+# parse parameter: 							#
+#########################################################################
+my $report_as2seq = 0;
+my $report_switch = 1;
+
+#########################################################################
+# Import parameters from ENV						#
+#########################################################################
+my ($blast_program, $blast_param, $max_end_clip, $min_overlap, $min_identity);
+
+#my ($end_clip, $hsp_len, $identity_cluster, $blast_program, $blast_argu);
+#my $bfb;  my $end_len = $end_clip;
+
+if ( $ENV{'blast_program'} )	{ $blast_program= $ENV{'blast_program'}; }
+if ( $ENV{'blast_param'} )	{ $blast_param  = $ENV{'blast_param'}; }
+if ( $ENV{'max_end_clip'} )	{ $max_end_clip = $ENV{'max_end_clip'}; }
+if ( $ENV{'min_overlap'} )	{ $min_overlap  = $ENV{'min_overlap'}; }
+if ( $ENV{'min_identity'} )	{ $min_identity = $ENV{'min_identity'}; }
+
+#if ( $ENV{'mp_low_identity'} ) { $bfb = $ENV{'mp_low_identity'}; }  # use this parameter to do cluster.
+
+#########################################################################
+# Import parameters from parameter command                              #
+#########################################################################
+my $prefix_m = "K";
+my $ucluster = 0;
+
+my @para_array = split(/#/, $parameter);
+
+my $para_line = $para_array[1];
+
+my %para_hash = parse_parameter($para_line);
+
+foreach my $key_para (sort keys %para_hash)
+{
+	#if ($key_para eq "-e" && $para_hash{$key_para} =~ m/\w+/ ){ $end_clip = $para_hash{$key_para}; }
+	if ($key_para eq "-p" && $para_hash{$key_para} =~ m/\w+/ ){ $prefix_m = $para_hash{$key_para}; }
+	if ($key_para eq "-u" && $para_hash{$key_para} =~ m/\w+/ ){ $ucluster = $para_hash{$key_para}; }
+}
+
+###############################################################################
+# arguments is bleow                                                          #
+###############################################################################
+=head
+
+PART1 -- Prepare file
+
+example --
+    cluster_file : cluster0828
+    base_folder_name : 0828
+    member_file  : cluster0828.member
+    contig_file  : cluster0828.contig
+    
+ACTION --
+    1: create 0828 folder if it not exist
+    2: copy program script to folder [delete after this] 
+    3: copy cluster0828 file to 0828 folder
+    4: change dir to 0828
+    5: rename cluster0828 to $fafile = "Contig_0K", for next step cluster
+=cut
+
+# creat the temp dir to do assembly
+
+my $temp_dir = "$working_dir/perl_$prefix_m";
+
+if (-e $temp_dir) { die "Error! $temp_dir is exist! Please buy lottery!\n"; }
+else{   mkdir($temp_dir); }
+
+#system("pwd") if $debug_mode == 1;
+# move the cluster file to temp file and change default path to temp dir
+system("cp $input_seq $temp_dir/Contig_0$prefix_m") && die "Error at $input_seq to contig0\n";
+
+
+# cp input file to perl, this is init file;
+my $init_seq = "$temp_dir/perl_init_seq";
+my $init_cmf = "$temp_dir/perl_init_cmf";
+
+# copy last time cmf file to cap0.cmf;
+my $cp_init_seq = "cp $input_seq $init_seq";
+
+if ($input_cmf)
+{
+	my $cp_init_cmf = "cp $input_cmf $init_cmf";
+	system("$cp_init_seq") && die "Error at $cp_init_seq\n";
+	system("$cp_init_cmf") && die "Error at $cp_init_cmf\n";
+}
+else
+{
+	my $init_cmf_fh = IO::File->new(">".$init_cmf) || die "Error at create  perl0.cmf \n";
+	print $init_cmf_fh "\n";
+	$init_cmf_fh->close;
+
+	system("$cp_init_seq") && die "Error at $cp_init_seq\n";
+}
+
+my $final_seq = "$temp_dir/perl_final_seq";
+my $final_cmf = "$temp_dir/perl_final_cmf";
+
+chdir "$temp_dir";	#print "ucluster\t".$ucluster."\n";
+
+#################################################################
+#  Main Part							#
+#################################################################
+
+my %cluster_hash; #for store cluster unique id for sub next assembly.
+
+my $compare_seq;  #for store sequences for sub next assembly
+
+my $seq_file = "Contig_0".$prefix_m; # file name of starting assembly, init assembly
+
+my $s = 0 ;       #circle time;
+
+while ($seq_file)
+{
+	my %seq_hash = seq_2_hash($seq_file);
+
+	# produce compare seqs for clustering
+	if ($s == 0)
+	{
+		if ($ucluster == 1 || $ucluster == 2)
+		{
+			$compare_seq = "$working_dir/unmatched_seq";
+		}
+		else
+		{
+			$compare_seq = "ALL";
+		}
+	}
+	elsif ( $s > 0 && scalar(keys(%cluster_hash)) > 0 )
+	{
+		$compare_seq = "$working_dir/compare_seq";
+		if (-e $compare_seq ) { unlink( "$compare_seq" ); }
+		my $compare_seq_fh = IO::File->new(">".$compare_seq) || die "Can not open unmatched seqs : $compare_seq $!\n";
+
+		foreach my $cls_id (sort keys %cluster_hash)
+		{
+			if (defined $seq_hash{$cls_id})
+			{
+				print $compare_seq_fh ">".$cls_id."\n".$seq_hash{$cls_id}."\n";
+			}
+			else
+			{
+				die "Error! $cls_id didn't have seq info. $! \n";
+			}
+		}
+		$compare_seq_fh->close;
+	}
+	else
+	{
+		die "Error at ".($s+1)." time Cluster. Last time cluster have no clusters!\n";
+	}
+
+	# clustering and get cluster hash for assembly;
+	my @out_align_info = ();
+
+	if ($s == 0)
+	{
+		@out_align_info = do_cluster_n($seq_file, $min_identity, $min_overlap, $max_end_clip, $compare_seq);
+	}
+	elsif ($s > 0)
+	{
+		if ($ucluster == 2)
+		{
+			@out_align_info = do_cluster_n($compare_seq, $min_identity, $min_overlap, $max_end_clip, $compare_seq);
+		}
+		else
+		{
+			@out_align_info = do_cluster_n($seq_file, $min_identity, $min_overlap, $max_end_clip, $compare_seq);
+		}
+	}
+	else
+	{
+		die "Error at ".($s+1)." time Cluster. Last time cluster have no clusters!\n";
+	}
+
+	# assembling and produce next cluster seqs
+	if ( scalar(@out_align_info) > 0 )
+	{
+		$s++;
+		
+		do_assembly_n(\@out_align_info, \%seq_hash, $s);
+
+		$seq_file = produce_next_cluster_file(\%seq_hash, $s);
+	}
+	else
+	{
+		last;
+	}
+}
+
+
+###############################################################################
+# combine contig member files and move to outside                             #
+###############################################################################
+if ($s > 1) {
+	write_log("\nThere are $s sub-circles in this assembly task!\n\n") if $debug_mode == 1;
+} else {
+	write_log("\nThere is $s sub-circles in this assembly task!\n\n") if $debug_mode == 1;
+}
+
+if ($s >= 2)
+{
+	for (my $t=2; $t<=$s; $t++)
+	{
+		&combo_id($t);   
+	}
+}
+elsif($s == 1)
+{
+	write_log("There is just one time result\n") if $debug_mode == 1;
+
+	my $cp1 = "cp Contig_1".$prefix_m.".fa ".$final_seq;
+	my $cp2 = "cp Contig_Member_ID_1".$prefix_m." ".$final_cmf;
+	#write_log("$cp1 \n $cp2 \n") if $debug_mode == 1;
+	system("$cp1");
+	system("$cp2");
+}
+else
+{
+	write_log("\nThere is no cluster in Perl Assembly Step\n") if $debug_mode == 1;
+	my $ctgfh = IO::File->new(">".$final_seq) || die "can not open $final_seq\n";
+	$ctgfh->close;
+	my $cmffh = IO::File->new(">".$final_cmf) || die "can not open $final_cmf\n";
+	$cmffh->close;
+}
+
+chdir($working_dir);
+
+#write_log("PROCESS CTG FILE -- \n"."\tLAST CTG : $final_seq\n"."\tLAST UNISEQ : $init_seq\n"."\tLAST CMF : $final_cmf\n"."\tOUT UNISEQ : $output_seq\n") if $debug_mode == 1;
+#write_log("PROCESS CMF FILE -- ".$final_cmf."\t".$init_cmf."\t".$output_cmf."\n") if $debug_mode == 1;
+get_uniseq($final_seq, $init_seq, $final_cmf, $output_seq);
+if($input_cmf) { com_cmf($final_cmf, $init_cmf, $output_cmf ); }
+else	       { system("cp $final_cmf $output_cmf") && die "Error at copy cmf file when no init cmf \n"; }
+
+unlink("perl0.cmf");
+
+#########################################################
+# delete temp file and folder                           #
+#########################################################
+unless ($debug_mode == 1)
+{
+	system("rm -rf $temp_dir") && die "Error at delete perl assembler temp folder\n";
+}
+
+my $end_time = localtime();
+my $perl_end = qq'
+
+$end_time
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+';
+write_log($perl_end) if $debug_mode == 1;
+
+system("rm -rf $temp_dir");
+
+#################################################################
+# kentnf : subroutine						#
+#################################################################
+
+=head1 SUBROUTINE PART
+
+=head2 seq_2_hash
+
+ Function: store fasta seq to hash
+
+ Input: input seqs (file name)
+	mode (return different results)
+
+ Return: 1. return seq id and seq if mode is 1 (hash)
+	 Other. return seq id and length if mode not 1 (hash)
+=cut
+sub seq_2_hash
+{
+	my $usage = "\nUSAGE: cluster_seq = &seq_to_hash(input_seq[fasta format], mode[1 for seq, 2 for length of seq])\n\n";
+	
+	my $input = shift || die $usage;
+
+	my $mode = shift || 1;
+
+	my %seq = ();
+
+	my %unique_id = ();
+
+	my $seq_num = 0;
+    
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$input);
+ 
+	while (my $inseq = $in->next_seq)
+	{
+		my $id = $inseq->id;
+		my $seq = $inseq->seq;
+		my $length = $inseq->length;
+
+		$seq_num++;
+
+		if ($mode == 1)	{ $seq{$id} = $seq; }
+		else		{ $seq{$id} = $length; }
+
+		if (defined $unique_id{$id})	{ die "Error! $id repeat, Please check the input file $input \n"; }
+		else				{ $unique_id{$id} = 1; }
+	}
+    
+	write_log("There are $seq_num seqs in $input\n") if $debug_mode == 1;
+	
+	return %seq;
+}
+
+=head2 produce_next_cluster_file
+
+ Function: produce files for next cycle, 1st step of assembly is clustering, so the files are for clustering in next cycle.
+
+ Input: Input unique sequences (file name)
+	Cycle time (number)
+
+ Return: Ouput sequnece file next cycle cluster (file name)
+=cut
+sub produce_next_cluster_file
+{
+	my $usage = "\nfasta_file = &produce_next_cluster_file(circle_time)\n\n";
+
+	my $uniseq = shift || die $usage;
+
+	my %uniseq = %$uniseq;
+
+	my $time = shift || die $usage;
+
+	my $ctg_mem_file = "Contig_Member_ID_".$time.$prefix_m;
+    
+	my $ctg_file = "Contig_".$time.$prefix_m;
+
+	my $cluster_file = $ctg_file.".fa";
+
+	my $cmf_fh = IO::File->new($ctg_mem_file) || die "Can not open contig member file D: $ctg_mem_file $! \n";
+
+	while(my $cmf_line = <$cmf_fh>)
+	{
+		chomp($cmf_line);
+
+		my @mem = split(/\t/, $cmf_line);
+
+		for(my $i=1; $i<@mem; $i++)
+		{
+			delete $uniseq{$mem[$i]};
+
+			#if (defined $unmatch_id{$mem[$i]})
+			#{
+			#	delete $unmatch_id{$mem[$i]};
+			#}
+		}
+	}
+	$cmf_fh->close;
+
+	my $c_fh = IO::File->new(">".$cluster_file) || die "Can not open cluster file $cluster_file $!\n";
+
+	# output print contig sequences to file
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$ctg_file);
+	while(my $inseq = $in->next_seq)
+	{
+		print $c_fh ">".$inseq->id."\n".$inseq->seq."\n";
+	}
+
+	# output print singlet sequences to file
+	foreach my $sid (sort keys %uniseq)
+	{
+		print $c_fh ">".$sid."\n".$uniseq{$sid}."\n";
+	}
+	$c_fh->close;
+
+	return $cluster_file;
+}
+
+=head2 do_cluster_n
+
+ Function: perform clustering using unique sequences (new version);
+
+ Input: input unique sequences (file name)
+	length of ends clip (int)
+	length of overlap length (int)
+	identity of hsp (int)
+	*compare seq <option> (file name)
+
+ Output: output blast info 
+	 
+ Note: the output blast info is for next assembly step, using this info can save blast time.
+=cut
+
+sub do_cluster_n
+{
+	my ($input, $min_identity, $min_overlap, $max_end_clip, $compare_seq) = @_;
+
+	my $small_seq;
+	if ($compare_seq eq "ALL")
+	{
+		$small_seq = $input;
+	}
+	else
+	{
+		$small_seq = $compare_seq;
+	}
+
+	#format the fasta file
+	system("formatdb -i $input -p F") && die "Error at formatdb in cluster $input\n";
+	
+	#perform self blast
+	my $blast_command;
+	if ($blast_program eq "blastn")
+	{
+		$blast_command = "blastall -i $small_seq -d $input -p blastn -o temp_blast_out $blast_param";
+	}
+	elsif ($blast_program eq "megablast")
+	{
+		$blast_command = "megablast -i $small_seq -d $input -p $min_identity -o temp_blast_out $blast_param -v 50 -b 50";
+	}
+	else
+	{ print "Wrong Blast Program $blast_program"; }
+
+	write_log("Blast Command: ".$blast_command."\n") if $debug_mode == 1;
+
+	system($blast_command) && die "Error at clustering $input and $small_seq.\n";
+	
+	#parse blast result and get clusters base on blast result
+	my %unique_member;
+	my @align_info = ();
+
+	my ($one_query, $query_name, $query_length, $hit_name, $hit_length, $is_hsp, $hsp_order, $query_record, $score, $evalue, $strand, $sam_strand, $identity, $query_string, $hit_string, $query_start, $query_end, $hit_start, $hit_end, $overlap, $query_to_end, $hit_to_end, $cigar_char, $qseq );
+	$hsp_order = 0;
+	my %hsp = ();
+	$is_hsp = 1;	
+
+	my $bfh = IO::File->new("temp_blast_out") || "Can not open blast result file: temp_blast_out $!\n";
+	while(<$bfh>)
+	{
+		chomp;
+		# Query Name, Query Length
+		if (/Query=\s(\S+)/ || eof)
+		{
+			#########################################
+			# Parse last hsp record to hash         #
+			#########################################
+			if ($hsp_order > 0)
+			{
+				my $hsp_info =  $query_name."\t".$query_length."\t".
+						$hit_name."\t".$hit_length."\t".
+						$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+						$query_start."\t".$query_end."\t".$query_string."\t".
+						$hit_start."\t".$hit_end."\t".$hit_string."\t".
+						$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info;
+			}
+
+			#########################################
+			# parse hsp to produce cluster		#
+			#########################################
+			if (scalar(keys(%hsp)) > 0)
+			{
+				foreach my $hsp_num (sort {$a<=>$b} keys %hsp)
+				{
+					my @one_hit = split(/\t/, $hsp{$hsp_num});
+					unless( scalar(@one_hit) == 16 ) { die "Error! the parsed blast may lost some info:\n $hsp{$hsp_num} \n"; }
+					
+					my ($query_name, $query_length, $hit_name, $hit_length, $score, $evalue, $identity, $strand,
+					    $query_start, $query_end, $query_string, $hit_start, $hit_end, $hit_string, $overlap, $sam_strand) =
+					   ($one_hit[0], $one_hit[1], $one_hit[2], $one_hit[3], $one_hit[4], $one_hit[5], $one_hit[6], $one_hit[7],
+					    $one_hit[8], $one_hit[9], $one_hit[10],$one_hit[11],$one_hit[12],$one_hit[13],$one_hit[14], $one_hit[15]);
+
+					my $query_to_end = $query_length - $query_end;
+					my $hit_to_end = $hit_length - $hit_end;
+
+					my $max_q_indel = indel_len($query_string);
+					my $max_h_indel = indel_len($hit_string);
+
+					$identity =~ s/%//;
+
+					if ( $identity >= $min_identity && $overlap >= $min_overlap && ($max_q_indel <=6 && $max_h_indel <=6 ) )
+					{
+# Begin of rules for get clusters
+if ($strand == -1)
+{
+	if (($query_start <$max_end_clip+1 && $query_to_end <$max_end_clip) || ($hit_start <$max_end_clip+1 && $hit_to_end <$max_end_clip) || ($query_to_end <$max_end_clip && $hit_to_end <$max_end_clip) || ($query_start <$max_end_clip+1 && $hit_start <$max_end_clip+1))
+	{
+		if (!defined $unique_member{$query_name}  && !defined $unique_member{$hit_name} && ($query_name ne $hit_name))
+		{
+			my $ainfo = $query_name."\t".$hit_name."#".$identity."\t".$strand."\t".$query_start."\t".$query_end."\t".$query_string."\t".$hit_start."\t".$hit_end."\t".$hit_string;
+
+			push(@align_info, $ainfo);
+                        #$align_info{$one_hit[0]."\t".$one_hit[2]} = $one_hit[0]."\t".$one_hit[2]."#".$identity."\t".$strand."\t".$query_start."\t".$query_end."\t".$query_string."\t".$hit_start."\t".$hit_end."\t".$hit_string;
+			$unique_member{$query_name} = 1;
+			$unique_member{$hit_name} = 1;
+		}
+
+		if ( $s == 0 )
+		{
+			unless( defined $cluster_hash{$query_name} ) { $cluster_hash{$query_name} = 1; }
+			unless( defined $cluster_hash{$hit_name} ) { $cluster_hash{$hit_name} = 1; }
+		}
+	}
+}
+else
+{
+	if (($query_start <$max_end_clip+1 && $query_to_end <$max_end_clip) || ($hit_start <$max_end_clip+1 && $hit_to_end <$max_end_clip) || ($query_to_end <$max_end_clip && $hit_start <$max_end_clip+1) || ($query_start <$max_end_clip+1 && $hit_to_end <$max_end_clip))
+	{
+		if (!defined $unique_member{$query_name}  && !defined $unique_member{$hit_name} && ($query_name ne $hit_name))
+		{
+			my $ainfo = $query_name."\t".$hit_name."#".$identity."\t".$strand."\t".$query_start."\t".$query_end."\t".$query_string."\t".$hit_start."\t".$hit_end."\t".$hit_string;
+
+			push(@align_info, $ainfo);
+                        #$align_info{$one_hit[0]."\t".$one_hit[2]} = $one_hit[0]."\t".$one_hit[2]."#".$identity."\t".$strand."\t".$query_start."\t".$query_end."\t".$query_string."\t".$hit_start."\t".$hit_end."\t".$hit_string;
+			$unique_member{$query_name} = 1;
+			$unique_member{$hit_name} = 1;
+		}
+
+		if ( $s == 0 )
+		{
+			unless( defined $cluster_hash{$query_name} ) { $cluster_hash{$query_name} = 1; }
+			unless( defined $cluster_hash{$hit_name} ) { $cluster_hash{$hit_name} = 1; }
+		}
+	}
+}
+# end of rules for get clusters
+					}
+				}
+			}
+
+			#########################################
+			# start a new query 			#
+			#########################################
+			%hsp = ();
+			$hsp_order = 0;
+			$query_name = ""; $query_length = ""; $hit_name = ""; $hit_length = "";
+			$query_name = $1;
+		}
+		elsif (/\s+\((\S+)\sletters\)/)
+		{
+			$query_length = $1;
+			$query_length =~ s/,//ig;
+		}
+
+		# Hit Part
+		# Hit Name, Hit Length
+		elsif (/>(\S+)/)
+		{
+			#########################################
+			# hsp info to hash                      #
+			#########################################
+			if ($hsp_order > 0 || eof)
+			{
+			my $hsp_info =  $query_name."\t".$query_length."\t".
+					$hit_name."\t".$hit_length."\t".
+					$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+					$query_start."\t".$query_end."\t".$query_string."\t".
+					$hit_start."\t".$hit_end."\t".$hit_string."\t".
+					$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info;
+				$is_hsp = 0;
+			}
+			#########################################
+			# new hit start                         #
+			#########################################
+			$hit_name = ""; $hit_length = "";
+			$hit_name = $1;
+		}
+		elsif (/\s+Length = (\d+)/)
+		{
+			$hit_length = $1;
+		}
+
+		# HSP Part
+		# Score, Evalue, Identity, Strand, Query Start, Query End, Hit Start, Hit End, Query String, Hit String
+		elsif (/Score =\s+(\S+) bits.+Expect(\(\d+\))? = (\S+)/)
+		{
+			#########################################
+			# hsp record to hash                    #
+			#########################################
+			if ($hsp_order > 0 && $is_hsp == 1)
+			{
+				my $hsp_info =  $query_name."\t".$query_length."\t".
+						$hit_name."\t".$hit_length."\t".
+						$score."\t".$evalue."\t".$identity."\t".$strand."\t".
+						$query_start."\t".$query_end."\t".$query_string."\t".
+						$hit_start."\t".$hit_end."\t".$hit_string."\t".
+						$overlap."\t".$sam_strand;
+				$hsp{$hsp_order} = $hsp_info;
+			}
+			#########################################
+			# for new hsp record                    #
+			#########################################
+			$is_hsp = 1;
+			$hsp_order++;
+			$score = $1; $evalue = $3;
+			$evalue = "1$evalue" if ($evalue =~ m/^e/);
+			$query_string = ""; $hit_string = "";
+			$query_start = 0; $query_end = 0; $hit_start = 0; $hit_end = 0;
+		}
+		elsif (/\s+Identities = (\d+)\/(\d+)\s+\((\S+)\)/ && $hsp_order >= 1)
+		{
+			$identity = $1/$2*100;
+			$identity = sprintf("%.".(2)."f", $identity);
+			if ( $1 > $2 ) { $overlap = $1; } else { $overlap = $2; }
+		}
+		elsif (/\s+Strand = (\S+) \/ (\S+)/ && $hsp_order >= 1)
+		{
+			if ( $2 eq "Plus" ) { $strand = 1; $sam_strand = 0; } else { $strand = -1; $sam_strand |= 0x10; }
+		}
+		elsif (/Query\:\s(\d+)\s+(\S+)\s(\d+)/ && $hsp_order >= 1)
+		{
+			$query_string .= $2;
+			if ($query_start == 0) { $query_start = $1; }
+			$query_end = $3;
+		}
+		elsif (/Sbjct\:\s(\d+)\s+(\S+)\s(\d+)/ && $hsp_order >= 1)
+		{
+			$hit_string .= $2;
+			if ( $strand == -1 )
+			{
+				if ($hit_end == 0) { $hit_end = $1 };
+				$hit_start = $3;
+			}
+			else
+			{
+				if ($hit_start == 0) { $hit_start = $1 };
+				$hit_end = $3;
+			}
+		}
+		else
+		{
+			next;
+		}
+	}
+	$bfh->close;
+
+	return(@align_info);
+}
+
+=head2 do_assembly_n
+
+ Function: assemble clustering sequences base on blast results (new version);
+
+ Input: blast result of clustering (char)
+	input unique sequences (hash)
+	cycle time (int)
+
+ Return: cycle time;
+
+ Action --
+	1: Put the fasta sequence to hash, these sequence do cluster last step
+	2: Using blast info, every id use once to produce another hash
+	3: Produce files have 2 sequences that can assembly by as2seq
+	4: Do as2seq assembly.
+	5: Combine the result
+	6: Delete the file 
+=cut
+
+sub do_assembly_n
+{
+	my ($align_info, $seqs, $time) = @_;
+
+	my ($cmf_content, $ctg_content);
+	my $cluster_num = 0;
+	#######################################################################
+	# put the cluster file to hash                                        #
+	#######################################################################
+	my $cons;
+
+	foreach my $cmid ( @$align_info )
+	{
+		my @blast_m = split(/#/, $cmid, 2);
+
+		my @m = split(/\t/, $blast_m[0]);
+	
+		$cluster_num++;
+	#################################################################
+	# Begin: assembly two sequences base one blast info		#
+	#################################################################
+	my $a_is_contig = 0; my $b_is_contig = 0;
+	if ($m[0] =~ m/^mira/ || $m[0] =~ m/^cap/ || $m[0] =~ m/^tgicl/ || $m[0] =~ m/cluster\d+Contig\d+/ ) { $a_is_contig = 1; }
+	if ($m[1] =~ m/^mira/ || $m[1] =~ m/^cap/ || $m[1] =~ m/^tgicl/ || $m[1] =~ m/cluster\d+Contig\d+/ ) { $b_is_contig = 1; }
+
+	if ( $a_is_contig == 0 && $b_is_contig == 0)
+	{
+		$cons = assembly_2_seqs($blast_m[1], $$seqs{$m[0]}, $$seqs{$m[1]});
+	}
+	elsif ( $a_is_contig == 1 && $b_is_contig == 0 )
+	{
+		$cons = merge_seqs_to_contig($blast_m[1], $$seqs{$m[0]}, $$seqs{$m[1]}, "a");
+	}
+	elsif ( $a_is_contig == 0 && $b_is_contig == 1 )
+	{
+		$cons = merge_seqs_to_contig($blast_m[1], $$seqs{$m[0]}, $$seqs{$m[1]}, "b");
+	}
+	else 
+	{
+		if (length($$seqs{$m[0]}) >= length($$seqs{$m[1]}))
+		{
+			$cons = merge_seqs_to_contig($blast_m[1], $$seqs{$m[0]}, $$seqs{$m[1]}, "a");
+		}
+		else
+		{
+			$cons = merge_seqs_to_contig($blast_m[1], $$seqs{$m[0]}, $$seqs{$m[1]}, "b");
+		}
+	}
+	#################################################################
+	# End: assembly two sequences base one blast info		#
+	#################################################################
+
+	#################################################################
+	# Begin: Produce contig files and contig membmer files		#
+	#################################################################
+	# contig name like; 1Kcluster1Contig1
+	$cmf_content .=     $time.$prefix_m."cluster".$cluster_num."Contig1"."\t".$m[0]."\t".$m[1]."\n";
+	$ctg_content .= ">".$time.$prefix_m."cluster".$cluster_num."Contig1"."\n".$cons."\n";
+
+	#reproduce cluster hash for next cluster;
+	$cluster_hash{$time.$prefix_m."cluster".$cluster_num."Contig1"} = 1;
+					
+	if (defined $cluster_hash{$m[0]} ) {
+		delete $cluster_hash{$m[0]};
+	}
+	else {
+		#print "Error at deleting member: $cluster_hash{$three_mm[1]} from cluster hash $three_id , $three_mm[1] .\n";
+	}
+
+	if (defined $cluster_hash{$m[1]} ) {
+		delete $cluster_hash{$m[1]};
+	}
+	else {
+		#print "Error at deleting member: $cluster_hash{$three_mm[2]} from cluster hash: $three_id , $three_mm[2] .\n";
+	}
+	#################################################################
+	# End: Produce contig files and contig membmer files		#
+	#################################################################
+	
+	}
+
+	write_log("Assembly Prefix: $prefix_m \t Assembly Sub-Cycle: $time \t Cluster Number: $cluster_num \n") if $debug_mode == 1;
+
+	# store Contig sequences and contig member list to file;
+	my $cmf_file = "Contig_Member_ID_".$time.$prefix_m;
+        my $ctg_file = "Contig_".$time.$prefix_m;
+
+	my $cmf_fh = IO::File->new(">".$cmf_file) || die "Can not open contig member file A: $cmf_file $! \n";
+	my $ctg_fh = IO::File->new(">".$ctg_file) || die "Can not open contig sequence: $ctg_file $! \n";
+	print $cmf_fh $cmf_content;
+	print $ctg_fh $ctg_content;
+	$cmf_fh->close;
+	$ctg_fh->close;
+
+	return $time;
+}
+
+=head2 assembly_2_seqs
+
+ Function: assembly 2 seqs into one contigs
+
+ Input: alignment info (var)
+	sequences a (var)
+	sequences b (var)
+
+ Output: contigs (var)
+=cut
+sub assembly_2_seqs
+{
+	my ($align_info, $seqa, $seqb) = @_;
+
+	my ($q2end, $h2end, $part_a_seq, $part_b_seq, $part_c_seq);
+
+	my @ai = split(/\t/, $align_info);
+
+	if ($ai[1] eq "-1")
+	{
+		$seqb = revcom($seqb);
+		my $temp = $ai[5];
+		$ai[5] = length($seqb)-$ai[6]+1;
+		$ai[6] = length($seqb)-$temp+1;
+	}
+
+	$q2end = length($seqa)-$ai[3];
+	$h2end = length($seqb)-$ai[6];
+
+	# Part A seq
+	if ($ai[2] >= $ai[5])
+	{
+		$part_a_seq = substr($seqa, 0, $ai[2]-1);
+	}
+	else
+	{
+		$part_a_seq = substr($seqb, 0, $ai[5]-1);
+	}
+
+	# Part C seq
+	if ($q2end >= $h2end)
+	{
+		$part_c_seq = substr($seqa, $ai[3], $q2end);
+	}
+	else
+	{
+		$part_c_seq = substr($seqb, $ai[6], $h2end);
+	}
+
+	# Part B seq
+	$part_b_seq = $ai[4];
+	my $char = '-';
+	my $offset = 0;
+	my $pos = index($ai[4], $char, $offset);
+  
+	while ($pos != -1) 
+	{
+		# find base at another seqs and replace
+		my $base = substr($ai[7], $pos, 1);
+		$part_b_seq =~ s/-/\Q$base\E/;
+
+		# find next pos have indel error
+		$offset = $pos + 1;
+		$pos = index($ai[4], $char, $offset);
+	}
+	
+	my $cons = uc($part_a_seq.$part_b_seq.$part_c_seq);
+
+	return $cons;
+}
+
+=head2 merge_seqs_to_contig
+
+ Function: align ESTs to contigs or align short ESTs to long ESTs. This is a different type of 'assembly 2 seqs' function
+
+ Input: alignment info (char)
+	sequences a (char)
+	sequences b (char)
+	which is contig (char), so another seq is EST.
+
+ Output: merged contigs (char)
+=cut
+sub merge_seqs_to_contig
+{
+	my ($align_info, $seqa, $seqb, $which_is_cons) = @_;
+
+	my ($q2end, $h2end, $part_a_seq, $part_b_seq, $part_c_seq);
+
+	my @ai = split(/\t/, $align_info);
+
+	if ($ai[1] eq "-1")
+	{
+		$seqb = revcom($seqb);
+		my $temp = $ai[5];
+		$ai[5] = length($seqb)-$ai[6]+1;
+		$ai[6] = length($seqb)-$temp+1;
+	}
+
+	$q2end = length($seqa)-$ai[3];
+	$h2end = length($seqb)-$ai[6];
+
+	# Part A seq
+	if ($ai[2] >= $ai[5])
+	{
+		$part_a_seq = substr($seqa, 0, $ai[2]-1);
+	}
+	else
+	{
+		$part_a_seq = substr($seqb, 0, $ai[5]-1);
+	}
+
+	# Part C seq
+	if ($q2end >= $h2end)
+	{
+		$part_c_seq = substr($seqa, $ai[3], $q2end);
+	}
+	else
+	{
+		$part_c_seq = substr($seqb, $ai[6], $h2end);
+	}
+
+	# Part B seq
+	if ($which_is_cons eq "a")
+	{
+		$part_b_seq = $ai[4];
+	}
+	else
+	{
+		$part_b_seq = $ai[7];
+	}
+	$part_b_seq =~ s/-//ig;
+	
+	my $cons = $part_a_seq.$part_b_seq.$part_c_seq;
+
+	return $cons;
+}
+
+# this is sub-subroutine of do_assembly_n
+sub revcom
+{
+	my $seq = shift;
+	my $rcseq = reverse($seq);
+	$rcseq =~ tr/atgcrymkswATGCRYMKSW/tacgyrkmswTACGYRKMSW/;
+	return $rcseq;
+}
+
+=head2 combo_id
+
+	Title: combo_id
+	Usage: &combo_id ( this_time_number )
+	Function: Combine the "Contig Member File"
+	Note:
+	Returns:
+	Args:
+=cut
+sub combo_id
+{
+	my $usage = "\n&combo_id(this_time_number)\n\n";
+
+	my $this_time = shift || die $usage;
+
+	write_log("Merge Contig Member File : Time\t$this_time\n") if $debug_mode == 1;
+
+	my $last_time = $this_time-1;
+
+	my $ctg_mem_this = "Contig_Member_ID_".$this_time.$prefix_m;
+	my $ctg_mem_last = "Contig_Member_ID_".$last_time.$prefix_m;
+
+	my $ctg_mem_new = "Contig_Member_ID_".$this_time.$prefix_m.".new";
+	my $ctg_mem_bak = "Contig_Member_ID_".$this_time.$prefix_m.".bak";
+
+	my $ctg_this = "Contig_".$this_time.$prefix_m;
+	my $ctg_last = "Contig_".$last_time.$prefix_m;
+	
+	my $ctg_new = "Contig_".$this_time.$prefix_m.".new";
+	my $ctg_bak = "Contig_".$this_time.$prefix_m.".bak";
+
+	my %all_seq = ();  
+
+	#store contig to hash;
+	my $in1 = Bio::SeqIO->new(-format=>'fasta', -file=>$ctg_this);
+  
+	while( my $inseq1 = $in1->next_seq)
+	{
+		my $id1 = $inseq1->id;
+		my $sq1 = $inseq1->seq;
+		$all_seq{$id1} = $sq1;
+	}
+
+	#store est to hash;
+	my $in2 = Bio::SeqIO->new(-format=>'fasta', -file=>$ctg_last);
+
+	while( my $inseq2 = $in2->next_seq)
+	{
+		my $id2 = $inseq2->id;
+		my $sq2 = $inseq2->seq;
+		$all_seq{$id2} = $sq2;
+	}
+  
+	my %ctg_mem_last = ();  
+  
+	open (LAST, "<$ctg_mem_last") or die "can not open 0 $ctg_mem_last $!\n";
+	
+	while(<LAST>)
+	{
+		chomp;
+		my @last = split (/\t/, $_, 2);
+		$ctg_mem_last{$last[0]} = $last[1];
+	}
+	close(LAST);
+
+	my $z;  
+	open (THIS, "<$ctg_mem_this") or die "can not open 1 $ctg_mem_this $!\n";
+	open (NEW, ">$ctg_mem_new") or die "can not open 2 $ctg_mem_new $!\n";
+  
+	while(<THIS>)
+	{
+		chomp;
+		my  @this = split (/\t/, $_);
+
+		print NEW "$this[0]";
+    
+		for ($z=1; $z<@this; $z++)
+		{
+			if($ctg_mem_last{$this[$z]})
+			{
+				my $del = $this[$z];
+				$this[$z] = $ctg_mem_last{$this[$z]};
+				delete $all_seq{$del};
+				delete $ctg_mem_last{$del};
+			}
+
+			print NEW "\t$this[$z]"
+		}
+      
+		print NEW "\n";
+	}
+
+	close(THIS);
+
+	my $ctg_id; 
+	my $mem_id;
+	while (($ctg_id, $mem_id) = each %ctg_mem_last)
+	{
+		print NEW "$ctg_id\t$mem_id\n";
+	}
+	close(NEW);
+
+	rename "$ctg_mem_this", "$ctg_mem_bak";  
+	rename "$ctg_mem_new", "$ctg_mem_this";
+
+	open(CNEW, ">$ctg_new") or die "can not open 3 $ctg_new $!\n";
+  
+	my $id; my $sq;
+	
+	while (($id, $sq) = each %all_seq)
+	{
+		print CNEW ">$id\n$sq\n";
+	}
+	close(CNEW);
+
+	rename "$ctg_this", "$ctg_bak";
+	rename "$ctg_new", "$ctg_this";
+
+	my $ofa = $ctg_this.".fa";
+ 
+	system "cp $ctg_this $final_seq";
+	system "cp $ctg_mem_this $final_cmf";
+}
+
+=head2 com_cmf
+
+ Function: merge two contig and member files in one contig member file.
+
+ Input: contig member file (file name)
+	previous contig member file (file name)
+	output contig member file (file name)
+
+ Return: none
+=cut
+sub com_cmf
+{
+	my $usage = "perl combin_ace.pl this_cmf[2nd]  last_cmf[1st]  out\n";
+
+	my $file1 = shift || die $usage;  #this time
+	my $file2 = shift || die $usage;  #last time
+	my $out = shift || die $usage;
+
+	############################################################
+	# last time contig member file 
+	# put it to hash
+	############################################################
+
+	my %member;
+
+	my $last_fh = IO::File->new($file2) || die "can not open last cmf file $file2 $! \n";
+	while(my $last_line = <$last_fh>)
+	{
+		if ($last_line =~ m/\w+/)
+		{
+			chomp($last_line);
+			my @m2 = split(/\t/, $last_line, 2);
+			$member{$m2[0]} = $m2[1];
+		}
+	}
+	$last_fh->close;
+
+
+	############################################################
+	# this time contig member file
+	# if find , and if no find
+	############################################################
+	
+	my $out_fh = IO::File->new(">".$out) || die "Can not open out file $out $! \n";
+	
+	my $this_fh = IO::File->new($file1) || die "Can not open this cmf file $file1 $! \n";
+
+	while(my $this_line = <$this_fh>)
+	{
+		chomp($this_line);
+			
+		if ($this_line =~ m/\w+/)
+		{
+			my @m1 = split(/\t/, $this_line);
+
+			print $out_fh $m1[0];
+
+			my $i;
+			for($i=1; $i<@m1; $i++)
+			{
+
+				if(defined $member{$m1[$i]})
+				{
+					print $out_fh "\t".$member{$m1[$i]};
+					delete $member{$m1[$i]};
+				}
+				else
+				{
+					print $out_fh "\t".$m1[$i];
+				}
+			}
+			print $out_fh "\n";
+		}
+	}
+	$this_fh->close;
+
+	foreach my $c_id (sort keys %member)
+	{
+		if ($c_id) { print $out_fh "$c_id\t$member{$c_id}\n";}
+	}
+
+	$out_fh->close;
+}
+
+=head2 get_uniseq
+
+ Function: get unique sequences from previous assembly result, and the unique sequences is for next clustering.
+
+ Input: input contig sequences (file name)
+	input member sequences (file name)
+	contig member file (file name)
+	output unique sequences (file name)
+
+ Return: none
+=cut
+sub get_uniseq
+{
+	my $usage = "USAGE\n &get_uniseq(contig.fa, est.fa, cmf, uniseq)\n\n";
+	my $ctg = shift || die $usage;
+	my $est = shift || die $usage;
+	my $cmf = shift || die $usage;
+	my $uni = shift || die $usage;
+
+	# contig sequences to hash
+	my %contig = ();
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$ctg);
+	while(my $inseq = $in -> next_seq )
+	{
+	      my $ctg_id = $inseq->id;
+	      my $ctg_seq = $inseq->seq;
+	      $contig{$ctg_id} = $ctg_seq;
+	}
+
+	# est sequences to hash
+	my %est = ();
+	my $in_est = Bio::SeqIO->new(-format=>'fasta', -file=>$est);
+	while(my $inseq_est = $in_est -> next_seq )
+	{
+	      my $est_id = $inseq_est->id;
+	      my $est_seq = $inseq_est->seq;
+	      $est{$est_id} = $est_seq;
+	}
+
+	# del contigs's members from est base on cmf file
+	my $cmfh = IO::File->new($cmf) || die "Can not open contig member file C: $cmf $! \n";
+	while(my $cmf_line = <$cmfh>)
+	{
+		chomp($cmf_line);
+		my @m = split(/\t/, $cmf_line);
+
+		my $i;
+		for($i=1; $i<@m; $i++)
+		{
+			delete $est{$m[$i]};
+		}
+
+	}
+	$cmfh->close;
+
+	# print uniseq sequence[include singlet and contigs]
+	my $unfh = IO::File->new(">".$uni) || die "Can not open uniseq file $uni $!\n";
+
+	my $ida;
+	foreach $ida (sort keys %contig)
+	{
+	    print $unfh ">".$ida."\n".$contig{$ida}."\n";
+	}
+	
+	my $idb;
+	foreach $idb (sort keys %est)
+	{
+	    print $unfh ">".$idb."\n".$est{$idb}."\n";
+	}
+
+	$unfh->close;
+}
+
+#########################################################################
+# Subroutine: parse parameter from input parameter			#
+#########################################################################
+
+sub parse_parameter
+{
+	my $para = shift;
+	my %phash = ();
+
+	my @mpara;
+	if ($para)
+	{
+		@mpara = split(/_/, $para);
+	}
+
+	my $ip;
+	for($ip=0; $ip<@mpara; $ip = $ip+2)
+	{
+		if ($mpara[$ip] =~ m/-/ && $mpara[$ip+1])
+		{
+			#print $mpara[$ip].$mpara[$ip+1]."\n";
+			$phash{$mpara[$ip]} = $mpara[$ip+1];
+		}
+		else
+		{
+			print "Error at pipeline config file parameter input of rename_pipeline\n";
+			die $usage;
+		}
+	}
+	return %phash;
+}
+
+=head2 write_log
+
+ Function: write log information to log files.
+
+ Input: content of log information
+
+ Return: one
+=cut
+sub write_log
+{
+        my $content = shift;
+        my $fh = IO::File->new(">>".$log_file) || die "Can not write info to log file $! \n";
+        print $fh $content;
+        $fh->close;
+}
+
+
+=head2 indel_len
+
+ Function: get max indel length from query or hit string
+
+ Input: Query or hit string
+
+ Return: length of max indel.
+=cut
+sub indel_len
+{
+	my $string = shift;
+
+	my $s = 0; #status of indel
+
+	my $num = 0; my $max_num = 0;
+
+	for(my $i=0; $i<length($string); $i++)
+	{
+		my $c = substr($string, $i, 1);
+
+		if ($c eq "-")
+		{
+			if ($s == 0)
+			{
+				$s = 1;
+				$num = 1;
+			}
+			else
+			{
+				$num++;
+			}
+
+		}
+		else
+		{
+			$s = 0;
+			if ($num > $max_num)
+			{
+				$max_num = $num;
+			}
+		}
+	}
+
+	return $max_num;
+}
+

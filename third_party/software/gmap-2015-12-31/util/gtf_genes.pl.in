@@ -1,0 +1,226 @@
+#! @PERL@
+
+use warnings;
+
+use Getopt::Std;
+undef $opt_E;			# Use exon_number field to determine own exon ordering
+getopts("E");
+
+
+@exons = ();
+$sortp = 0;
+$last_transcript_id = "";
+while (defined($line = <>)) {
+    if ($line =~ /^\#/) {
+	# Skip
+    } else {
+	$line =~ s/\r\n/\n/;
+	chop $line;
+	@fields = split /\t/,$line;
+
+	if ($fields[2] eq "exon") {
+	    @info = ();
+	    parse_info($fields[8]);
+	    $transcript_id = get_info(\@info,"transcript_id");
+	    if ($transcript_id ne $last_transcript_id) {
+		if ($last_transcript_id =~ /\S/) {
+		    if ($strand eq "+") {
+			($start,$end) = get_gene_bounds_plus(\@exons,$sortp);
+			printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
+		    } elsif ($strand eq "-") {
+			($start,$end) = get_gene_bounds_minus(\@exons,$sortp);
+			printf ">$last_transcript_id $chr:%u..%u\n",$end,$start;
+		    } else {
+			die "strand $strand";
+		    }
+		    print "$gene_name\n";
+		    print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$sortp);
+		}
+		@exons = ();
+		$sortp = 0;
+		$gene_name = get_info(\@info,"gene_name","gene_id");
+		$last_transcript_id = $transcript_id;
+		$chr = $fields[0];
+		$strand = $fields[6];
+	    }
+
+	    if (defined($opt_E) && defined($exon_number = get_info_optional(\@info,"exon_number"))) {
+		$exons[$exon_number-1] = "$fields[3] $fields[4]";
+	    } else {
+		$sortp = 1;
+		push @exons,"$fields[3] $fields[4]";
+	    }
+	}
+    }
+}
+
+if ($last_transcript_id =~ /\S/) {
+    if ($strand eq "+") {
+	($start,$end) = get_gene_bounds_plus(\@exons,$sortp);
+	printf ">$last_transcript_id $chr:%u..%u\n",$start,$end;
+    } elsif ($strand eq "-") {
+	($start,$end) = get_gene_bounds_minus(\@exons,$sortp);
+	printf ">$last_transcript_id $chr:%u..%u\n",$end,$start;
+    } else {
+	die "strand $strand";
+    }
+    print "$gene_name\n";
+    print_exons(\@exons,$gene_name,$last_transcript_id,$chr,$strand,$sortp);
+}
+
+
+exit;
+
+
+sub parse_info {
+    my ($list) = @_;
+
+    if ($list !~ /\S/) {
+	return;
+    } elsif ($list =~ /(\S+) "([^"]+)";?(.*)/) {
+	push @info,"$1 $2";
+	parse_info($3);
+    } elsif ($list =~ /(\S+) (\S+);?(.*)/) {
+	push @info,"$1 $2";
+	parse_info($3);
+    } else {
+	die "Cannot parse $list";
+    }
+}
+
+
+
+sub get_info {
+    my $info = shift @_;
+    my @desired_keys = @_;
+    
+    foreach $item (@ {$info}) {
+	($key,$value) = $item =~ /(\S+) (.+)/;
+	foreach $desired_key (@desired_keys) {
+	    if ($key eq $desired_key) {
+		return $value;
+	    }
+	}
+    }
+
+    print STDERR "Cannot find " . join(" or ",@desired_keys) . " in " . join("; ",@ {$info}) . "\n";
+    return "NA";
+}
+
+
+sub get_info_optional {
+    my $info = shift @_;
+    my @desired_keys = @_;
+    
+    foreach $item (@ {$info}) {
+	($key,$value) = $item =~ /(\S+) (.+)/;
+	foreach $desired_key (@desired_keys) {
+	    if ($key eq $desired_key) {
+		return $value;
+	    }
+	}
+    }
+
+    return;
+}
+
+sub ascending_cmp {
+    ($starta) = $a =~ /(\d+) \d+/;
+    ($startb) = $b =~ /(\d+) \d+/;
+    return $starta <=> $startb;
+}
+
+sub get_gene_bounds_plus {
+    my ($exons, $sortp) = @_;
+    my ($start,$end);
+    my @sorted;
+
+    if ($sortp == 1) {
+	@sorted = sort ascending_cmp (@ {$exons});
+    } else {
+	@sorted = @ {$exons};
+    }
+    ($start) = $sorted[0] =~ /(\d+) \d+/;
+    ($end) = $sorted[$#sorted] =~ /\d+ (\d+)/;
+    return ($start,$end);
+}
+
+sub get_gene_bounds_minus {
+    my ($exons, $sortp) = @_;
+    my ($start,$end);
+    my @sorted;
+
+    if ($sortp == 1) {
+	@sorted = reverse sort ascending_cmp (@ {$exons});
+    } else {
+	@sorted = @ {$exons};
+    }
+    ($end) = $sorted[0] =~ /\d+ (\d+)/;
+    ($start) = $sorted[$#sorted] =~ /(\d+) \d+/;
+    return ($start,$end);
+}
+
+
+sub get_exon_bounds_plus {
+    my ($exons, $sortp) = @_;
+    my @starts = ();
+    my @ends = ();
+
+    if ($sortp == 1) {
+	foreach $exon (sort ascending_cmp (@ {$exons})) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    } else {
+	foreach $exon (@ {$exons}) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    }
+
+    return (\@starts,\@ends);
+}
+
+sub get_exon_bounds_minus {
+    my ($exons, $sortp) = @_;
+    my @starts = ();
+    my @ends = ();
+
+    if ($sortp == 1) {
+	foreach $exon (reverse sort ascending_cmp (@ {$exons})) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    } else {
+	foreach $exon (@ {$exons}) {
+	    ($start,$end) = $exon =~ /(\d+) (\d+)/;
+	    push @starts,$start;
+	    push @ends,$end;
+	}
+    }
+
+    return (\@starts,\@ends);
+}
+
+sub print_exons {
+    my ($exons, $gene_name, $transcript_id, $chr, $strand, $sortp) = @_;
+
+    $nexons = $#{$exons} + 1;
+    if ($strand eq "+") {
+	($starts,$ends) = get_exon_bounds_plus($exons,$sortp);
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$starts}[$i],$ {$ends}[$i];
+	}
+    } elsif ($strand eq "-") {
+	($starts,$ends) = get_exon_bounds_minus($exons,$sortp);
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ {$ends}[$i],$ {$starts}[$i];
+	}
+    }
+    
+    return;
+}
+

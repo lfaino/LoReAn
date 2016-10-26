@@ -1,0 +1,47 @@
+#! @PERL@
+
+
+use Getopt::Std;
+$opt_s = 0;	     # starting column (UCSC track can start in column 0 or 1)
+getopts("s:");
+
+
+while (defined($line = <>)) {
+    $line =~ s/\r\n/\n/;
+    chop $line;
+    @fields = split /\t/,$line;
+
+    $acc = $fields[$opt_s + 0];
+    $chr = $fields[$opt_s + 1];
+    #$chr =~ s/chr//;
+    #$chr =~ s/_random/U/;
+
+    $strand = $fields[$opt_s + 2];
+    @starts = split ",",$fields[$opt_s + 8];
+    @ends = split ",",$fields[$opt_s + 9];
+
+    $nexons = $#starts + 1;
+    if ($nexons != $fields[$opt_s + 7]) {
+	print STDERR "Reported number of exons $fields[$opt_s + 7] != observed $nexons: Skipping $line\n";
+
+    } elsif ($strand eq "+") {
+	printf ">$acc $chr:%u..%u\n",$starts[0] + 1,$ends[$#ends];
+	print "$acc\n";
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$starts[$i] + 1,$ends[$i];
+	}
+    } elsif ($strand eq "-") {
+	@starts = reverse @starts;
+	@ends = reverse @ends;
+	printf ">$acc $chr:%u..%u\n",$ends[0],$starts[$#starts] + 1;
+	print "$acc\n";
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ends[$i],$starts[$i] + 1;
+	}
+    } else {
+	print STDERR "Strand is neither + nor -: Skipping $line\n";
+    }
+}
+
+exit;
+

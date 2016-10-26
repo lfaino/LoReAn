@@ -1,0 +1,187 @@
+#! @PERL@
+# $Id: gmap_process.pl.in,v 1.8 2010-07-21 22:02:18 twu Exp $
+
+use warnings;
+
+use IO::File;
+use Getopt::Std;
+undef($opt_c);			# coord file
+undef($opt_g);			# gunzip each file
+undef($opt_f);			# File with input FASTA source filenames
+getopts("c:gf:");
+
+if (!defined($coord_file = $opt_c)) {
+  if (-e "coords.txt") {
+    $coord_file = "coords.txt";
+  } else {
+    die "Must specify coordinate file (created by md_coords or fa_coords) with -c flag."
+  }
+}
+
+read_coords($coord_file);
+
+if (defined($opt_f)) {
+    # Source files given in a file
+    @sourcefiles = ();
+    $SOURCES = new IO::File($opt_f) or die "Cannot open file $opt_f";
+    while (defined($line = <$SOURCES>)) {
+	chop $line;
+	push @sourcefiles,$line;
+    }
+    close($SOURCES);
+    process_fasta(\@sourcefiles);
+
+} elsif ($#ARGV < 0) {
+    # FASTA is piped via stdin
+    @streams = ();
+    push @streams,"<&STDIN";
+    process_fasta(\@streams);
+
+} else {
+    # Source files given on command line
+    process_fasta(\@ARGV);
+}
+
+check_processed();
+
+exit;
+
+
+sub read_coords {
+  my ($coord_file) = @_;
+  my $universal_coord = 0;
+
+  $FP = new IO::File($coord_file) or die "Cannot open coord file $coord_file";
+  print STDERR "Reading coordinates from file $coord_file\n";
+
+  while (defined($line = <$FP>)) {
+    if ($line =~ /^#/) {
+	#if ($line =~ /Reference strain:\s*(\S+)/) {
+	#$refstrain = $1;
+	#}
+
+    } else {
+      $line =~ s/\r\n/\n/;
+      chop $line;
+      @fields = split /\s+/,$line;
+      $contig = $fields[0];
+
+      #if (!defined($strain{$contig} = $fields[2])) {
+      #$strain{$contig} = "";
+      #} elsif (defined($refstrain) && $strain{$contig} eq $refstrain) {
+      #$strain{$contig} = "";
+      #}
+
+      $coords{$contig} = $fields[1];
+      $universal_coord{$contig} = $universal_coord;
+
+      ($chrstart,$chrend) = $coords{$contig} =~ /\S+:(\d+)\.\.(\d+)/;
+      if (defined($fields[2]) && $fields[2] eq "circular") {
+	  $circularp{$contig} = 1;
+	  $universal_coord += $chrend - $chrstart + 1;
+	  $universal_coord += $chrend - $chrstart + 1;
+      } else {
+	  $universal_coord += $chrend - $chrstart + 1;
+      }
+    }
+  }
+  close($FP);
+  return;
+}
+
+
+sub find_contig_name {
+    my ($contiginfo, $coords) = @_;
+
+    if ($contiginfo !~ /\|/) {
+	if (defined($ {$coords}{$contiginfo})) {
+	    return $contiginfo;
+	} elsif ($contiginfo =~ /(\S+)/ && defined($ {$coords}{$1})) {
+	    return $1;
+	} else {
+	    # Failed
+	    return $contiginfo;
+	}
+    } else {
+	# Old code for FASTA files that contained pipe delimiters
+	@parts = split /\|/,$contiginfo;
+	foreach $part (@parts) {
+	    if (defined($ {$coords}{$part})) {
+		return $part;
+	    } elsif ($part =~ /(\S+)/ && defined($ {$coords}{$1})) {
+		return $1;
+	    }
+	}
+	# Failed
+	return $contiginfo;
+    }
+}
+
+sub process_fasta {
+  my ($argv) = @_;
+  my $printp = 0;
+
+  foreach $arg (@ {$argv}) {
+      if (defined($opt_g)) {
+	  $FP = new IO::File("gunzip -c \"$arg\" |") or die "Cannot open file $arg";
+      } else {
+	  $FP = new IO::File($arg) or die "Cannot open file $arg";
+      }
+
+      while (defined($line = <$FP>)) {
+	  $line =~ s/\r\n/\n/;
+	  chomp $line;
+	  if ($line !~ /\S/) {
+	      # Skip blank lines
+	  } elsif ($line =~ /^>(\S+)/) {
+
+	      # $contig = find_contig_name($1,\%coords);
+	      $contig = $1;
+
+	      if (!defined($coords{$contig})) {
+		  print STDERR "No coordinates defined for contig $contig.  Skipping.\n";
+		  $printp = 0;
+		  
+	      } else {
+		  
+		  # ($chr,$chrpos1,$chrpos2) = $coords{$contig} =~ /(\S+):(\d+)\D+(\d+)/;
+		  # If $chrpos2 < $chrpos1, then contig needs to be reverse complement.
+		  # However, gmapindex knows how to handle this
+		  
+		  $processedp{$contig} = 1;
+		  #printf (">%s\t%s\t%s\n",$contig,$coords{$contig},$strain{$contig});
+		  printf (">%s\t%s\t%u",$contig,$coords{$contig},$universal_coord{$contig});
+		  if (defined($circularp{$contig})) {
+		      print "\tcircular";
+		  }
+		  print "\n";
+		  $printp = 1;
+		  
+	      }
+	  } elsif ($printp == 1) {
+	      print $line . "\n";
+	  }
+      }
+
+      close($FP);
+  }
+
+  return;
+}
+
+
+sub check_processed {
+  $nwarnings = 0;
+  foreach $contig (keys %coords) {
+    if (!defined($processedp{$contig})) {
+      print STDERR "Warning!!  Contig $contig was listed in coords file, but not seen in a FASTA file\n";
+      $nwarnings++;
+    }
+  }
+  if ($nwarnings > 0) {
+    print STDERR "Warning: A total of $nwarnings contigs were listed in coords file, but not seen in a FASTA file\n";
+    print STDERR "Should provide the correct FASTA files, or comment out these contigs in the coords file $coord_file\n";
+  }
+  return;
+}
+

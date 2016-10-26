@@ -1,0 +1,371 @@
+/* src/config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* Define if building universal (internal helper macro) */
+#undef AC_APPLE_UNIVERSAL_BUILD
+
+/* Define to one of `_getb67', `GETB67', `getb67' for Cray-2 and Cray-YMP
+   systems. This function is required for `alloca.c' support on those systems.
+   */
+#undef CRAY_STACKSEG_END
+
+/* Define to 1 if using `alloca.c'. */
+#undef C_ALLOCA
+
+/* Define to 1 if your compiler is defective and requires an immediate in sse2
+   shift commands. */
+#undef DEFECTIVE_SSE2_COMPILER
+
+/* Define to 1 if you have `alloca', as a function or macro. */
+#undef HAVE_ALLOCA
+
+/* Define to 1 if you have <alloca.h> and it should be used (not on Ultrix).
+   */
+#undef HAVE_ALLOCA_H
+
+/* Define to 1 if you support Altivec instructions */
+#undef HAVE_ALTIVEC
+
+/* Define to 1 if bsr command is available in assembly */
+#undef HAVE_ASM_BSR
+
+/* Define to 1 if you support AVX (Advanced Vector Extensions) instructions */
+#undef HAVE_AVX
+
+/* Define to 1 if you support AVX2 (Advanced Vector Extensions 2) instructions
+   */
+#undef HAVE_AVX2
+
+/* Define to 1 if you support BMI2 (Bit Manipulation Instruction set 2) */
+#undef HAVE_BMI2
+
+/* Define to 1 if __builtin_clz works. */
+#undef HAVE_BUILTIN_CLZ
+
+/* Define to 1 if __builtin_ctz works. */
+#undef HAVE_BUILTIN_CTZ
+
+/* Define to 1 if __builtin_popcount works. */
+#undef HAVE_BUILTIN_POPCOUNT
+
+/* Define to 1 if you have a working bzlib library. */
+#undef HAVE_BZLIB
+
+/* Define to 1 if the system has the type `caddr_t'. */
+#undef HAVE_CADDR_T
+
+/* Define to 1 if you have the `ceil' function. */
+#undef HAVE_CEIL
+
+/* Define to 1 if you have the <dirent.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_DIRENT_H
+
+/* Define to 1 if you have the <dlfcn.h> header file. */
+#undef HAVE_DLFCN_H
+
+/* Define to 1 if you have the <fcntl.h> header file. */
+#undef HAVE_FCNTL_H
+
+/* Define to 1 if you have the `floor' function. */
+#undef HAVE_FLOOR
+
+/* Define to 1 if fseeko (and presumably ftello) exists and is declared. */
+#undef HAVE_FSEEKO
+
+/* Define to 1 if you have the `index' function. */
+#undef HAVE_INDEX
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H
+
+/* Define to 1 if you have the `m' library (-lm). */
+#undef HAVE_LIBM
+
+/* Define to 1 if you have the <limits.h> header file. */
+#undef HAVE_LIMITS_H
+
+/* Define to 1 if you have the `log' function. */
+#undef HAVE_LOG
+
+/* Define to 1 if you support Intel intrinsic _lzcnt instruction */
+#undef HAVE_LZCNT
+
+/* Define to 1 if you have the `madvise' function. */
+#undef HAVE_MADVISE
+
+/* Define to 1 if MADV_DONTNEED available for madvise. */
+#undef HAVE_MADVISE_MADV_DONTNEED
+
+/* Define to 1 if MADV_RANDOM available for madvise */
+#undef HAVE_MADVISE_MADV_RANDOM
+
+/* Define to 1 if MADV_SEQUENTIAL available for madvise */
+#undef HAVE_MADVISE_MADV_SEQUENTIAL
+
+/* Define to 1 if MADV_WILLNEED available for madvise. */
+#undef HAVE_MADVISE_MADV_WILLNEED
+
+/* Define to 1 if you have the `memcpy' function. */
+#undef HAVE_MEMCPY
+
+/* Define to 1 if you have the `memmove' function. */
+#undef HAVE_MEMMOVE
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the `memset' function. */
+#undef HAVE_MEMSET
+
+/* Define to 1 if you have a working 'mmap' system call. */
+#undef HAVE_MMAP
+
+/* Define to 1 if MAP_FILE available for mmap. */
+#undef HAVE_MMAP_MAP_FILE
+
+/* Define to 1 if MAP_PRIVATE available for mmap */
+#undef HAVE_MMAP_MAP_PRIVATE
+
+/* Define to 1 if MAP_SHARED available for mmap */
+#undef HAVE_MMAP_MAP_SHARED
+
+/* Define to 1 if MAP_VARIABLE available for mmap. */
+#undef HAVE_MMAP_MAP_VARIABLE
+
+/* Define to 1 if you support MMX instructions */
+#undef HAVE_MMX
+
+/* Define to 1 if you support Intel intrinsic _mm_popcnt_u32/64 instructions
+   */
+#undef HAVE_MM_POPCNT
+
+/* Define if you have the MPI library. */
+#undef HAVE_MPI
+
+/* Define to 1 if you have the `munmap' function. */
+#undef HAVE_MUNMAP
+
+/* Define to 1 if you have the <ndir.h> header file, and it defines `DIR'. */
+#undef HAVE_NDIR_H
+
+/* Define to 1 if you support Intel intrinsic _popcnt instruction */
+#undef HAVE_POPCNT
+
+/* Define to 1 if you have the `pow' function. */
+#undef HAVE_POW
+
+/* Define if you have POSIX threads libraries and header files. */
+#undef HAVE_PTHREAD
+
+/* Define to 1 if you have the `rint' function. */
+#undef HAVE_RINT
+
+/* Define to 1 if you have the `semctl' function. */
+#undef HAVE_SEMCTL
+
+/* Define to 1 if you have the `semget' function. */
+#undef HAVE_SEMGET
+
+/* Define to 1 if you have the `semop' function. */
+#undef HAVE_SEMOP
+
+/* Define to 1 if you have the `shmat' function. */
+#undef HAVE_SHMAT
+
+/* Define to 1 if you have the `shmctl' function. */
+#undef HAVE_SHMCTL
+
+/* Define to 1 if you have the `shmdt' function. */
+#undef HAVE_SHMDT
+
+/* Define to 1 if you have the `shmget' function. */
+#undef HAVE_SHMGET
+
+/* Define to 1 if SHM_NORESERVE available for shmget. */
+#undef HAVE_SHM_NORESERVE
+
+/* Define to 1 if you have the `sigaction' function. */
+#undef HAVE_SIGACTION
+
+/* Define to 1 if you support SSE (Streaming SIMD Extensions) instructions */
+#undef HAVE_SSE
+
+/* Define to 1 if you support SSE2 (Streaming SIMD Extensions 2) instructions
+   */
+#undef HAVE_SSE2
+
+/* Define to 1 if you support SSE3 (Streaming SIMD Extensions 3) instructions
+   */
+#undef HAVE_SSE3
+
+/* Define to 1 if you support SSE4.1 (Streaming SIMD Extensions 4.1)
+   instructions */
+#undef HAVE_SSE4_1
+
+/* Define to 1 if you support SSE4.2 (Streaming SIMD Extensions 4.2)
+   instructions */
+#undef HAVE_SSE4_2
+
+/* Define to 1 if you support SSSE3 (Supplemental Streaming SIMD Extensions 3)
+   instructions */
+#undef HAVE_SSSE3
+
+/* Define to 1 if you have the `stat64' function. */
+#undef HAVE_STAT64
+
+/* Define to 1 if you have the <stddef.h> header file. */
+#undef HAVE_STDDEF_H
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H
+
+/* Define to 1 if you have the `strtoul' function. */
+#undef HAVE_STRTOUL
+
+/* have struct stat64 */
+#undef HAVE_STRUCT_STAT64
+
+/* Define to 1 if you have the `sysconf' function. */
+#undef HAVE_SYSCONF
+
+/* Define to 1 if you have the `sysctl' function. */
+#undef HAVE_SYSCTL
+
+/* Define to 1 if you have the <sys/dir.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_SYS_DIR_H
+
+/* Define to 1 if you have the <sys/ndir.h> header file, and it defines `DIR'.
+   */
+#undef HAVE_SYS_NDIR_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you support Intel intrinsic _tzcnt instruction */
+#undef HAVE_TZCNT
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H
+
+/* Define to 1 if you have a working zlib library. */
+#undef HAVE_ZLIB
+
+/* Define to 1 if your zlib library has a gzbuffer function. */
+#undef HAVE_ZLIB_GZBUFFER
+
+/* Define to the sub-directory in which libtool stores uninstalled libraries.
+   */
+#undef LT_OBJDIR
+
+/* Define MAP_FAILED here if not available otherwise. */
+#undef MAP_FAILED
+
+/* Define to 1 if your C compiler doesn't accept -c and -o together. */
+#undef NO_MINUS_C_MINUS_O
+
+/* Name of package */
+#undef PACKAGE
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* pagesize is available via sysconf */
+#undef PAGESIZE_VIA_SYSCONF
+
+/* pagesize is available via sysctl */
+#undef PAGESIZE_VIA_SYSCTL
+
+/* Define to necessary symbol if this constant uses a non-standard name on
+   your system. */
+#undef PTHREAD_CREATE_JOINABLE
+
+/* The size of `off_t', as computed by sizeof. */
+#undef SIZEOF_OFF_T
+
+/* The size of `unsigned long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG
+
+/* The size of `unsigned long long', as computed by sizeof. */
+#undef SIZEOF_UNSIGNED_LONG_LONG
+
+/* If using the C implementation of alloca, define if you know the
+   direction of stack growth for your system; otherwise it will be
+   automatically deduced at runtime.
+	STACK_DIRECTION > 0 => grows toward higher addresses
+	STACK_DIRECTION < 0 => grows toward lower addresses
+	STACK_DIRECTION = 0 => direction of growth unknown */
+#undef STACK_DIRECTION
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
+
+/* Define this if we can use the "b" mode for fopen safely. */
+#undef USE_FOPEN_BINARY
+
+/* Define this if we can use the "t" mode for fopen safely. */
+#undef USE_FOPEN_TEXT
+
+/* Define to 1 if you want to use MPI_File for input. */
+#undef USE_MPI_FILE_INPUT
+
+/* Version number of package */
+#undef VERSION
+
+/* Define WORDS_BIGENDIAN to 1 if your processor stores words with the most
+   significant byte first (like Motorola and SPARC, unlike Intel). */
+#if defined AC_APPLE_UNIVERSAL_BUILD
+# if defined __BIG_ENDIAN__
+#  define WORDS_BIGENDIAN 1
+# endif
+#else
+# ifndef WORDS_BIGENDIAN
+#  undef WORDS_BIGENDIAN
+# endif
+#endif
+
+/* Number of bits in a file offset, on hosts where this is settable. */
+#undef _FILE_OFFSET_BITS
+
+/* Define to 1 to make fseeko visible on some hosts (e.g. glibc 2.2). */
+#undef _LARGEFILE_SOURCE
+
+/* Define for large files, on AIX-style hosts. */
+#undef _LARGE_FILES
+
+/* Define to empty if `const' does not conform to ANSI C. */
+#undef const
+
+/* Define to `long int' if <sys/types.h> does not define. */
+#undef off_t
+
+/* Define to `unsigned int' if <sys/types.h> does not define. */
+#undef size_t
+
+/* Define to empty if the keyword `volatile' does not work. Warning: valid
+   code using `volatile' can become incorrect without. Disable with care. */
+#undef volatile

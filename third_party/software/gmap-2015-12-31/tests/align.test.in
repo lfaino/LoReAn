@@ -1,0 +1,11 @@
+#! @SHELL@
+
+if test -z "$srcdir"; then
+  srcdir=.
+fi
+. ${srcdir}/defs
+
+
+${top_builddir}/src/gmap -A -g ${srcdir}/ss.chr17test ${srcdir}/ss.her2 > align.test.out
+diff align.test.out ${srcdir}/align.test.ok
+

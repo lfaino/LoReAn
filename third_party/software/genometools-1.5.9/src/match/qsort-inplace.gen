@@ -1,0 +1,159 @@
+#include <stdbool.h>
+#include "core/minmax.h"
+#include "core/divmodmul.h"
+#include "core/stack-inlined.h"
+
+/*
+ * Qsort routine from Bentley & McIlroy's "Engineering a Sort Function".
+ */
+
+#define GT_QSORT_SWAP(A,B)\
+        if ((A) != (B))\
+        {\
+          tmp = *(A);\
+          *(A) = *(B);\
+          *(B) = tmp;\
+        }
+
+#define GT_QSORT_VECSWAP(A,B,N)\
+        aptr = A;\
+        bptr = B;\
+        while ((N)-- > 0)\
+        {\
+          tmp = *aptr;\
+          *aptr++ = *bptr;\
+          *bptr++ = tmp;\
+        }
+
+static inline Sorttype *gt_inlined_qsort_r_med3 (Sorttype *a, Sorttype *b,
+                                                 Sorttype *c, void *data)
+{
+  return qsortcmp (a, b, data) < 0
+           ? (qsortcmp (b, c, data) < 0
+                ? b
+                : (qsortcmp (a, c, data) < 0
+                     ? c : a))
+           : (qsortcmp (b, c, data) > 0
+                ? b
+                : (qsortcmp (a, c, data) < 0
+                     ? a
+                     : c));
+}
+
+typedef struct
+{
+  Sorttype *startptr;
+  GtUword len;
+} Intervaltobesorted;
+
+GT_STACK_DECLARESTRUCT(Intervaltobesorted,32UL);
+
+static void gt_inlined_qsort_r (Sorttype *arr,GtUword len,void *data)
+{
+  Sorttype tmp, *pa, *pb, *pc, *pd, *pl, *pm, *pn, *aptr, *bptr;
+  GtUword d, minval;
+  int r;
+  bool swapped;
+  GtStackIntervaltobesorted intervalstack;
+  Intervaltobesorted current;
+
+  GT_STACK_INIT(&intervalstack,16UL);
+  current.startptr = arr;
+  current.len = len;
+  GT_STACK_PUSH(&intervalstack,current);
+  while (!GT_STACK_ISEMPTY(&intervalstack))
+  {
+    swapped = false;
+    current = GT_STACK_POP(&intervalstack);
+    if (current.len < 7UL)
+    {
+      for (pm = current.startptr + 1; pm < current.startptr + current.len; pm++)
+      {
+        for (pl = pm; pl > current.startptr && qsortcmp (pl - 1, pl, data) > 0;
+             pl--)
+        {
+          GT_QSORT_SWAP (pl, pl - 1);
+        }
+      }
+      continue;
+    }
+    pm = current.startptr + GT_DIV2 (current.len);
+    if (current.len > 7UL)
+    {
+      pl = current.startptr;
+      pn = current.startptr + current.len - 1;
+      if (current.len > 40UL)
+      {
+        d = GT_DIV8 (current.len);
+        pl = gt_inlined_qsort_r_med3 (pl, pl + d, pl + GT_MULT2 (d), data);
+        pm = gt_inlined_qsort_r_med3 (pm - d, pm, pm + d, data);
+        pn = gt_inlined_qsort_r_med3 (pn - GT_MULT2 (d), pn - d, pn, data);
+      }
+      pm = gt_inlined_qsort_r_med3 (pl, pm, pn, data);
+    }
+    GT_QSORT_SWAP (current.startptr, pm);
+    pa = pb = current.startptr + 1;
+    pc = pd = current.startptr + current.len - 1;
+    while (1)
+    {
+      while (pb <= pc && (r = qsortcmp (pb, current.startptr, data)) <= 0)
+      {
+        if (r == 0)
+        {
+          swapped = true;
+          GT_QSORT_SWAP (pa, pb);
+          pa++;
+        }
+        pb++;
+      }
+      while (pb <= pc && (r = qsortcmp (pc, current.startptr, data)) >= 0)
+      {
+        if (r == 0)
+        {
+          swapped = true;
+          GT_QSORT_SWAP (pc, pd);
+          pd--;
+        }
+        pc--;
+      }
+      if (pb > pc)
+      {
+        break;
+      }
+      GT_QSORT_SWAP (pb, pc);
+      swapped = true;
+      pb++;
+      pc--;
+    }
+    if (!swapped)
+    {                                  /* Switch to insertion sort */
+      for (pm = current.startptr + 1; pm < current.startptr + current.len; pm++)
+      {
+        for (pl = pm; pl > current.startptr && qsortcmp (pl - 1, pl, data) > 0;
+             pl--)
+        {
+          GT_QSORT_SWAP (pl, pl - 1);
+        }
+      }
+      continue;
+    }
+    pn = current.startptr + current.len;
+    minval = MIN ((GtUword) (pa - current.startptr),
+                  (GtUword) (pb - pa));
+    GT_QSORT_VECSWAP (current.startptr, pb - minval, minval);
+    minval = MIN ((GtUword) (pd - pc), (GtUword) (pn - pd - 1));
+    GT_QSORT_VECSWAP (pb, pn - minval, minval);
+    if ((minval = (GtUword) (pb - pa)) > 1UL)
+    {
+      current.len = minval;
+      GT_STACK_PUSH(&intervalstack,current);
+    }
+    if ((minval = (GtUword) (pd - pc)) > 1UL)
+    {
+      current.startptr = pn - minval;
+      current.len = minval;
+      GT_STACK_PUSH(&intervalstack,current);
+    }
+  }
+  GT_STACK_DELETE(&intervalstack);
+}

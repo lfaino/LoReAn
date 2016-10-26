@@ -1,0 +1,462 @@
+#! @PERL@
+# $Id: gmap_build.pl.in 184522 2016-02-18 17:51:14Z twu $
+
+use warnings;	
+
+my $gmapdb = "@GMAPDB@";
+my $package_version = "@PACKAGE_VERSION@";
+
+use IO::File;
+use File::Copy;	
+#use File::Basename;
+use Getopt::Long;
+
+
+Getopt::Long::Configure(qw(no_auto_abbrev no_ignore_case_always));
+
+# Default values
+my $bindir = "@BINDIR@";   # dirname(__FILE__)
+my $sampling = 3;
+my $sleeptime = 2;
+
+GetOptions(
+    'build-sarray=s' => \$build_sarray_p, # build suffix array
+
+    'B=s' => \$bindir,		# binary directory
+    'T=s' => \$builddir,	# temporary build directory
+
+    'D|dir=s' => \$destdir,	# destination directory
+    'd|db=s' => \$dbname,	# genome name
+    'n|names=s' => \$chrnamefile,   # substitute chromosomal names
+
+    'M|mdfile=s' => \$mdfile,	# NCBI MD file
+    'C|contigs-are-mapped' => \$contigs_mapped_p, # Each contig contains a chromosome tag in the FASTA header
+
+    'z|compression=s' => \$compression_types, # compression types
+    'k|kmer=s' => \$kmersize, # k-mer size for genomic index (allowed: 16 or less)
+    'q=s' => \$sampling,	   # sampling interval for genome (default: 3)
+
+    's|sort=s' => \$sorting,	# Sorting
+    'g|gunzip' => \$gunzipp,	# gunzip files
+    'E|fasta-pipe=s' => \$fasta_pipe,		  # Pipe for providing FASTA files
+
+    'w=s' => \$sleeptime, # waits (sleeps) this many seconds between steps.  Useful if there is a delay in the filesystem.
+
+    'c|circular=s' => \$circular,  # Circular chromosomes
+
+    'e|nmessages=s' => \$nmessages  # Max number of warnings or messages to print
+    );
+
+
+if (defined($builddir)) {
+    print STDERR "Note: the -T flag is no longer necessary, since gmap_build now builds directly in the destination directory\n";
+}
+
+if (defined($compression_types)) {
+    $compression_flag = "-z $compression_types";
+} else {
+    $compression_flag = "";
+}
+
+if (!defined($kmersize)) {
+    print STDERR "-k flag not specified, so building with default 15-mers\n";
+    $kmersize = 15;
+}
+
+if (!defined($dbname)) {
+    print_usage();
+    die "Must specify genome database name with -d flag.";
+} elsif ($dbname =~ /(\S+)\/(\S+)/) {
+    $dbdir = $1;
+    $dbname = $2;
+    if (defined($destdir) && $destdir =~ /\S/) {
+	# Note: The -D and -F arguments to gmapindex are different from the -D argument to gmap/gsnap.
+	# For gmapindex, we use -D /path/to/dir/dbname -d dbname.  For gmap/gsnap, we use -D /path/to/dir -d dbname.
+	$destdir = $destdir . "/" . $dbname;
+    } else {
+	$destdir = $dbdir;
+    }
+}
+
+$dbname =~ s/\/$//;	# In case user gives -d argument with trailing slash
+
+if (!defined($destdir) || $destdir !~ /\S/) {
+    print STDERR "Destination directory not defined with -D flag, so writing to $gmapdb\n";
+    $destdir = $gmapdb;
+}
+
+if (defined($sorting)) {
+    if ($sorting ne "names") {
+	$chr_order_flag = "-s $sorting";
+    } elsif (!defined($chrnamefile)) {
+	die "For --sort=names option, must also provide a filename to --names";
+    } else {
+	$chr_order_flag = "-s $sorting -n $chrnamefile";
+    }
+} else {
+    # Default is to order genomes
+    print STDERR "Sorting chromosomes in chrom order.  To turn off or sort other ways, use the -s flag.\n";
+    $chr_order_flag = "";
+}
+
+if (!defined($gunzipp)) {
+    $gunzip_flag = "";
+} elsif (defined($fasta_pipe)) {
+    die "Cannot use the -E (--fasta-pipe) flag with the -g (--gunzip) flag";
+} else {
+    $gunzip_flag = "-g";
+}
+
+if (defined($circular)) {
+    $circular_flag = "-c $circular";
+} else {
+    $circular_flag = "";
+}
+
+if (defined($nmessages)) {
+    $nmessages_flag = "-e $nmessages";
+} else {
+    $nmessages_flag = "";
+}
+
+if (!defined($build_sarray_p)) {
+    $sarrayp = 1;		# default is to build the suffix array
+} elsif ($build_sarray_p eq "0") {
+    $sarrayp = 0;
+} elsif ($build_sarray_p eq "1") {
+    $sarrayp = 1;
+} else {
+    die "Argument to --build-sarray needs to be 0 or 1";
+}
+
+if (defined($contigs_mapped_p)) {
+    $contigs_mapped_flag = "-C";
+} else {
+    $contigs_mapped_flag = "";
+}
+
+
+#my @quoted = ();
+#foreach $fasta (@ARGV) {
+#    push @quoted,"\"$fasta\"";
+#}
+#my $genome_fasta = join(" ",@quoted);
+
+my $coordsfile = "$destdir/$dbname.coords";
+my $fasta_sources = "$destdir/$dbname.sources";
+
+$FP = new IO::File(">$fasta_sources") or die "Could not create $fasta_sources";
+foreach $fasta (@ARGV) {
+    print $FP $fasta . "\n";
+}
+close($FP);
+
+
+#####################################################################################
+
+check_compiler_assumptions();
+
+$dbdir = create_db($destdir,$dbname);
+
+create_genome_version($dbdir,$dbname);
+
+create_coords($mdfile,$fasta_pipe,$gunzip_flag,$circular_flag,$contigs_mapped_flag,$chrnamefile,
+	      $bindir,$coordsfile,$fasta_sources);
+if (!(-s "$coordsfile")) {
+    die "ERROR: $coordsfile not found";
+} else {
+    $gmap_process_pipe = make_gmap_process_pipe($fasta_pipe,$gunzip_flag,$bindir,$coordsfile,$fasta_sources);
+}
+
+make_contig($nmessages_flag,$chr_order_flag,
+	    $bindir,$dbdir,$dbname,$gmap_process_pipe);
+
+$genomecompfile = compress_genome($nmessages_flag,$bindir,$dbdir,$dbname,$gmap_process_pipe);
+
+unshuffle_genome($bindir,$dbdir,$dbname,$genomecompfile);
+
+$index_cmd = "\"$bindir/gmapindex\" -k $kmersize -q $sampling $nmessages_flag -d $dbname -F \"$dbdir\" -D \"$dbdir\"";
+
+if (count_index_offsets($index_cmd,$genomecompfile) == 1) {
+    $index_cmd .= " -H";
+}
+
+create_index_offsets($index_cmd,$compression_flag,$genomecompfile);
+
+create_index_positions($index_cmd,$genomecompfile);
+
+if ($sarrayp == 1) {
+    make_enhanced_suffix_array($bindir,$dbdir,$dbname);
+}
+
+# install_db($sarrayp);
+system("rm -f \"$fasta_sources\"");
+system("rm -f \"$coordsfile\"");
+
+exit;
+
+
+#####################################################################################
+
+sub check_compiler_assumptions {
+    if (system("\"$bindir/gmapindex\" -9") != 0) {
+	print STDERR "There is a mismatch between this computer system and the one where gmapindex was compiled.  Exiting.\n";
+	exit(9);
+    }
+}
+
+sub create_db {
+    my ($destdir, $dbname) = @_;
+
+    print STDERR "Creating files in directory $destdir/$dbname\n";
+    system("mkdir -p \"$destdir/$dbname\"");
+    system("mkdir -p \"$destdir/$dbname/$dbname.maps\"");
+    system("chmod 755 \"$destdir/$dbname/$dbname.maps\"");
+
+    return "$destdir/$dbname";
+}
+
+
+sub create_genome_version {
+    my ($dbdir, $dbname) = @_;
+
+    open GENOMEVERSIONFILE, ">$dbdir/$dbname.version" or die $!;
+    print GENOMEVERSIONFILE "$dbname\n";
+    close GENOMEVERSIONFILE or die $!;
+    sleep($sleeptime);
+    return;
+}
+
+sub create_coords {
+    my ($mdfile, $fasta_pipe, $gunzip_flag, $circular_flag, $contigs_mapped_flag, $chrnamefile,
+	$bindir, $coordsfile, $fasta_sources) = @_;
+    my ($cmd, $rc);
+
+    if (defined($mdfile)) {
+	# MD file cannot specify that a chromosome is circular
+	$cmd = "\"$bindir/md_coords\" -o \"$coordsfile\" $mdfile";
+    } else {
+	if (defined($fasta_pipe)) {
+	    $cmd = "$fasta_pipe | \"$bindir/fa_coords\" $circular_flag $contigs_mapped_flag -o \"$coordsfile\"";
+	} else {
+	    $cmd = "\"$bindir/fa_coords\" $gunzip_flag $circular_flag $contigs_mapped_flag -o \"$coordsfile\"";
+	}
+	if (defined($chrnamefile)) {
+	    $cmd .= " -n $chrnamefile";
+	}
+	if (!defined($fasta_pipe)) {
+	    $cmd .= " -f \"$fasta_sources\"";
+	}
+    }
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return;
+}
+
+sub make_gmap_process_pipe {
+    my ($fasta_pipe, $gunzip_flag, $bindir, $coordsfile, $fasta_sources) = @_;
+
+    if (defined($fasta_pipe)) {
+	return "$fasta_pipe | \"$bindir/gmap_process\" -c \"$coordsfile\"";
+    } else {
+	return "\"$bindir/gmap_process\" $gunzip_flag -c \"$coordsfile\" -f \"$fasta_sources\"";
+    }
+}
+
+sub make_contig {
+    my ($nmessages_flag, $chr_order_flag,
+	$bindir, $dbdir, $dbname, $gmap_process_pipe) = @_;
+    my ($cmd, $rc);
+
+    $cmd = "$gmap_process_pipe | \"$bindir/gmapindex\" $nmessages_flag -d $dbname -D \"$dbdir\" -A $chr_order_flag";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return;
+}
+
+sub compress_genome {
+    my ($nmessages_flag, $bindir, $dbdir, $dbname, $gmap_process_pipe) = @_;
+    my $genomecompfile = "$dbdir/$dbname.genomecomp";
+    my ($cmd, $rc);
+
+    $cmd = "$gmap_process_pipe | \"$bindir/gmapindex\" $nmessages_flag -d $dbname -F \"$dbdir\" -D \"$dbdir\" -G";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return $genomecompfile;
+}
+
+sub unshuffle_genome {
+    my ($bindir, $dbdir, $dbname, $genomecompfile) = @_;
+    my ($cmd, $rc);
+
+    $cmd = "cat \"$genomecompfile\" | \"$bindir/gmapindex\" -d $dbname -U > \"$dbdir/$dbname.genomebits128\"";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return;
+}
+
+# No longer supported
+#sub full_ASCII_genome {
+#    make_contig();
+#	
+#    $cmd = "\"$bindir/gmap_process\" $gunzip_flag -c $dbdir/$dbname.coords $genome_fasta | \"$bindir/gmapindex\" $nmessages_flag -d $dbname -F $dbdir -D $dbdir -l -G";
+#    print STDERR "Running $cmd\n";
+#    if (($rc = system($cmd)) != 0) {
+#	die "$cmd failed with return code $rc";
+#    }
+#    sleep($sleeptime);
+#    return;
+#}
+
+sub count_index_offsets {
+    my ($index_cmd, $genomecompfile) = @_;
+    my $huge_genome_p;
+    my ($cmd, $noffsets);
+    
+    $cmd = "cat \"$genomecompfile\" | $index_cmd -N";
+    print STDERR "Running $cmd\n";
+    $noffsets = `$cmd`;
+    chop $noffsets;
+    if ($noffsets <= 4294967295) {
+	print STDERR "Number of offsets: $noffsets => pages file not required\n";
+	$huge_genome_p = 0;
+    } else {
+	print STDERR "Number of offsets: $noffsets => pages file required\n";
+	$huge_genome_p = 1;
+    }
+    sleep($sleeptime);
+    return $huge_genome_p;
+}
+
+sub create_index_offsets {
+    my ($index_cmd, $compression_flag, $genomecompfile) = @_;
+    my ($cmd, $rc);
+
+    $cmd = "$index_cmd -O $compression_flag \"$genomecompfile\"";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return;
+}
+
+sub create_index_positions {
+    my ($index_cmd, $genomecompfile) = @_;
+    my ($cmd, $rc);
+
+    $cmd = "$index_cmd -P \"$genomecompfile\"";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+    return;
+}
+
+sub make_enhanced_suffix_array {
+    my ($bindir, $dbdir, $dbname) = @_;
+    my ($cmd, $rc);
+
+    # Suffix array
+    $cmd = "\"$bindir/gmapindex\" -d $dbname -F \"$dbdir\" -D \"$dbdir\" -S";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+
+    # LCP and child arrays
+    $cmd = "\"$bindir/gmapindex\" -d $dbname -F \"$dbdir\" -D \"$dbdir\" -L";
+    print STDERR "Running $cmd\n";
+    if (($rc = system($cmd)) != 0) {
+	die "$cmd failed with return code $rc";
+    }
+    sleep($sleeptime);
+
+    # Compressed suffix array
+    # $cmd = "\"$bindir/gmapindex\" -d $dbname -F \"$dbdir\" -D \"$dbdir\" -C";
+    # print STDERR "Running $cmd\n";
+    # if (($rc = system($cmd)) != 0) {
+    # die "$cmd failed with return code $rc";
+    # }
+    # sleep($sleeptime);
+
+    return;
+}
+
+
+sub print_usage {
+  print <<TEXT1;
+
+gmap_build: Builds a gmap database for a genome to be used by GMAP or GSNAP.
+Part of GMAP package, version $package_version.
+
+A simplified alternative to using the program gmap_setup, which creates a Makefile.
+
+Usage: gmap_build [options...] -d <genomename> <fasta_files>
+
+Options:
+    -D, --dir=STRING          Destination directory for installation (defaults to gmapdb directory specified at configure time)
+    -d, --db=STRING           Genome name
+
+    -n, --names=STRING        Substitute names for chromosomes, provided in a file.  The file should have one line
+                                for each chromosome name to be changed, with the original FASTA name in column 1 and
+                                the desired chromosome name in column 2.  This provides an easy way to change the
+                                names of chromosomes, for example, to add or remove the "chr" prefix.  Column 2 may
+                                be blank, which indicates no name change.  This file can also be combined with
+                                --sort=names to provide a particular order for the chromosomes in the genome index.
+
+    -M, --mdflag=STRING       Use MD file from NCBI for mapping contigs to chromosomal coordinates
+    -C, --contigs-are-mapped  Find a chromosomal region in each FASTA header line.  Useful for contigs that have been mapped
+                                to chromosomal coordinates.  Ignored if the --mdflag is provided.
+
+    -z, --compression=STRING  Use given compression types (separated by commas; default is bitpack64)
+                                bitpack64 - optimized for modern computers with SIMD instructions (recommended)
+                                all - create all available compression types, currently bitpack64
+                                none - do not compress offset files (I believe this is no longer supported)
+
+    -k, --kmer=INT            k-mer value for genomic index (allowed: 15 or less, default is 15)
+    -q INT                    sampling interval for genomoe (allowed: 1-3, default 3)
+
+    -s, --sort=STRING         Sort chromosomes using given method:
+			        none - use chromosomes as found in FASTA file(s)
+			        alpha - sort chromosomes alphabetically (chr10 before chr 1)
+			        numeric-alpha - chr1, chr1U, chr2, chrM, chrU, chrX, chrY
+			        chrom - chr1, chr2, chrM, chrX, chrY, chr1U, chrU
+				names - sort chromosomes based on file provided to --names flag
+
+    -g, --gunzip              Files are gzipped, so need to gunzip each file first
+    -E, --fasta-pipe=STRING   Interpret argument as a command, instead of a list of FASTA files
+    -w INT                    Wait (sleep) this many seconds after each step (default 2)
+
+    -c, --circular=STRING     Circular chromosomes (either a list of chromosomes separated by a comma, or
+                                a filename containing circular chromosomes, one per line).  If you use the
+                                --names feature, then you should use the original name of the chromosome,
+                                not the substitute name, for this option.                                                                
+
+    -e, --nmessages=INT       Maximum number of messages (warnings, contig reports) to report (default 50)
+
+    --build-sarray=INT        Whether to build suffix array: 0=no, 1=yes (default)
+
+Obsolete options:
+    -T STRING                 Temporary build directory (may need to specify if you run out of space in your current directory)
+                                This is no longer necessary, since gmap_build now builds directly in the destination
+                                (or -D) directory.
+
+TEXT1
+  return;
+}
+

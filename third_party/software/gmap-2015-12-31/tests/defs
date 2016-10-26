@@ -1,0 +1,25 @@
+#! /bin/sh
+
+srcdir=${srcdir-.}
+if test ! -d $srcdir; then
+    echo "defs: installation error" 1>&2
+    exit 1
+fi
+
+case "$srcdir" in
+    /* | [A-Za-z]:\\*) ;;
+    *) srcdir=`\cd $srcdir && pwd` ;;
+esac
+
+case "$top_builddir" in
+    /* | [A-Za-z]:\\*) ;;
+    *) top_builddir=`\cd ${top_builddir-..} && pwd` ;;
+esac
+
+testsubdir=${testsubdir-testSubDir}
+
+rm -rf $testsubdir > /dev/null 2>&1
+mkdir $testsubdir
+cd $testsubdir \
+  || { echo "Cannot make or change into $testsubdir"; exit 1; }
+

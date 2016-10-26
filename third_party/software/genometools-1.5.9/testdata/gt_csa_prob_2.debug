@@ -1,0 +1,7 @@
+debug: process cluster
+debug: -from 10472279
+debug: csa number_of_sas=3
+debug: csa finished
+debug: -from 10478330
+debug: csa number_of_sas=3
+debug: csa finished

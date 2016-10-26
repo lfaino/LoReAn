@@ -1,0 +1,54 @@
+#! @PERL@
+
+# For processing ensGene file.  Modified from psl_genes
+
+use Getopt::Std;
+undef $opt_P;			# Remove chr prefix
+getopts("P");
+
+
+while (defined($line = <>)) {
+    $line =~ s/\r\n/\n/;
+    chop $line;
+    @fields = split /\t/,$line;
+
+    $acc = $fields[0];
+    $acc =~ s/^>//;
+    $coords = $fields[1];
+    ($chr) = $coords =~ /(\S+):/;
+    if (defined($opt_P)) {
+	$chr =~ s/chr//;
+    }
+    #$chr =~ s/_random/U/;
+
+    $strand = $fields[3];
+    @starts = split ",",$fields[7];
+    @ends = split ",",$fields[8];
+
+    $genename = $fields[10];
+
+    $nexons = $#starts + 1;
+    if ($nexons != $fields[6]) {
+	print STDERR "Reported number of exons $fields[7] != observed $nexons: Skipping $line\n";
+
+    } elsif ($strand eq "+") {
+	printf ">$acc $chr:%u..%u\n",$starts[0] + 1,$ends[$#ends];
+	print "$genename\n";
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$starts[$i] + 1,$ends[$i];
+	}
+    } elsif ($strand eq "-") {
+	@starts = reverse @starts;
+	@ends = reverse @ends;
+	printf ">$acc $chr:%u..%u\n",$ends[0],$starts[$#starts] + 1;
+	print "$genename\n";
+	for ($i = 0; $i < $nexons; $i++) {
+	    printf "%u %u\n",$ends[$i],$starts[$i] + 1;
+	}
+    } else {
+	print STDERR "Strand is neither + nor -: Skipping $line\n";
+    }
+}
+
+exit;
+

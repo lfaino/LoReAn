@@ -1,0 +1,205 @@
+#include <stdbool.h>
+#include "core/minmax.h"
+#include "core/divmodmul.h"
+#include "core/stack-inlined.h"
+
+/*
+ * Qsort routine from Bentley & McIlroy's ``Engineering a Sort Function''.
+ */
+
+#ifndef GT_QSORT_ARR_SWAP
+#define GT_QSORT_ARR_SWAP(ARR,A,B)\
+        if ((A) != (B))\
+        {\
+          tmp = QSORTNAME(ARRAY_GET)(ARR,A);\
+          QSORTNAME(ARRAY_SET)(ARR,A,QSORTNAME(ARRAY_GET)(ARR,B));\
+          QSORTNAME(ARRAY_SET)(ARR,B,tmp);\
+        }
+#endif
+
+#ifndef GT_QSORT_ARR_VECSWAP
+#define GT_QSORT_ARR_VECSWAP(ARR,A,B,N)\
+        aidx = A;\
+        bidx = B;\
+        while ((N)-- > 0)\
+        {\
+          tmp = QSORTNAME(ARRAY_GET)(ARR,aidx);\
+          QSORTNAME(ARRAY_SET)(ARR,aidx,QSORTNAME(ARRAY_GET)(ARR,bidx));\
+          QSORTNAME(ARRAY_SET)(ARR,bidx,tmp);\
+          aidx++;\
+          bidx++;\
+        }
+#endif
+
+static inline GtUword QSORTNAME(gt_direct_qsort_arr_med3)
+                     (const QSORTNAME(Sorttype) *arr,GtUword a,
+                      GtUword b, GtUword c)
+{
+  return QSORTNAME(ARRAY_GET)(arr,a) < QSORTNAME(ARRAY_GET)(arr,b)
+           ? (QSORTNAME(ARRAY_GET)(arr,b) < QSORTNAME(ARRAY_GET)(arr,c)
+                ? b
+                : (QSORTNAME(ARRAY_GET)(arr, a) < QSORTNAME(ARRAY_GET)(arr,c)
+                     ? c : a))
+           : (QSORTNAME(ARRAY_GET)(arr,b) > QSORTNAME(ARRAY_GET)(arr,c)
+                  ? b
+                  : (QSORTNAME(ARRAY_GET)(arr, a) < QSORTNAME(ARRAY_GET)(arr,c)
+                     ? a
+                     : c));
+}
+
+#ifndef GT_STACK_INTERVALARRAYTOBESORTED_DEFINED
+typedef struct
+{
+  GtUword startindex,
+                len;
+} Intervalarrtobesorted;
+
+GT_STACK_DECLARESTRUCT(Intervalarrtobesorted,32UL);
+#define GT_STACK_INTERVALARRAYTOBESORTED_DEFINED
+#endif
+
+void QSORTNAME(gt_direct_qsort) (GtUword insertionsortthreshold,
+                                 bool handlenotswapped,
+                                 QSORTNAME(Sorttype) *arr,
+                                 GtUword len)
+{
+  GtUword tmp, pa, pb, pc, pd, pl, pm, pn, aidx, bidx, s;
+  bool swapped;
+  GtStackIntervalarrtobesorted intervalstack;
+  Intervalarrtobesorted current;
+
+  GT_STACK_INIT(&intervalstack,32UL);
+  current.startindex = 0;
+  current.len = len;
+  GT_STACK_PUSH(&intervalstack,current);
+  if (insertionsortthreshold <= 2UL)
+  {
+    insertionsortthreshold = 6UL;
+  }
+  while (!GT_STACK_ISEMPTY(&intervalstack))
+  {
+    swapped = false;
+    current = GT_STACK_POP(&intervalstack);
+    if (current.len <= insertionsortthreshold)
+    {
+      for (pm = current.startindex + 1;
+           pm < current.startindex + current.len; pm++)
+      {
+        for (pl = pm; pl > current.startindex &&
+                      QSORTNAME(ARRAY_GET)(arr,pl-1)
+                        > QSORTNAME(ARRAY_GET)(arr,pl);
+             pl--)
+        {
+          GT_QSORT_ARR_SWAP(arr, pl, pl - 1);
+        }
+      }
+      continue;
+    }
+    pm = current.startindex + GT_DIV2 (current.len);
+    if (current.len > 7UL)
+    {
+      pl = current.startindex;
+      pn = current.startindex + current.len - 1;
+      if (current.len > 40UL)
+      {
+        s = GT_DIV8 (current.len);
+        pl = QSORTNAME(gt_direct_qsort_arr_med3) (arr, pl, pl + s,
+                                                    pl + GT_MULT2 (s));
+        gt_assert(pm >= s);
+        pm = QSORTNAME(gt_direct_qsort_arr_med3) (arr, pm - s, pm, pm + s);
+        gt_assert(pn >= GT_MULT2(s));
+        pn = QSORTNAME(gt_direct_qsort_arr_med3) (arr, pn - GT_MULT2 (s),
+                                                    pn - s, pn);
+      }
+      pm = QSORTNAME(gt_direct_qsort_arr_med3) (arr, pl, pm, pn);
+    }
+    GT_QSORT_ARR_SWAP (arr, current.startindex, pm);
+    pa = pb = current.startindex + 1;
+    pc = pd = current.startindex + current.len - 1;
+    while (1)
+    {
+      while (pb <= pc &&
+             QSORTNAME(ARRAY_GET)(arr,pb)
+                <= QSORTNAME(ARRAY_GET)(arr,current.startindex))
+      {
+        if (QSORTNAME(ARRAY_GET)(arr,pb)
+             == QSORTNAME(ARRAY_GET)(arr,current.startindex))
+        {
+          swapped = true;
+          GT_QSORT_ARR_SWAP (arr, pa, pb);
+          pa++;
+        }
+        pb++;
+      }
+      while (pb <= pc &&
+             QSORTNAME(ARRAY_GET)(arr,pc)
+               >= QSORTNAME(ARRAY_GET)(arr,current.startindex))
+      {
+        if (QSORTNAME(ARRAY_GET)(arr,pc)
+             == QSORTNAME(ARRAY_GET)(arr,current.startindex))
+        {
+          swapped = true;
+          GT_QSORT_ARR_SWAP (arr, pc, pd);
+          gt_assert(pd > 0);
+          pd--;
+        }
+        gt_assert(pc > 0);
+        pc--;
+      }
+      if (pb > pc)
+      {
+        break;
+      }
+      GT_QSORT_ARR_SWAP (arr, pb, pc);
+      swapped = true;
+      pb++;
+      gt_assert(pc > 0);
+      pc--;
+    }
+    /* The following switch is not explained in the above mentioned
+       paper and therefore we ignore it. */
+    if (handlenotswapped && !swapped)
+    {                                  /* Switch to insertion sort */
+      gt_assert(current.len <= 40UL);
+      for (pm = current.startindex + 1;
+           pm < current.startindex + current.len; pm++)
+      {
+        for (pl = pm; pl > current.startindex &&
+                      QSORTNAME(ARRAY_GET)(arr, pl - 1)
+                       > QSORTNAME(ARRAY_GET)(arr, pl);
+             pl--)
+        {
+          GT_QSORT_ARR_SWAP (arr, pl, pl - 1);
+        }
+      }
+      continue;
+    }
+    pn = current.startindex + current.len;
+    gt_assert(pa >= current.startindex);
+    gt_assert(pb >= pa);
+    s = MIN ((GtUword) (pa - current.startindex),
+             (GtUword) (pb - pa));
+    gt_assert(pb >= s);
+    GT_QSORT_ARR_VECSWAP (arr, current.startindex, pb - s, s);
+    gt_assert(pd >= pc);
+    gt_assert(pn > pd);
+    s = MIN ((GtUword) (pd - pc), (GtUword) (pn - pd - 1));
+    gt_assert(pn > s);
+    GT_QSORT_ARR_VECSWAP (arr, pb, pn - s, s);
+    gt_assert(pb >= pa);
+    if ((s = (GtUword) (pb - pa)) > 1UL)
+    {
+      current.len = s;
+      GT_STACK_PUSH(&intervalstack,current);
+    }
+    gt_assert(pd >= pc);
+    if ((s = (GtUword) (pd - pc)) > 1UL)
+    {
+      gt_assert(pn >= s);
+      current.startindex = pn - s;
+      current.len = s;
+      GT_STACK_PUSH(&intervalstack,current);
+    }
+  }
+  GT_STACK_DELETE(&intervalstack);
+}

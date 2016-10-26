@@ -1,0 +1,749 @@
+#!/usr/bin/perl -w
+
+=head1 NAME
+
+ mira_pipeline - the assembly pipeline using MIRA2.9.43 as assembler
+
+=head1 DESCRIPTION
+
+ This script using MIRA2.9.43 as assembler to assemble EST sequences in an iterative way and produce more accurate result. 
+ Detail functions of the script were descripted at SUB(subroutine) part.
+ 
+ Author : Yi zheng
+ E-mail : yz357@cornell.edu
+ Update : 02/25/2010
+
+=cut
+use strict;
+use IO::File;
+use Bio::SeqIO;
+
+my $usage = q/
+MIRA Assembly Pipeline V0.2 update 08-27-2009
+
+USAGE:
+	mira_pipeline    input   output   circle  parameter
+	Note:Just run as a pipeline, not as a standalone script
+
+/;
+
+#########################################################################
+# input parameters							#
+#########################################################################
+my $input = shift || die $usage;
+
+my $output = shift || die $usage;
+
+my $circle = shift || die $usage;
+
+my $parameter = shift || die $usage;
+
+my $working_dir = $ENV{'working_dir'};
+my $current_dir = $ENV{'current_dir'};
+my $debug_mode = $ENV{'debug_mode'};
+my $log_dir = $ENV{'log_dir'};
+my $log_file = $ENV{'log_file'};
+my $mira_version = $ENV{"mira_version"};
+
+#########################################################################
+# parse input: 1st input is fasta file; 2nd input is cmf file		#
+#########################################################################
+my @input_array = split(/#/, $input);
+
+my $input_seq = $input_array[1];
+my $input_qul = $input_array[2] if ($input_array[2]); #for quality
+my $input_cmf = $input_array[3] if ($input_array[3]); #for cmf
+
+#########################################################################
+# parse output: 1st output is uniseq; 2nd output is cmf file		#
+#########################################################################
+my @output_array = split(/#/, $output);
+
+my $output_seq = $output_array[1];
+my $output_cmf = $output_array[2];
+
+#########################################################################
+# parse parameter: cycles and parameter for every cycle			#
+#########################################################################
+my @para_array = split(/#/, $parameter);
+
+my %para_hash = ();
+
+my $para_num = 0;
+
+if (@para_array > 2 )
+{
+	for(my $ia=1; $ia<@para_array; $ia++)
+	{
+		if ($para_array[$ia] =~ m/\w+/)
+		{
+			$para_array[$ia] =~ s/_/ /ig;
+			$para_array[$ia] =~ s/ZZZ/_/ig;
+			$para_hash{$ia} = $para_array[$ia];
+			$para_num++;
+		}
+	}
+}
+else
+{
+	for(my $ib=1; $ib<=$circle; $ib++)
+	{
+		my $change_para = $para_array[1];
+		$change_para =~ s/_/ /ig;
+		$change_para =~ s/ZZZ/_/ig;
+		$para_hash{$ib} = $change_para;
+	}
+}
+
+if ($para_num >= 2)
+{	
+	$circle = $para_num;
+}
+
+#########################################################################
+# MIRA Assembly cycle Begin						#
+#########################################################################
+my $project_prefix = "mira";
+my $long_est = {};
+my $no_seq_input; my $no_seq_input2;
+
+# create 'mira' folder in working folder;
+my $run_dir = $working_dir."/".$project_prefix;
+
+unless (-e $run_dir) { mkdir($run_dir); }
+
+# copy est input fasta file ro quality file to running folder AND filter longer seqs
+if ($input_qul)
+{
+	($long_est, $no_seq_input) = filter_longer_seq($input_seq, $run_dir."/".$project_prefix."1.fa", $long_est);
+	#system("cp $input_seq $run_dir/$project_prefix"."1.fa") && die "Error at copy $input_seq to $project_prefix"."1.fa\n";
+	system("cp $input_qul $run_dir/$project_prefix"."1.fa.qual") && die "Error at copy $input_qul to $project_prefix"."1.fa.qual\n";
+}
+else
+{
+	($long_est, $no_seq_input) = filter_longer_seq($input_seq, $run_dir."/".$project_prefix."1.fa", $long_est);
+	#system("cp $input_seq $run_dir/$project_prefix"."1.fa") && die "Error at copy $input_seq to $project_prefix"."1.fa\n";
+}
+
+# copy last time cmf file to cap0.cmf;
+if (defined $input_cmf)
+{
+	system("cp $input_cmf $run_dir/$project_prefix"."0.cmf") && die "Error at copy $input_cmf to $project_prefix"."0.cmf \n";
+}
+else
+{
+	my $init_cmf_fh = IO::File->new(">$run_dir/$project_prefix"."0.cmf") || die "Error at create $project_prefix"."0.cmf \n";
+	print $init_cmf_fh "\n";
+	$init_cmf_fh->close;
+}
+
+chdir "$run_dir" or die "cannot chdir to $run_dir $!\n";
+
+#########################################################################
+# mira assembly once, combine result, produce uniseq result;		#
+#########################################################################
+my $start_time = localtime();
+my $mira_start =  qq'
+=========================================================================
+MIRA Assemble Begin ( $start_time )
+=========================================================================
+';
+
+write_log($mira_start) if $debug_mode == 1;
+
+my $i; #===the circle number===  
+
+#########################################################################
+# if no seqs in input file, jump to cap3 step				#
+#########################################################################
+
+unless($no_seq_input)
+{
+	$circle = 0;
+
+	unless ($debug_mode == 1)
+	{
+		die "Your input sequences have more errors!\n";
+	}
+
+	system("cp $current_dir/$input_seq $output_seq");
+	system("touch $output_cmf");
+
+	print "\nskip MIRA assembly cycle\n"
+}
+
+for ($i=1; $i<=$circle; $i++)
+{
+	print "\nrunning MIRA assembly cycle $i\n";
+
+	#######################################################################
+	# Assembly Prepare
+	#######################################################################
+
+	my $project_name = $project_prefix.$i;
+	my $project_argu = "-project=".$project_name;
+	my $mira_para = $para_hash{$i};
+
+	#######################################################################
+	# Assembly 1 time
+	#######################################################################
+
+	my ($uniseq, $assembled) = mira_pipeline($project_name, $mira_para, $i);
+
+	#######################################################################
+	# Next Assembly Prepare; just copy unigene to next assembly EST
+	#######################################################################
+	my $next_i = $i+1;
+	my $next_est = $project_prefix.$next_i.".fa";
+	write_log("NEXTIME EST FILE -- ".$next_est."\n") if $debug_mode ==1;
+	
+	if ($i == $circle)
+	{     # copy assembly result to next assembler (CAP3) and add all longer seq to it
+		add_longer_seq($uniseq, $output_seq, $long_est);
+	}
+	else  # copy uniseq to next assembly and then filter larger seqs
+	{ 
+		($long_est, $no_seq_input2) = filter_longer_seq($uniseq, $next_est, $long_est);
+		#system ("cp $uniseq $next_est") && die "can not copy uniseq to next est \n";
+	}
+
+	#######################################################################
+	# combine contig && member files 
+	#######################################################################
+	my ($this_time_file, $last_time_file, $cmf_out_file); # this_time_file: this time cmf file
+
+	if ($i == 1)
+	{
+		$this_time_file = $project_name.".cmf";
+		my $last_i = $i-1;
+		$last_time_file = $project_prefix.$last_i.".cmf";
+		$cmf_out_file = "CMF".$i.$last_i;
+	}
+	else 
+	{	
+		$this_time_file = $project_name.".cmf";
+
+		my $last_i = $i-1;
+		my $last_2i = $i-2;
+		
+		$last_time_file = "CMF".$last_i.$last_2i;
+		$cmf_out_file = "CMF".$i.$last_i;	
+	}
+	
+	write_log("PROCESS CMF FILE -- ".$this_time_file."\t".$last_time_file."\t".$cmf_out_file."\n") if $debug_mode == 1;
+	com_cmf($this_time_file, $last_time_file, $cmf_out_file);
+
+	if ($i == $circle)
+	{
+		system ("cp $cmf_out_file $output_cmf") && die "can not copy contig_member to next step \n";
+	}
+	
+	#########################################################
+	# delete temp file and folder				#
+	#########################################################
+	unless ($debug_mode == 1)
+	{
+		system("rm -rf ".$project_prefix.$i."*") && die "Error at delete file\n";
+	}
+}
+
+chdir $current_dir || die "cannot chdir to $current_dir $!\n";
+
+if ($debug_mode == 1)
+{
+	#if (-e $run_dir) { system("rm -rf $run_dir") && die "Error at: rm -rf $run_dir \n";}
+	my $end_time = localtime();
+	my $mira_end = qq'
+=========================================================================
+MIRA Assemble End ( $end_time )
+=========================================================================
+';
+	write_log($mira_end);
+}
+
+#################################################################
+# kentnf                                                        #
+#################################################################
+=head1 SUBROUTINE PART
+
+
+=head2 filter_longer_seq
+
+ Function: get longer sequences from input file, because mira can not handle sequences longer than 29900bp.
+ 
+ Input: seqs before filter (file name);
+	seqs after  filter (file name);
+	hash for long seqs (hash);
+        
+ Return: longer seq hash (hash);
+=cut
+sub filter_longer_seq
+{
+	my ($pre_seq_file, $after_seq_file, $long_hash) = @_;
+
+	my $max_len = "29900";
+
+	my $seq_i;
+
+	my $psfh = Bio::SeqIO->new(-format=>'fasta', -file=>$pre_seq_file) || die "Can not open pre sequences file for logner EST test!";
+	my $asfh = IO::File->new(">".$after_seq_file) || die "Can not open $after_seq_file\n";
+
+	while( my $preseq = $psfh->next_seq )
+	{
+		if ( $preseq->length > $max_len )
+		{
+			$$long_hash{$preseq->id} = $preseq->seq;
+		}
+		else
+		{
+			$seq_i++;
+			print $asfh ">".$preseq->id."\n".$preseq->seq."\n";
+		}
+	}
+	$asfh->close;
+	return ($long_hash, $seq_i);
+}
+
+=head2 add_longer_seq
+
+ Function: add longer seqs to the result of MIRA assembly
+ 
+ Input: seqs before add longer seq (file name)
+	seqs after  add longer seq (file name)
+	longer seqs hash (hash)
+        
+ Return: none
+=cut
+sub add_longer_seq
+{
+	my ($pre_seq_file, $after_seq_file, $long_hash) = @_;
+
+	my $psfh = Bio::SeqIO->new(-format=>'fasta', -file=>$pre_seq_file);
+	my $asfh = IO::File->new(">".$after_seq_file) || die "Can not open $after_seq_file\n";
+        while( my $preseq = $psfh->next_seq )
+        {
+		print $asfh ">".$preseq->id."\n".$preseq->seq."\n";
+        }
+
+	foreach my $id (sort keys %$long_hash)
+	{
+		print $asfh ">".$id."\n".$$long_hash{$id}."\n";
+	}
+        $asfh->close;
+}
+
+=head2 mira_pipeline
+
+ Function: assemble EST seqs using MIRA
+ 
+ Input: project name (char)
+	parameter (char) : MIRA assembly parameters
+	
+ Return: unique seqences (file name) 
+=cut
+sub mira_pipeline
+{
+	my ($pj_name, $parameter) = @_;
+
+	my $est_in = $pj_name.".fa";
+
+	my $est_report = $log_dir."/".$est_in.".report";
+	
+	my $err_report = $log_dir."/".$est_in.".error";
+
+	my $project_argu = "-project=".$pj_name;
+
+	my $assembly_cmd;
+	if ($debug_mode == 1) {
+		$assembly_cmd = "mira ".$project_argu." -fasta=".$est_in." ".$parameter." > ".$est_report." 2> ".$err_report; 
+	} else {
+		$assembly_cmd = "mira ".$project_argu." -fasta=".$est_in." ".$parameter." > report 2> error";
+	}
+
+	write_log("MIRA COMMAND -- ".$assembly_cmd."\n") if $debug_mode == 1;
+
+	system($assembly_cmd) && die "Error at $assembly_cmd\n";
+
+	#########################################################
+	# After assembly Process the result file		#
+	# first make the ace file name				#
+	#########################################################
+	my $ace_in;
+
+	if ($mira_version =~ m/V2\.9/)
+	{
+		$ace_in = $pj_name."_d_results/".$pj_name."_out.ace";
+	}
+	elsif ($mira_version =~ m/V3/)
+	{
+		$ace_in = $pj_name."_assembly/".$pj_name."_d_results/".$pj_name."_out.ace";
+	}
+	else
+	{
+		die "Error! MIRA version has wrong value: $mira_version\n";
+	}
+	
+	#########################################################
+	# check if ace file produced				#
+	# mira3 will not produce ace file if there is no assemble
+	#########################################################
+	my $assembled = 1;
+	my ($ace_out, $unpadded, $contig, $uniseq);
+	$ace_out = $pj_name.".cmf";
+	$uniseq = $pj_name.".uniseq";
+
+	if (-e $ace_in)
+	{
+		#######################################################################
+		# 1. parse ace file, covert ace file to cmf file;
+		# Input : ace_file [ex: est1_out.ace] , include singlets and contig
+		# Ouput : cmf_file [ex: est1.cmf] , just contig
+		#######################################################################
+		write_log("PROCESS ACE FILE -- ".$ace_in."\t".$ace_out."\n") if $debug_mode == 1;
+		parse_ace($ace_in, $ace_out);
+
+		#######################################################################
+		# 2. delete singlet in ace file [just for mira];
+		# Input : unpadded_seq	[ex:est1_out.unpadded.fasta], include singlets
+		# Ouput : Contigs	[ex:est1.ctg], just contig
+		#######################################################################
+		if ($mira_version =~ m/V2\.9/)
+		{
+			$unpadded = $pj_name."_d_results/".$pj_name."_out.unpadded.fasta";
+		}
+		elsif ($mira_version =~ m/V3/)
+		{
+			$unpadded = $pj_name."_assembly/".$pj_name."_d_results/".$pj_name."_out.unpadded.fasta";
+		}
+		else
+		{
+			die "Error! MIRA version has wrong value: $mira_version\n";
+		}
+	
+		$contig = $pj_name.".ctg";
+
+		write_log("PROCESS CTG FILE -- ".$unpadded."\t".$contig."\n") if $debug_mode == 1;
+		del_singlet($unpadded, $contig);
+
+		#######################################################################
+		# 3. produce unigene sequence for next assembly;
+		# Input : contig  est  cmf
+		#######################################################################
+		get_uniseq($contig, $est_in, $ace_out, $uniseq);
+	}
+
+	#########################################################
+	# if no ace file generated				#
+	# 1. just mv est in as uniseq				#
+	# 2. produce a blank cmf file				#
+	#########################################################
+	else 
+	{
+		$assembled = 0;
+		system("cp $est_in $uniseq") && die "Can not copy est in to uniseq if there is no assembly\n";
+
+		my $blank_cmf = IO::File->new(">".$ace_out) || die "Can not open blank cmf file for no assembly of mira\n";
+		print $blank_cmf "\n";
+		$blank_cmf->close;
+	}
+	return ($uniseq, $assembled);
+}
+
+=head2 parse_ace
+
+ Function: parce ace file. lines start with CO include contig id, start with RD include member id, QA have the information that can reject the end clip error and other error. The output is contig member file.
+
+ Input: input ace file (file name)
+	output file (filen name) 
+
+ Note: output file is contig member file;
+
+ Return: none
+=cut
+sub parse_ace
+{
+	my $ace_file_in = shift;
+	my $ace_file_out = shift;
+
+	my $ace_file_cml = $ace_file_in.".cml";
+
+	my $afi = IO::File->new($ace_file_in) || die "Error, can not input ace file to sub var $ace_file_in $!\n";
+	my $afo = IO::File->new(">".$ace_file_cml) ||  die "Error, can not open ace file $ace_file_cml $!\n";
+
+	my $contignum = 0;
+	my $membernum = 0;
+
+	my $member_length;
+	my $member_name;
+	my $member_count;
+	my $this_line;
+
+	while (my $line_afi = <$afi>)
+	{
+	      if ($line_afi =~ m/^CO /){
+			if ($this_line && $member_count >1 ) { print $afo $this_line."\n"; $contignum++;  }
+			$this_line = "";
+			$member_count = 0;
+	          	my @cid = split(/\s/, $line_afi);
+			$this_line.=$cid[1];
+	          	#print $afo "\n".$cid[1];
+	       }
+	
+	       #if ($line_afi =~ m/^AF /){
+	       #   	my @mid = split(/\s/, $line_afi);
+	       #   	#print $afo "\t".$mid[1];
+	       #   	$membernum++;
+	       #}
+
+		if ($line_afi =~ m/^RD /)
+        	{
+                	my @member_info = split(/\s/, $line_afi);
+                	$member_length = $member_info[2];
+                	$member_name = $member_info[1];
+		}
+
+		if ($line_afi =~ m/^QA /)
+        	{
+                	my @length_info = split(/\s/, $line_afi);
+                	my $length_to_end = $member_length - $length_info[2];
+
+                	if ($length_info[1] > 1 || $length_to_end > 0 )
+                	{ 						}
+			else
+			{
+				$this_line.="\t".$member_name;
+				$member_count++;
+				if ($member_count > 2)
+				{
+					$membernum++;
+				}
+				elsif ($member_count == 2)
+				{
+					$membernum = $membernum+2;
+				}
+				else
+				{	}
+			}
+		}
+	}
+	$afi->close;
+	$afo->close;
+
+	write_log("                    ORI_CONTIGS: $contignum \t ORI_MEMBERS: $membernum \n") if $debug_mode ==1;
+
+	my $afs = IO::File->new($ace_file_cml) || die "Error, can not input ace file to sub var $ace_file_cml $!\n";
+	my $afc	= IO::File->new(">".$ace_file_out) || die "Error, can not input ace file to sub var $ace_file_out $!\n";
+
+	while(my $line_afs = <$afs>)
+	{
+	    chomp($line_afs);
+	    my @m = split(/\t/, $line_afs);
+	    if ($m[0])
+	    {
+		unless ($m[0] =~ m/_s/)
+		{
+			print $afc $line_afs."\n";
+		}
+	    }
+	}
+
+	$afs->close;
+	$afc->close;
+
+}
+
+=head2 del_singlet
+
+ Function: delete singlet from contig sequences file, because singlets produced by MIRA have identifiable ids.
+
+ Input: input contig sequences (file name)
+	output contig sequences (file name) 
+
+ Return: none
+=cut 
+sub del_singlet
+{
+	my $unpadded_fa = shift;
+	my $contig_fa = shift;
+
+	my $ctg_in = Bio::SeqIO->new(-format=>'fasta', -file=>$unpadded_fa);
+	my $ctg_out = Bio::SeqIO->new(-format=>'fasta', -file=>">".$contig_fa);
+
+	while ( my $seq = $ctg_in->next_seq() ) 
+	{
+		my $seq_id = $seq->id;
+		unless($seq_id =~ m/_s/)
+		{
+		     $ctg_out->write_seq($seq);
+		}
+ 	}
+}
+
+=head2 get_uniseq
+
+ Function: get unique sequences from previous assembly result, and the unique sequences is for next clustering.
+
+ Input: input contig sequences (file name)
+        input member sequences (file name)
+        contig member file (file name)
+        output unique sequences (file name)
+
+ Return: none
+=cut
+sub get_uniseq
+{
+	my $usage = "perl get_uniseq.pl   contig.fa   est.fa  cmf  uniseq\n";
+	my $ctg = shift || die $usage;
+	my $est = shift || die $usage;
+	my $cmf = shift || die $usage;
+	my $uni = shift || die $usage;
+
+	my %contig = ();
+	my %cmf_contig = ();
+	my $in = Bio::SeqIO->new(-format=>'fasta', -file=>$ctg);
+	while(my $inseq = $in -> next_seq )
+	{
+	      my $ctg_id = $inseq->id;
+	      my $ctg_seq = $inseq->seq;
+	      $contig{$ctg_id} = $ctg_seq;
+	}
+
+	my %est = ();
+	my $in_est = Bio::SeqIO->new(-format=>'fasta', -file=>$est);
+	while(my $inseq_est = $in_est -> next_seq )
+	{
+	      my $est_id = $inseq_est->id;
+	      my $est_seq = $inseq_est->seq;
+	      $est{$est_id} = $est_seq;
+	}
+
+
+	open(FH, "<$cmf") or die "can not open it\n";
+	while(<FH>)
+	{
+		chomp;
+		my @m = split(/\t/, $_);
+		$cmf_contig{$m[0]} = 1;
+		my $i;
+		for ($i=1; $i<@m; $i++){
+	     		delete $est{$m[$i]}
+	   	}
+	} 
+	close(FH);
+
+	open (UNI, ">$uni") || die "can not open uniseq file $uni $!\n";
+	my $ida;
+	foreach $ida (sort keys %cmf_contig)
+	{
+	    print UNI ">".$ida."\n".$contig{$ida}."\n";
+	}
+	my $idb;
+	foreach $idb (sort keys %est)
+	{
+	    print UNI ">".$idb."\n".$est{$idb}."\n";
+	}
+
+	close(UNI);
+
+}
+
+=head2 com_cmf
+
+ Function: merge two contig and member files in one contig member file.
+
+ Input: contig member file (file name)
+        previous contig member file (file name)
+        output contig member file (file name)
+
+ Return: none
+=cut
+sub com_cmf
+{
+	my $usage = "\nUSAGE &combin_ace(this_cmf[2nd], last_cmf[1st], out)\n\n";
+
+	my $file1 = shift || die $usage;  #this time
+	my $file2 = shift || die $usage;  #last time
+	my $out = shift || die $usage;
+
+	############################################################
+	# last time contig member file 
+	# put it to hash
+	############################################################
+
+	my %member;
+
+	my $last_fh = IO::File->new($file2) || die "can not open last cmf file $file2 $! \n";
+	while(my $last_line = <$last_fh>)
+	{
+		if ($last_line =~ m/\w+/)
+		{
+			chomp($last_line);
+			my @m2 = split(/\t/, $last_line, 2);
+			$member{$m2[0]} = $m2[1];
+		}
+	}
+	$last_fh->close;
+
+
+	############################################################
+	# this time contig member file
+	# if find , and if no find
+	############################################################
+	
+	my $out_fh = IO::File->new(">".$out) || die "Can not open out file $out $! \n";
+	
+	my $this_fh = IO::File->new($file1) || die "Can not open this cmf file $file1 $! \n";
+
+	while(my $this_line = <$this_fh>)
+	{
+		chomp($this_line);
+			
+		if ($this_line =~ m/\w+/)
+		{
+			my @m1 = split(/\t/, $this_line);
+
+			print $out_fh $m1[0];
+
+			my $i;
+			for($i=1; $i<@m1; $i++)
+			{
+
+				if(defined $member{$m1[$i]})
+				{
+					print $out_fh "\t".$member{$m1[$i]};
+					delete $member{$m1[$i]};
+				}
+				else
+				{
+					print $out_fh "\t".$m1[$i];
+				}
+			}
+			print $out_fh "\n";
+		}
+	}
+	$this_fh->close;
+
+	my $c_id;
+	foreach $c_id (sort keys %member)
+	{
+	    print $out_fh "$c_id\t$member{$c_id}\n";
+	}
+
+	$out_fh->close;
+}
+
+=head2 write_log
+
+ Function: write log information to log files.
+
+ Input: content of log information
+
+ Return: one
+=cut
+sub write_log
+{
+        my $content = shift;
+        my $fh = IO::File->new(">>".$log_file) || die "Can not write info to log file $! \n";
+        print $fh $content;
+        $fh->close;
+}

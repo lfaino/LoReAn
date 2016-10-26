@@ -1,0 +1,274 @@
+\documentclass[12pt]{article}
+\usepackage[a4paper,top=20mm,bottom=20mm,left=20mm,right=20mm]{geometry}
+\usepackage{url}
+\usepackage{alltt}
+\usepackage{xspace}
+\usepackage{times}
+
+\usepackage{verbatim}
+\usepackage{ifthen}
+\usepackage{optionman}
+
+\newcommand{\Substring}[3]{#1[#2..#3]}
+
+\newcommand{\Program}[0]{\texttt{tagerator}\xspace}
+
+\title{\Program: a program for mapping short sequence tags\\
+       a manual}
+
+\author{\begin{tabular}{c}
+         \textit{Stefan Kurtz}\\
+         Center for Bioinformatics,\\
+         University of Hamburg
+        \end{tabular}}
+
+\date{26/08/2013}
+\begin{document}
+\maketitle
+
+\section{Preliminary definitions}
+By \(S\) let us denote the concatenation of all subject sequences.
+By \(edist(u,v)\) we denote the unit edit distance  of two strings
+\(u\) and \(v\).
+Consider a sequence \(p\) of length \(m\). An approximate match of \(p\) with 
+up to \(k\) differences is a substring \(v\) of \(S\) such that 
+\(edist(p,v)\leq k\). An approximate prefix match of \(p\) with \(k\) 
+differences and at most \(t\) occurrences is a substring \(v\) of \(S\) such 
+that \(v\) occurs at most \(t\) times in \(S\) and 
+\(edist(v,\Substring{p}{1}{i})\leq k\) for some \(i\in[1,m]\).
+
+\section{The program \Program}
+
+The program \Program is called as follows:
+\par
+\noindent\texttt{gt} \Program [\textit{options}] \Showoption{q} \Showoptionarg{files} [\textit{options}] 
+\par
+\Showoptionarg{files} is a white space separated list of at least one
+filename. Any sequence occurring in any file specified in
+\Showoptionarg{files} is called \textit{short sequence tag} or \textit{tag}
+for short. In addition to the mandatory option \Showoption{q}, the program
+must be called with either option \Showoption{pck} or \Showoption{esa},
+which specify to use a packed index and an enhanced suffix array,
+respectively. Both indices are constructed from a given set of subject 
+sequences. 
+
+\Program maps each short sequence tag, say \(p\) of length \(m\)
+against the given index. The length of the tag is limited by the
+size of a pointer. If \texttt{gt} is a 32-bit binary, then \(m\) must be
+smaller or equal to 32. If \texttt{gt} is a 64-bit binary, \(m\) must be 
+smaller or equal to 64. The program runs in three basic modes:
+\begin{itemize}
+\item
+In the \textit{ms}-mode, it computes for all \(i\in[1,m]\) the length \(\ell\) 
+of the longest prefix of \(\Substring{w}{i}{m}\) matching any substring of 
+\(S\).
+In addition, it reports start positions of such a prefix in \(S\).
+As these values make up the well known matching statistics, we denote 
+it by \textit{ms}. The length value \(\ell\) is the matching statistics length
+and the position values are the matching statistics positions.
+Both, the matching statistics length and the matching statistics position
+is uniquely determined. The matching statistics mode requires to specify 
+a maximum number of occurrences, see option \Showoption{maxocc}.
+\item
+In the \textit{cdiff}-mode, it computes all start positions of approximate 
+matches with up to \(k\) differences in \(S\). For each start position of 
+an approximate match, say \(j\), it reports the minimum integer \(\ell\) such 
+that \(edist(p,\Substring{S}{j}{j+\ell-1})\leq k\). Since this mode matches
+the complete sequence \(p\), we call this mode \textit{cdiff},
+for complete difference.
+\item
+In the \textit{pdiff}-mode, it computes all start positions of approximate 
+prefix matches with up to \(k\) differences and at most \(t\) occurrences in 
+\(S\). For each start position of an approximate prefix match, say \(j\), it 
+reports the minimum integers \(i\) and \(\ell\) such that 
+\(edist(\Substring{p}{1}{i},\Substring{S}{j}{j+\ell-1})\leq k\). Since this 
+mode matches a prefix of \(p\) with some differences, we call this mode 
+\textit{pdiff}.  This mode requires to specify a maximum number of 
+occurrences, see option \Showoption{maxocc}.
+\end{itemize}
+
+The following options are available in \Program:
+
+\begin{Justshowoptions}
+\Option{q}{$\Showoptionarg{files}$}{
+Specify a white space separated list of query files (in multiple \Fasta format)
+containing the tags. At least one query file must be given. The files may be in 
+gzipped format, in which case they have to end with the suffix \texttt{.gz}.
+}
+
+\Option{esa}{$\Showoptionarg{indexname}$}{
+Use the given enhanced suffix array index to map the short sequence tags.
+}
+
+\Option{pck}{$\Showoptionarg{indexname}$}{
+Use the packed index (an efficient representation of the FMindex)
+to map the short sequence tags.
+}
+
+\Option{e}{$\Showoptionarg{k}$}{
+Specify the number of differences allowed. \(k\) must be a non-negative number.
+\(k=0\) means that no differences are allowed (exact matching) and \(k>0\)
+means a positive number of differences. If this option is not used, then
+the program runs in \textit{ms}-mode, i.e.\ it computes the matching statistics
+for each short sequence tag.
+}
+
+\Option{nod}{}{
+Do not compute direct matches, i.e.\ matches on the forward strand. If
+this option is not used, then matches are computed on the forward strand.}
+
+\Option{nop}{}{
+Do not compute palindromic matches, i.e.\ matches on the 
+reverse complemented strand.  If
+this option is not used, then matches are computed on the reverse complemented
+strand.}
+
+\Option{maxocc}{$\Showoptionarg{t}$}{
+Specify the maximum number of occurrences of exact prefix matches (in case of
+the matching statistics) or approximate prefix matches.
+}
+
+\Option{withwildcards}{}{
+Output matches containing wildcard characters (e.g. N). This option cannot be
+used in any of the following cases:
+\begin{itemize}
+\item
+with option \Showoption{pck}, 
+\item
+in the \textit{ms}-mode,
+\item
+for all modes with \(k=0\).
+\end{itemize}
+}
+
+\Option{best}{}{
+For each tag, only show matches for the smallest possible distance. That is,
+if a tag has exact matches in the input index, then only exact matches are
+shown. If there are no exact matches, but matches with distance 1, then
+only these are shown. If there are no matches matches with distance 1 (and
+hence no exact matches), but with distance 2, then only these are shown etc.
+}
+
+\Option{output}{$\Showoptionarg{key}_{1}\ldots\Showoptionarg{key}_{q}$}{
+Use combination of the following keywords to specify output according to
+the following table:
+
+\begin{center}
+\begin{tabular}{l|l}
+keyword & shows the following\\\hline
+tagnum  &       show ordinal number of tag\\
+tagseq   &      show tag sequence\\
+dblength &      show length of match in database\\
+dbstartpos&     show start position of match in database\\
+abspos &        show absolute value of dbstartpos\\
+dbsequence&     show sequence of match\\
+strand    &     show strand\\
+edist     &     show edit distance\\
+tagstartpos&    show start position of match in tag (only for 
+                \Showoption{maxocc})\\
+taglength  &    show length of match in tag (only for option 
+                \Showoption{maxocc})\\
+tagsuffixseq&   show suffix tag involved in match (only for option
+                \Showoption{maxocc})
+\end{tabular}
+\end{center}
+This option only has an effect when used in the cdiff-mode. If in cdiff
+mode this option is not used, then the output is such as if keywords
+\texttt{tagnum}, \texttt{tagseq}, \texttt{dblength}, \texttt{dbstartpos},
+\texttt{strand} were used.
+}
+
+\Helpoption
+
+\end{Justshowoptions}
+The following conditions must be satisfied:
+\begin{enumerate}
+\item
+Option \Showoption{q} is mandatory.
+\item
+Either option \Showoption{pck} or \Showoption{esa} must be used. Both cannot
+be combined.
+\item
+If option \Showoption{e} is not used, then option \Showoption{maxocc}
+is required.
+\end{enumerate}
+
+\section{Examples}
+Suppose that in some directory, say \texttt{homo-sapiens}, we have 24 gzipped
+\Fasta files containing all 24 human chromomsomes. These may have been 
+downloaded from
+\url{ftp://ftp.ensembl.org/pub/current_fasta/homo_sapiens_47_36i/dna}.
+
+In the first step, we construct the packed index for the entire human genome:
+
+\begin{Output}
+gt packedindex mkindex -dna -dir rev -parts 12 -bsize 10 -sprank -locfreq 32
+                       -tis -ssp -indexname pck-human -db homo-sapiens/*.gz
+\end{Output}
+
+The program runs for little more than two hours and delivers 
+an index \texttt{human-all} consisting of three files:
+
+\begin{Output}
+ls -lh human-all.*
+-rw-r----- 1 kurtz gistaff   37 2008-07-13 17:00 pck-human.al1
+-rw-r----- 1 kurtz gistaff 2.6G 2008-07-13 19:22 pck-human.bdx
+-rw-r----- 1 kurtz gistaff 3.3K 2008-07-13 19:22 pck-human.prj
+\end{Output}
+
+Suppose that the compressed file \texttt{Q1.gz} contains short sequence tags
+in multiple \Fasta format. In a first call we run \Program in \textit{ms}-mode:
+
+\EXECUTE{gt tagerator -q Q1.gz -maxocc 10 -pck pck-human | head -n 25}
+
+The first line shortly reports the kind of computation performed. The second
+and third line give the name of the index containing the subject sequences.
+It is reported whether it is a packed index or an enhanced suffix array. Then,
+for each tag its length, say \(m\), and the tag \(p\) itself is shown, followed 
+by a block of \(m\) lines each containing one integers. For all \(i\in[1,m]\), 
+the first column in the \(i\)th line is the matching statistics length, say
+\(l\). This means that \(\Substring{p}{i}{i+l-1}\) is the maximum length prefix
+of \(\Substring{p}{i}{m}\) that occurs as a substring in the index. The
+second column gives the strand of the match: a \texttt{+} stands for the
+forward strand and a \texttt{-} for the reverse strand. If the number of 
+occurrences of \(\Substring{p}{i}{i+l-1}\) is smaller than the maximum
+occurrence parameter (\(10\) in the above case), then all matching statistics 
+positions are reported in ascending order. If it is larger than the maximum
+occurrence parameter, no positions are shown.
+So, for example, the sequence \texttt{gcttgctg} of length 8 starting at tag
+position 3 is the longest prefix of \texttt{gcttgctgctgca} that occurs as 
+a substring in the index. It occurs at the positions 25583, 88695, 213546,
+etc. Note that the matching statistics lines for the forward strand are
+followed by the matching statistics block on the reverse strand. Note however,
+that the matching statistics positions are always reported with respect to the
+forward strand.
+
+In a second call, we run \Program in \textit{cdiff}-mode:
+
+\EXECUTE{gt tagerator -q Q1.gz -pck pck-human -e 2 | head -n 28}
+
+The first line shortly reports the kind of computation performed. The second
+and third line are as in the previous example. Then, for
+each tag its length and the tag itself is shown, followed by 
+a block of lines each containing three integers and one of the
+symbols \texttt{+} or \texttt{-}, denoting the strand of the match.
+Each such triple of integers reports the length of an approximate match,
+the subject sequence in which the match occurs, and the relative position
+of the match in this sequence. For each start position only the shortest 
+length is reported. If there are no
+approximate matches, then no such line appears. Note that the match always
+refers to the complete pattern.
+
+Our third example concerns the \textit{pdiff}-mode:
+
+\EXECUTE{gt tagerator -q Q1.gz -pck pck-human -e 1 -maxocc 5 | head -n 20}
+
+The output is similar as in the previous example, except that each match
+is reported by four integers with a sign between the first three and the
+last number. The first number reports the length of the
+approximate match, the second reports the subject sequence number in
+which the match occur, the third its relative position in the subject
+sequence. The last number reports the length of the prefix 
+of the tag involved in the approximate match. Note that in some cases,
+the two length values are different.
+\end{document}
