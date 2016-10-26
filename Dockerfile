@@ -39,9 +39,7 @@ RUN cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && s
     cd STAR-2.5.0b && make STAR && git submodule update --init --recursive && cd /home/lorean/bin/LoReAn/third_party/software/  && \
     cd gmap-2015-12-31/ && ./configure && make && make install && cd /home/lorean/bin/LoReAn/third_party/software/ &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 &&\
-    cp /home/lorean/bin/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta &&\
-    cd /home/lorean/bin/LoReAn/third_party/software/  && wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
-    tar -zxvf http://genometools.org/pub/genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+    cp /home/lorean/bin/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta 
     
 RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc && \
     cp ../conf_files/gm_key ~/.gm_key
@@ -51,5 +49,8 @@ RUN sudo perl -MCPAN -e shell && cpan -f -i YAML && cpan -f -i Hash::Merge && cp
      
 RUN mkdir gffreadF && cd gffreadF && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin
-   
+
+RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
+     tar -zxvf genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+    
 WORKDIR /data/
