@@ -94,7 +94,7 @@ def move_single_file (filename, key, evm_dir, new_file_d):
         new_file_d[key] = out_file
         return new_file_d
     except:
-        print 'Could not move ' + filename
+        #print 'Could not move ' + filename
         raise NameError('')
 
 def move_cat_files(file_list, key, evm_dir, new_file_d):
@@ -182,7 +182,7 @@ def cat_EVM_inputs(evm_dir): #, inputs):
               pred_filename + ' --- skipping\n')              
     else:
 
-        print '\nCMD: ' + ' '.join(ab_initio_list) + '\n'     
+        #print '\nCMD: ' + ' '.join(ab_initio_list) + '\n'     
         pred_file = open(pred_filename, 'w')
         try:
             subprocess.check_call(ab_initio_list, stdout = pred_file, cwd = evm_dir)

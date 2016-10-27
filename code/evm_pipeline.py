@@ -117,7 +117,7 @@ def evm_run(evm_output, command_list, threads):
     log = open(log_name, 'w')
     
     print '\nCMD: ' + ' '.join(args1) + ' | ' + ' '.join(args2) + '\n'
-    print 'Running EVM in parallel with ' + str(threads) + \
+    #print 'Running EVM in parallel with ' + str(threads) + \
     ' threads, it may take a while\n'
     
     try:
@@ -305,9 +305,9 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
     args = ['Launch_PASA_pipeline.pl', '--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
             reference, '-t', transcripts_file]
         
-    log_name = pasa_dir + int(processID) + 'update_gff3.log'
+    log_name = pasa_dir + 'update_gff3.log'
     log = open(log_name, 'w')
-    log_out_name = pasa_dir + int(processID) + 'pasa.out.log'
+    log_out_name = pasa_dir + 'pasa.out.log'
     out_log = open(log_out_name, 'w')
 
     print '\nCMD: ' + ' '.join(args) + '\n'

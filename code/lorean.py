@@ -106,9 +106,9 @@ def arguments():
     parser.add_argument("--keep_tmp", 
                         help="Keep temporary files [FALSE]",
                         action = 'store_true')
-    parser.add_argument("--PacBio_non_CCS", 
-                        help="Long reads are not from PacBio CCS (Circular consensus sequences) [FALSE]",
-                        action = 'store_true')
+    #parser.add_argument("--PacBio_non_CCS", 
+                        #help="Long reads are not from PacBio CCS (Circular consensus sequences) [FALSE]",
+                        #action = 'store_true')
     parser.add_argument('--short_reads', nargs="?", default="",
                         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
                         metavar = 'FASTQ_file')

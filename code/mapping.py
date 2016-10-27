@@ -157,7 +157,7 @@ def gmap_build(reference, working_dir):
     print '\nCMD: ' + ' '.join(args) + '\n'   
     #Call
     try:
-        subprocess.check_call(args, stderr = log)
+        subprocess.check_call(args, stdout = log, stderr = log)
         print 'GMAP database built'
     except:
         print 'GMAP build failed'
