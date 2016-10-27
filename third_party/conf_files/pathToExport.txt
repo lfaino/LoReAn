@@ -18,3 +18,6 @@ export PATH=$PATH:$HOME/bin/LoReAn/third_party/software/PASApipeline-2.0.2/bin
 export PATH=$PATH:$HOME/bin/LoReAn/third_party/software/genometools-1.5.9/bin
 export PATH=$PATH:$HOME/bin/LoReAn/third_party/software/BRAKER_v1.9
 export PATH=$PATH:$HOME/bin/
+export BAMTOOLS_PATH=$HOME/bin/bamtools/bin/
+export GENEMARK_PATH=$HOME/bin/LoReAn/third_party/software/gm_et_linux_64/gmes_petap/
+export SAMTOOLS_PATH=/usr/bin/samtools
