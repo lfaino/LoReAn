@@ -52,9 +52,9 @@ def evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, seg
 
     try:
         subprocess.check_call(args, stdout = stdout_f, stderr = log, cwd = evm_output)
-        print '> Partitions created\n'
+        #print '> Partitions created\n'
     except:
-        print 'Partitions could not be created\n'
+        #print 'Partitions could not be created\n'
         raise NameError('')
     
    
@@ -91,9 +91,9 @@ def evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
 
     try:
         subprocess.check_call(args, stdout = command, stderr = log, cwd = evm_output)
-        print '> Command list created. Output is: ' + command_file +'\n'
+        #print '> Command list created. Output is: ' + command_file +'\n'
     except:
-        print 'Command file could not be created\n'
+        #print 'Command file could not be created\n'
         raise NameError('')
     
     command.close()
@@ -124,9 +124,9 @@ def evm_run(evm_output, command_list, threads):
         cat = subprocess.Popen(args1, stdout = subprocess.PIPE, cwd = evm_output)
         parallel = subprocess.check_call(args2, stdin = cat.stdout, cwd = evm_output, stderr = log)
         
-        print '> EVM finished.\n'
+        #print '> EVM finished.\n'
     except:
-        print 'Error in EVM run\n'
+        #print 'Error in EVM run\n'
         raise NameError('')
     
     log.close()
@@ -152,9 +152,9 @@ def evm_combine(evm_output, partitions):
 
     try:
         subprocess.check_call(args, stdout = st_out, stderr = log, cwd = evm_output)
-        print '> Partitions combined\n'
+        #print '> Partitions combined\n'
     except:
-        print 'Partitions could not be combined\n'
+        #print 'Partitions could not be combined\n'
         raise NameError('')
     
     st_out.close()
@@ -182,9 +182,9 @@ def evm_to_gff3(evm_output, partitions, reference):
 
     try:
         subprocess.check_call(args, stdout = st_out, stderr = log, cwd = evm_output)
-        print '> Converted to GFF3 \n'
+        #print '> Converted to GFF3 \n'
     except:
-        print 'Could not convert to GFF3\n'
+        #print 'Could not convert to GFF3\n'
         raise NameError('')
     
     st_out.close()
@@ -214,7 +214,7 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
     print '##CREATE AN OUTPUT DIRECTORY\n'
     evm_output = working_dir + 'evm_output/'
     check_create_dir(evm_output)
-    print '> Output directory is: ' + evm_output + '\n'
+    #print '> Output directory is: ' + evm_output + '\n'
     
     # Partitions
     print '##PARTITIONING THE INPUTS'
@@ -269,7 +269,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
         conf.write(line + '\n')   
        
     conf.close()
-    print '> PASA annotation configuration file created in: ' + conf_file + '\n'
+    #print '> PASA annotation configuration file created in: ' + conf_file + '\n'
     return conf_file
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
@@ -291,9 +291,9 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
         load = subprocess.Popen(args, stderr = log, stdout = stdout_f, cwd = pasa_dir)
         load.communicate()
         processID = load.pid
-        print '> GFF3 loaded to PASA DB \n'
+        #print '> GFF3 loaded to PASA DB \n'
     except:
-        print 'Could not load GFF3 to PASA DB\n'
+        #print 'Could not load GFF3 to PASA DB\n'
         raise NameError('')
         
     log.close()
@@ -318,9 +318,9 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
         update_process = subprocess.check_call(args, stdout = out_log ,stderr = log, cwd = pasa_dir)
         #processID = update_process.pid
         
-        print '> GFF3 updated \n'
+        #print '> GFF3 updated \n'
     except:
-        print 'Could not update GFF3 from PASA DB\n'
+        #print 'Could not update GFF3 from PASA DB\n'
         raise NameError('')
 
     out_log.close()
@@ -346,9 +346,9 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
 
     try:
         subprocess.check_call(args, cwd = pasa_dir)
-        print '> GFF3 name changed to: ' + new_filename
+        #print '> GFF3 name changed to: ' + new_filename
     except:
-        print 'Could not move GFF3 name\n'
+        #print 'Could not move GFF3 name\n'
         raise NameError('')
     return new_filename
 

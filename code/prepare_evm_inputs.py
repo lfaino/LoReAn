@@ -34,9 +34,9 @@ def convert_augustus(aug_file, wd):
     try:
         subprocess.check_call(args, stdout = out_f, stderr = log)
         
-        print '> Augustus to GFF3 completed: ' + out_file
+        #print '> Augustus to GFF3 completed: ' + out_file
     except:
-        print ' Augustus to GFF3 failed'
+        #print ' Augustus to GFF3 failed'
         raise NameError('')
     
     log.close()   
@@ -66,9 +66,9 @@ def convert_genemark(genemark_file, wd):
     try:
         subprocess.check_call(args, stdout = out_f, stderr = log)
         
-        print '> Genemark to GFF3 completed: ' + out_file + '\n'
+        #print '> Genemark to GFF3 completed: ' + out_file + '\n'
     except:
-        print ' Genemark to GFF3 failed'
+        #print ' Genemark to GFF3 failed'
         raise NameError('')
     
     log.close()   
@@ -132,7 +132,7 @@ def move_EVM_inputs(evm_dir, inputs):
             new_files = move_single_file(filename, key, evm_dir, new_files)
         
         
-    print '> EVM input dir full of files: ' + evm_dir
+    #print '> EVM input dir full of files: ' + evm_dir
     print new_files
     return new_files
                 
@@ -186,9 +186,9 @@ def cat_EVM_inputs(evm_dir): #, inputs):
         pred_file = open(pred_filename, 'w')
         try:
             subprocess.check_call(ab_initio_list, stdout = pred_file, cwd = evm_dir)
-            print '> Gene prediction concatenation completed' 
+            #print '> Gene prediction concatenation completed' 
         except:
-            print 'Gene prediction concatenation failed'
+            #print 'Gene prediction concatenation failed'
             raise NameError('')
         pred_file.close()
 

@@ -474,7 +474,7 @@ def main():
 
             evm_dir = wd+'evm_inputs/'
             logistic.check_create_dir(evm_dir)
-            print '> EVM input directory created in ' + evm_dir
+            #print '> EVM input directory created in ' + evm_dir
             print '\n##PREPARING THE FILES\n'
             if args.protein_evidence != '' and args.short_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
                 evm_inputs = {'pasa':pasa_gff3, 'augustus':augustus_gff3, 'genemark':genemark_gff3, 'AAT':mergedProtGFF3, 'gmap': trinity_path}
@@ -515,7 +515,7 @@ def main():
                                                 protein_file, args.segmentSize, args.overlapSize)
             
             
-            print '\n>>> EVM pipeline finished!!\n'
+            #print '\n>>> EVM pipeline finished!!\n'
             
             ##KEEP THIS OUTPUT
             FinalFiles.append(evm_gff3)
@@ -672,7 +672,7 @@ def main():
     print'\n###CREATING OUTPUT DIRECTORY###\n'
     final_output_dir = wd+'output/'
     logistic.check_create_dir(final_output_dir)
-    print ">Done "
+    print "\n###DONE###\n "
     
     
     print "\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY"

@@ -48,9 +48,9 @@ def gffread(gff3File, reference, working_dir):
 
     try:
         subprocess.check_call(args)
-        print '>gff3read worked. Output is: ' + out_name +'\n'
+        #print '>gff3read worked. Output is: ' + out_name +'\n'
     except:
-        print 'gff3read did not work properly\n'
+        #print 'gff3read did not work properly\n'
         raise NameError('')
     return out_name
 

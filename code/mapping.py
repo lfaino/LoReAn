@@ -88,9 +88,9 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
 
     try:
         subprocess.check_call(args, stderr = log, cwd = wd)
-        print '>STAR worked. Output is: ' + filename +'\n'
+        #print '>STAR worked. Output is: ' + filename +'\n'
     except:
-        print 'STAR did not work properly\n'
+        #print 'STAR did not work properly\n'
         raise NameError('')
     
     
@@ -200,24 +200,24 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
         if not Fflag:
-            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '--trim-end-exons', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
+            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
             print '\nCMD: ' + ' '.join(args) + '\n'
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
-                print '>GMAP worked. Output is: ' + filename +'\n'
+                #print '>GMAP worked. Output is: ' + filename +'\n'
             except:
-                print 'GMAP did not work properly\n'
+                #print 'GMAP did not work properly\n'
                 raise NameError('')
         else:
-            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '--trim-end-exons', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
+            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-h', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
                 '--min-intronlength', str(min_intron_length), '-F','-Y', '--microexon-spliceprob' , '1' ,'-n', '1', '-K', str(max_intron_length),
                 '-f', str(out_format), '-t', str(threads), reads]
             print '\nCMD: ' + ' '.join(args) + '\n'
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
-                print '>GMAP worked. Output is: ' + filename +'\n'
+                #print '>GMAP worked. Output is: ' + filename +'\n'
             except:
-                print 'GMAP did not work properly\n'
+                #print 'GMAP did not work properly\n'
                 raise NameError('')
         out_f.close()
         log.close()
@@ -235,9 +235,9 @@ def samtools_view(sam_file, wd):
     print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stderr = log)
-        print '> SAM converted to BAM in ' + bam_filename
+        #print '> SAM converted to BAM in ' + bam_filename
     except:
-        print 'Samtools view failed'
+        #print 'Samtools view failed'
         raise NameError('')
     
     log.close()
@@ -258,9 +258,9 @@ def samtools_sort(bam_file, threads, wd):
     try:
         subprocess.check_call(args, stderr = log)
         
-        print '> BAM sorted in ' + s_bam_filename + '\n'
+        #print '> BAM sorted in ' + s_bam_filename + '\n'
     except:
-        print 'Samtools sort failed'
+        #print 'Samtools sort failed'
         raise NameError('')
     log.close()
     sor_bam_filename = s_bam_filename + ".bam"
