@@ -36,6 +36,8 @@ RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATp
 
 RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz
 
+RUN tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
+
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.0.2.tar.gz && tar -zxvf v2.0.2.tar.gz && rm v2.0.2.tar.gz &&\
     cd PASApipeline-2.0.2 && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/ 
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.2.tar.gz && \
@@ -46,13 +48,13 @@ RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz &&
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
 
-RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2016-09-23.tar.gz && tar -zxvf gmap-gsnap-2016-09-23.tar.gz && rm gmap-gsnap-2016-09-23.tar.gz &&\
-    mv gmap-2016-09-23/ gmap && cd gmap/ && ./configure && make && make install 
+RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2015-12-31.v10.tar.gz && tar -zxvf gmap-gsnap-2015-12-31.v10.tar.gz && rm gmap-gsnap-2015-12-31.v10.tar.gz &&\
+    mv gmap-2015-12-31// gmap && cd gmap/ && ./configure && make && make install 
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /home/lorean/bin/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta
 
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz
+RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz
 
 RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz 
    
@@ -64,7 +66,7 @@ RUN mkdir gffreadF && cd gffreadF && git clone https://github.com/gpertea/gclib 
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
-     tar -zxvf genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+     tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc && \
     cp ../conf_files/gm_key ~/.gm_key
     
