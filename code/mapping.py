@@ -200,7 +200,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
         if not Fflag:
-            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
+            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '--trim-end-exons', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
             print '\nCMD: ' + ' '.join(args) + '\n'
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
@@ -209,7 +209,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                 print 'GMAP did not work properly\n'
                 raise NameError('')
         else:
-            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
+            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '--trim-end-exons', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
                 '--min-intronlength', str(min_intron_length), '-F','-Y', '--microexon-spliceprob' , '1' ,'-n', '1', '-K', str(max_intron_length),
                 '-f', str(out_format), '-t', str(threads), reads]
             print '\nCMD: ' + ' '.join(args) + '\n'

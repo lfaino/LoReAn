@@ -30,7 +30,7 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
 
 RUN git clone https://github.com/lfaino/LoReAn.git  
 
-WORKDIR /home/lorean/bin/LoReAn/third_party/
+WORKDIR /home/lorean/bin/LoReAn/third_party/software/
 
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && sudo make && sudo make install 
 
@@ -38,13 +38,13 @@ RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz
 
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.0.2.tar.gz && tar -zxvf v2.0.2.tar.gz && rm v2.0.2.tar.gz &&\
     cd PASApipeline-2.0.2 && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/ 
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.2.tar.gz && mkdir augustus && cd augustus && mv ../augustus-3.2.2.tar.gz . &&\
-    tar -zxvf augustus-3.2.2.tar.gz && rm augustus-3.2.2.tar.gz  && make clean && make 
+RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.2.tar.gz && \
+    tar -zxvf augustus-3.2.2.tar.gz && rm augustus-3.2.2.tar.gz && mv augustus-3.2.2 augustus && cd augustus  && make clean && make 
     
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz && tar -zxvf v2.2.0.tar.gz && rm v2.2.0.tar.gz && cd trinityrnaseq-2.2.0 && make && make plugins 
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
-    cd STAR-2.5.2b && make STAR && git submodule update --init --recursive 
+    cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
 
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2016-09-23.tar.gz && tar -zxvf gmap-gsnap-2016-09-23.tar.gz && rm gmap-gsnap-2016-09-23.tar.gz &&\
     mv gmap-2016-09-23/ gmap && cd gmap/ && ./configure && make && make install 
