@@ -323,37 +323,11 @@ def main():
                 print '\n##LAUNCH PASA\n'
                 pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length, args.threads)
                 print '='*70
-                #TransDecoder 
-                #print '='*70
-                #print '\n###TRANSDECODER###\n'
-                #Two parts, LongORFs and Predict
-                #Create a directory
-                #td_dir = wd + 'transdecoder/'
-                #logistic.check_create_dir(td_dir)
-                #transD_gff3 = transcripts.transdecoder(td_dir, trinity_out, args.threads)
                 print '='*70
                 ##HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
-                if not args.no_braker:
-                    if (args.protein_evidence != '' and args.short_reads) or (args.protein_evidence != '' and args.long_reads): ### USING PROTEINS AND READS 
-                        queue = Queue()
-                        print '='*70
-                        print '\n###RUNNING BRAKER1 AND AAT###\n'
-                        print '='*70
-                        for i in range(2):
-                            queue.put(i) #QUEUE WITH A ZERO AND A ONE
-                        for i in range(2):
-                            t = Thread(target=handler.BrakerAAT, args =(queue, ref, default_bam, args.species, args.protein_evidence, args.threads, args.fungus, list_fasta_names, wd))
-                            t.daemon = True
-                            t.start()
-                        queue.join()
-                    elif args.short_reads or args.long_reads:  ### USING ONLY READS WITH BRAKER
-                        print '='*70
-                        print '\n###BRAKER1###\n'
-                        print '='*70
-                        braker_out = transcripts.braker_call(wd, ref, default_bam, args.species, args.threads, arg.fungus)
-                        print '='*70
+              
                 
-                elif args.protein_evidence != '' and args.short_reads != '':
+                if args.protein_evidence != '' and args.short_reads != '':
                     check_species = ['augustus', '--species=help']
                     process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
                     out, err = process.communicate()
@@ -371,7 +345,24 @@ def main():
                                 t.daemon = True
                                 t.start()
                         queue.join()
-                    else:
+                    elif (args.protein_evidence != '' and args.short_reads) or (args.protein_evidence != '' and args.long_reads): ### USING PROTEINS AND READS 
+                        queue = Queue()
+                        print '='*70
+                        print '\n###RUNNING BRAKER1 AND AAT###\n'
+                        print '='*70
+                        for i in range(2):
+                            queue.put(i) #QUEUE WITH A ZERO AND A ONE
+                        for i in range(2):
+                            t = Thread(target=handler.BrakerAAT, args =(queue, ref, default_bam, args.species, args.protein_evidence, args.threads, args.fungus, list_fasta_names, wd))
+                            t.daemon = True
+                            t.start()
+                        queue.join()
+                    elif args.short_reads or args.long_reads:  ### USING ONLY READS WITH BRAKER
+                        print '='*70
+                        print '\n###BRAKER1###\n'
+                        print '='*70
+                        braker_out = transcripts.braker_call(wd, ref, default_bam, args.species, args.threads, arg.fungus)
+                        print '='*70
                         print '='*70
                         print '='*70
                         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")

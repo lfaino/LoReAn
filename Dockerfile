@@ -62,7 +62,7 @@ RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.g
 RUN sudo perl -MCPAN -e shell && cpan -f -i YAML && cpan -f -i Hash::Merge && cpan -f -i  Logger::Simple && cpan -f -i  Parallel::ForkManager &&\
     cpan -f -i Config::Std && cpan -f -i Scalar::Util::Numeric 
      
-RUN mkdir gffreadF && cd gffreadF && git clone https://github.com/gpertea/gclib &&\
+RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
