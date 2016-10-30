@@ -67,7 +67,7 @@ RUN mkdir gffreadF && cd gffreadF && git clone https://github.com/gpertea/gclib 
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
      tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
-RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc && \
-    cp ../conf_files/gm_key ~/.gm_key
+RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc 
+#    cp ../conf_files/gm_key ~/.gm_key
     
 WORKDIR /data/
