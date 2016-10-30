@@ -73,9 +73,8 @@ if not os.path.isfile("/home/lorean/.gm_key"):
     if os.path.isfile("/data/gm_key"):
         os.system('cp /data/gm_key /home/lorean/.gm_key')
     else:
-        print 'Key for GeneMark-ES not found\n
-        LOREAN STOPS HERE. Please, place the GeneMark-ES key in the folder where 
-        you have your data.'
+        print 'Key for GeneMark-ES not found
+        LOREAN STOPS HERE. Please, place the GeneMark-ES key in the folder where you have your data.'
 else:
 
 
