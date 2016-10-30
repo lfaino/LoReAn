@@ -69,156 +69,152 @@ os.system('sudo usermod -d /var/lib/mysql/ mysql')
 os.system('sudo /etc/init.d/mysql start')
 os.system('mysql --user="root" --password="lorean" --execute="set global sql_mode=\'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\';"')
 
-if not os.path.isfile("/home/lorean/.gm_key"):
-    if os.path.isfile("/data/gm_key"):
-        os.system('cp /data/gm_key /home/lorean/.gm_key')
-    else:
-        print 'Key for GeneMark-ES not found
-        LOREAN STOPS HERE. Please, place the GeneMark-ES key in the folder where you have your data.'
-else:
 
-
-
+ 
 ###############
 ###FUNCTIONS###
 ###############
 
 
-    def arguments():
-        '''Parses the arguments from the program invocation'''
-        
-        #Call the argument parse
-        parser = argparse.ArgumentParser(prog='lorean', 
-                                        usage='%(prog)s [options] reference species_name',
-                                        description = 'LoReAn - Automated genome annotation pipeline that integrates long reads',
-                                        epilog = 'Jose Espejo Valle-Inclan - April 2016') 
-        
-        #Specify arguments
-        #parser.add_argument('--example', nargs='?', const=1, type=int, default=1)
+def arguments():
+    '''Parses the arguments from the program invocation'''
+    
+    #Call the argument parse
+    parser = argparse.ArgumentParser(prog='lorean', 
+                                    usage='%(prog)s [options] reference species_name',
+                                    description = 'LoReAn - Automated genome annotation pipeline that integrates long reads',
+                                    epilog = 'Jose Espejo Valle-Inclan - April 2016') 
+    
+    #Specify arguments
+    #parser.add_argument('--example', nargs='?', const=1, type=int, default=1)
 
-        parser.add_argument("ref", 
-                            help="Path to reference file")
-        parser.add_argument("species", 
-                            help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
-        parser.add_argument("--stranded", 
-                            help="Run LoReAn on stranded mode [FALSE]",
-                            action = 'store_true')
-        parser.add_argument("--fungus", 
-                            help="Run LoReAn on fungal species [FALSE]",
-                            action = 'store_true')
-        parser.add_argument("--collect_only", 
-                            help="Collect only assebmled transcripts [FALSE]",
-                            action = 'store_true')
-        parser.add_argument("--only_unitigs", 
-                            help="Removes gene models that are not supported by long reads [FALSE]",
-                            action = 'store_true') 
-        ###TO CHECK WITH JOSE HERE
-        parser.add_argument("--no_braker", 
-                            help="Do not run braker if short or long reads are supplied [FALSE]",
-                            action = 'store_true')
-        parser.add_argument("--keep_tmp", 
-                            help="Keep temporary files [FALSE]",
-                            action = 'store_true')
-        #parser.add_argument("--PacBio_non_CCS", 
-                            #help="Long reads are not from PacBio CCS (Circular consensus sequences) [FALSE]",
-                            #action = 'store_true')
-        parser.add_argument('--short_reads', nargs="?", default="",
-                            help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
-                            metavar = 'FASTQ_file')
-        parser.add_argument('--long_reads', nargs="?", default="",
-                            help="Path to long reads FASTQ []",
-                            metavar = 'FASTQ_file')
-        parser.add_argument('--protein_evidence', nargs="?", default="",
-                            help="Path to protein sequences FASTA file []",
-                            metavar = 'FASTA_prot')
-        #parser.add_argument('--min_long_read', nargs="?", default=100,
-                            #help="Filter out long reads shorter than this value (shorter reads may affect mapping and assembling) [100]", type=int)
-        parser.add_argument('--max_long_read', nargs="?", default=20000,
-                            help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]", type=int)
-        parser.add_argument("--pasa_db", nargs="?", default="pipeline_run",
-                            help="PASA database name [pipeline_run]")
-        parser.add_argument('-wd', "--working_dir", nargs="?", default="./",
-                            help="Working directory (will create if not present) [./]")
-        parser.add_argument('-t', "--threads", nargs="?", default="1",
-                            help="Number of threads [1]",
-                            metavar = 'N')
-        parser.add_argument("--overhang", nargs="?", default="20",
-                            help="CAP3 max overhang percent length; this value should be > 3 [20]",
-                            metavar = 'N')
-        parser.add_argument("--augustus", nargs="?", default="1",
-                            help="Weight assigned to AUGUSTUS evidence for EVM [1]",
-                            metavar = 'N')    
-        parser.add_argument("--genemark", nargs="?", default="1",
-                            help="Weight assigned to GENEMARK evidence for EVM [1]",
-                            metavar = 'N')
-        parser.add_argument("--trinity", nargs="?", default="1",
-                            help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
-                            metavar = 'N')    
-        #parser.add_argument("--alignment", nargs="?", default="10",
-                            #help="Weight assigned to short read ALIGNMENT evidence for EVM [10]",
-                            #metavar = 'N')
-        parser.add_argument("--pasa", nargs="?", default="5",
-                            help="Weight assigned to PASA evidence for EVM [5]",
-                            metavar = 'N')
-        parser.add_argument("--AAT", nargs="?", default="1",
-                            help="Weight assigned to AAT protein evidence for EVM [1]",
-                            metavar = 'N')
-        parser.add_argument("--segmentSize", nargs="?", default="100000",
-                            help="Segment size for EVM partitions [100000]",
-                            metavar = 'N')
-        parser.add_argument("--overlapSize", nargs="?", default="10000",
-                            help="Overlap size for EVM partitions [10000]",
-                            metavar = 'N')    
-        parser.add_argument("--min_intron_length", nargs="?", default="9",
-                            help="Minimal intron length for GMAP [9]",
-                            metavar = 'N')
-        parser.add_argument("--max_intron_length", nargs="?", default="1000",
-                            help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
-                            metavar = 'N')
-        parser.add_argument("-H", nargs="?", default="20",
-                            help="Minimal length for end exon with GMAP [20]",
-                            metavar = 'N')       
-        #parser.add_argument("--cluster_min_read_length", nargs="?", default="100",
-                            #help="Minimal read length to be considered for CONSENSUS pipeline [100]",
-                            #metavar = 'N')   
-        parser.add_argument("--cluster_min_evidence", nargs="?", default="5",
-                            help="Minimal evidence needed to form a cluster [5]",
-                            metavar = 'N') 
-        parser.add_argument("--cluster_max_evidence", nargs="?", default="5000",
-                            help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
-                            metavar = 'N') 
-        #parser.add_argument("--mergeDistance", nargs="?", default="1",
-                            #help="Minimal distance for reads to be merged [1]",
-                            #metavar = 'N') 
-        parser.add_argument("--assembly_overlapLength", nargs="?", default="200",
-                            help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
-                            metavar = 'N') 
-        parser.add_argument("--assembly_percentIdentity", nargs="?", default="97",
-                            help="Minimal identity for the ASSEMBLY (95-100) [97]",
-                            metavar = 'N')
-        parser.add_argument("--assembly_readThreshold", nargs="?", default="0.3",
-                            help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
-                            metavar = 'F')    
-        parser.add_argument("--no_EVM", 
-                            help="Run until the preparation of EVM inputs [FALSE]",
-                            action = 'store_true')       
-        parser.add_argument("--no_consensus", 
-                            help="Do not run the long reads consensus pipeline [FALSE]",
-                            action = 'store_true')
-        parser.add_argument("--no_update", 
-                            help="Do not run the PASA update[FALSE]",
-                            action = 'store_true')
+    parser.add_argument("ref", 
+                        help="Path to reference file")
+    parser.add_argument("species", 
+                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
+    parser.add_argument("--stranded", 
+                        help="Run LoReAn on stranded mode [FALSE]",
+                        action = 'store_true')
+    parser.add_argument("--fungus", 
+                        help="Run LoReAn on fungal species [FALSE]",
+                        action = 'store_true')
+    parser.add_argument("--collect_only", 
+                        help="Collect only assebmled transcripts [FALSE]",
+                        action = 'store_true')
+    parser.add_argument("--only_unitigs", 
+                        help="Removes gene models that are not supported by long reads [FALSE]",
+                        action = 'store_true') 
+    ###TO CHECK WITH JOSE HERE
+    parser.add_argument("--no_braker", 
+                        help="Do not run braker if short or long reads are supplied [FALSE]",
+                        action = 'store_true')
+    parser.add_argument("--keep_tmp", 
+                        help="Keep temporary files [FALSE]",
+                        action = 'store_true')
+    #parser.add_argument("--PacBio_non_CCS", 
+                        #help="Long reads are not from PacBio CCS (Circular consensus sequences) [FALSE]",
+                        #action = 'store_true')
+    parser.add_argument('--short_reads', nargs="?", default="",
+                        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
+                        metavar = 'FASTQ_file')
+    parser.add_argument('--long_reads', nargs="?", default="",
+                        help="Path to long reads FASTQ []",
+                        metavar = 'FASTQ_file')
+    parser.add_argument('--protein_evidence', nargs="?", default="",
+                        help="Path to protein sequences FASTA file []",
+                        metavar = 'FASTA_prot')
+    #parser.add_argument('--min_long_read', nargs="?", default=100,
+                        #help="Filter out long reads shorter than this value (shorter reads may affect mapping and assembling) [100]", type=int)
+    parser.add_argument('--max_long_read', nargs="?", default=20000,
+                        help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]", type=int)
+    parser.add_argument("--pasa_db", nargs="?", default="pipeline_run",
+                        help="PASA database name [pipeline_run]")
+    parser.add_argument('-wd', "--working_dir", nargs="?", default="./",
+                        help="Working directory (will create if not present) [./]")
+    parser.add_argument('-t', "--threads", nargs="?", default="1",
+                        help="Number of threads [1]",
+                        metavar = 'N')
+    parser.add_argument("--overhang", nargs="?", default="20",
+                        help="CAP3 max overhang percent length; this value should be > 3 [20]",
+                        metavar = 'N')
+    parser.add_argument("--augustus", nargs="?", default="1",
+                        help="Weight assigned to AUGUSTUS evidence for EVM [1]",
+                        metavar = 'N')    
+    parser.add_argument("--genemark", nargs="?", default="1",
+                        help="Weight assigned to GENEMARK evidence for EVM [1]",
+                        metavar = 'N')
+    parser.add_argument("--trinity", nargs="?", default="1",
+                        help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
+                        metavar = 'N')    
+    #parser.add_argument("--alignment", nargs="?", default="10",
+                        #help="Weight assigned to short read ALIGNMENT evidence for EVM [10]",
+                        #metavar = 'N')
+    parser.add_argument("--pasa", nargs="?", default="5",
+                        help="Weight assigned to PASA evidence for EVM [5]",
+                        metavar = 'N')
+    parser.add_argument("--AAT", nargs="?", default="1",
+                        help="Weight assigned to AAT protein evidence for EVM [1]",
+                        metavar = 'N')
+    parser.add_argument("--segmentSize", nargs="?", default="100000",
+                        help="Segment size for EVM partitions [100000]",
+                        metavar = 'N')
+    parser.add_argument("--overlapSize", nargs="?", default="10000",
+                        help="Overlap size for EVM partitions [10000]",
+                        metavar = 'N')    
+    parser.add_argument("--min_intron_length", nargs="?", default="9",
+                        help="Minimal intron length for GMAP [9]",
+                        metavar = 'N')
+    parser.add_argument("--max_intron_length", nargs="?", default="1000",
+                        help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
+                        metavar = 'N')
+    parser.add_argument("-H", nargs="?", default="20",
+                        help="Minimal length for end exon with GMAP [20]",
+                        metavar = 'N')       
+    #parser.add_argument("--cluster_min_read_length", nargs="?", default="100",
+                        #help="Minimal read length to be considered for CONSENSUS pipeline [100]",
+                        #metavar = 'N')   
+    parser.add_argument("--cluster_min_evidence", nargs="?", default="5",
+                        help="Minimal evidence needed to form a cluster [5]",
+                        metavar = 'N') 
+    parser.add_argument("--cluster_max_evidence", nargs="?", default="5000",
+                        help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
+                        metavar = 'N') 
+    #parser.add_argument("--mergeDistance", nargs="?", default="1",
+                        #help="Minimal distance for reads to be merged [1]",
+                        #metavar = 'N') 
+    parser.add_argument("--assembly_overlapLength", nargs="?", default="200",
+                        help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
+                        metavar = 'N') 
+    parser.add_argument("--assembly_percentIdentity", nargs="?", default="97",
+                        help="Minimal identity for the ASSEMBLY (95-100) [97]",
+                        metavar = 'N')
+    parser.add_argument("--assembly_readThreshold", nargs="?", default="0.3",
+                        help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
+                        metavar = 'F')    
+    parser.add_argument("--no_EVM", 
+                        help="Run until the preparation of EVM inputs [FALSE]",
+                        action = 'store_true')       
+    parser.add_argument("--no_consensus", 
+                        help="Do not run the long reads consensus pipeline [FALSE]",
+                        action = 'store_true')
+    parser.add_argument("--no_update", 
+                        help="Do not run the PASA update[FALSE]",
+                        action = 'store_true')
 
-        
-        #Parse and set defaults for optional arguments
-        args = parser.parse_args()       
-        return args
-    ###############
-    ###MAIN###
-    ###############
+    
+    #Parse and set defaults for optional arguments
+    args = parser.parse_args()       
+    return args
+###############
+###MAIN###
+###############
 
 
-    def main():
+def main():
+    
+    
+    if os.path.isfile("/data/gm_key"):
+        os.system('cp /data/gm_key /home/lorean/.gm_key')
         '''Core of the program'''
         
         #Parse the arguments
@@ -703,7 +699,9 @@ else:
             
     
     
-    
+    else:
+        print 'Key for GeneMark-ES not found.  Please, place the GeneMark-ES key in the folder where you have your data.'
+        sys.exit("#####LOREAN STOPS HERE.#####\n")
  
 if __name__ == '__main__':
     main()
