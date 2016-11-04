@@ -11,7 +11,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
-RUN pip install biopython bcbio-gff
+RUN pip install biopython bcbio-gff pandas pybedtools
           
 RUN adduser --disabled-password --gecos '' lorean &&\
     adduser lorean sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers

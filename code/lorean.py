@@ -551,13 +551,11 @@ def main():
                     updatedGff3 = firstRound
                 elif args.long_reads == "":
                     trinity_evm =  wd + 'trinity_evm_combined.gff3'
-                    trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, trinity_evm)
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, 
-                                trinity_out, trinity_evm)
+                    trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, wd)
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
                 else:
                     print '\n##UPDATE ROUND ###\n'
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, 
-                                trinity_out, evm_gff3)
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     
                 ##Keep this output
                 FinalFiles.append(firstRound)
