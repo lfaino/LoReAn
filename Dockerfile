@@ -25,8 +25,8 @@ RUN mkdir bin
 WORKDIR /home/lorean/bin
 
 RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
-    cmake .. && make && sudo make install && cd /usr/include &&  ln -s ../local/include/bamtools/ &&\
-    cd /usr/lib/ &&  ln -s /usr/local/lib/bamtools/libbamtools.* .
+    cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
+    cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
 RUN git clone https://github.com/lfaino/LoReAn.git  
 
@@ -49,7 +49,7 @@ RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
 
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2015-12-31.v10.tar.gz && tar -zxvf gmap-gsnap-2015-12-31.v10.tar.gz && rm gmap-gsnap-2015-12-31.v10.tar.gz &&\
-    mv gmap-2015-12-31// gmap && cd gmap/ && ./configure && make && make install 
+    mv gmap-2015-12-31// gmap && cd gmap/ && ./configure && make && sudo make install 
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /home/lorean/bin/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta
@@ -59,8 +59,8 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar
 RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz 
    
    
-RUN sudo perl -MCPAN -e shell && cpan -f -i YAML && cpan -f -i Hash::Merge && cpan -f -i  Logger::Simple && cpan -f -i  Parallel::ForkManager &&\
-    cpan -f -i Config::Std && cpan -f -i Scalar::Util::Numeric 
+RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
+    sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
      
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin
@@ -68,6 +68,6 @@ RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
      tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc 
-#    cp ../conf_files/gm_key ~/.gm_key
+
     
 WORKDIR /data/
