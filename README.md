@@ -4,11 +4,13 @@ Luigi Faino
 David Cook 
 Jose A. Espejo
 
-# LoReAn docker was build on:
+# HOT OT RUN
 
-Linux 4.4.0-38-generic #57-Ubuntu SMP x86_64 x86_64 x86_64 GNU/Linux
+LoReAn requires three mandatory files:
+Protein Sequences, Reference genome and a Genome name
 
-# Software used in the pipeline
+
+# SOFTWARE USED IN THE PIPELINE
 
 samtools
 bedtools
@@ -16,7 +18,7 @@ bowtie
 bamtools
 AATpackage-r03052011 
 iAssembler-v1.3.2.x64
-gm_et_linux_64
+gm_et_linux_64 (THIS SOFTWARE IS NOT FREE FOR EVERYONE)
 PASApipeline-2.0.2 
 augustus-3.2.2
 trinityrnaseq-2.2.0

@@ -81,13 +81,15 @@ def arguments():
     
     #Call the argument parse
     parser = argparse.ArgumentParser(prog='lorean', 
-                                    usage='%(prog)s [options] reference species_name',
+                                    usage='%(prog)s [options] protein_sequences reference species_name',
                                     description = 'LoReAn - Automated genome annotation pipeline that integrates long reads',
                                     epilog = 'Jose Espejo Valle-Inclan - April 2016') 
     
     #Specify arguments
     #parser.add_argument('--example', nargs='?', const=1, type=int, default=1)
 
+    parser.add_argument('protein_evidence',
+                        help="Path to protein sequences FASTA file []")
     parser.add_argument("ref", 
                         help="Path to reference file")
     parser.add_argument("species", 
@@ -105,31 +107,20 @@ def arguments():
                         help="Removes gene models that are not supported by long reads [FALSE]",
                         action = 'store_true') 
     ###TO CHECK WITH JOSE HERE
-    parser.add_argument("--no_braker", 
-                        help="Do not run braker if short or long reads are supplied [FALSE]",
-                        action = 'store_true')
     parser.add_argument("--keep_tmp", 
                         help="Keep temporary files [FALSE]",
                         action = 'store_true')
-    #parser.add_argument("--PacBio_non_CCS", 
-                        #help="Long reads are not from PacBio CCS (Circular consensus sequences) [FALSE]",
-                        #action = 'store_true')
     parser.add_argument('--short_reads', nargs="?", default="",
                         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
                         metavar = 'FASTQ_file')
     parser.add_argument('--long_reads', nargs="?", default="",
                         help="Path to long reads FASTQ []",
                         metavar = 'FASTQ_file')
-    parser.add_argument('--protein_evidence', nargs="?", default="",
-                        help="Path to protein sequences FASTA file []",
-                        metavar = 'FASTA_prot')
-    #parser.add_argument('--min_long_read', nargs="?", default=100,
-                        #help="Filter out long reads shorter than this value (shorter reads may affect mapping and assembling) [100]", type=int)
     parser.add_argument('--max_long_read', nargs="?", default=20000,
                         help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]", type=int)
-    parser.add_argument("--pasa_db", nargs="?", default="pipeline_run",
+    parser.add_argument("--pasa_db", nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
-    parser.add_argument('-wd', "--working_dir", nargs="?", default="./",
+    parser.add_argument('-wd', "--working_dir", nargs="?", default="annotation",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument('-t', "--threads", nargs="?", default="1",
                         help="Number of threads [1]",
@@ -146,9 +137,6 @@ def arguments():
     parser.add_argument("--trinity", nargs="?", default="1",
                         help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
                         metavar = 'N')    
-    #parser.add_argument("--alignment", nargs="?", default="10",
-                        #help="Weight assigned to short read ALIGNMENT evidence for EVM [10]",
-                        #metavar = 'N')
     parser.add_argument("--pasa", nargs="?", default="5",
                         help="Weight assigned to PASA evidence for EVM [5]",
                         metavar = 'N')
@@ -179,9 +167,6 @@ def arguments():
     parser.add_argument("--cluster_max_evidence", nargs="?", default="5000",
                         help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
                         metavar = 'N') 
-    #parser.add_argument("--mergeDistance", nargs="?", default="1",
-                        #help="Minimal distance for reads to be merged [1]",
-                        #metavar = 'N') 
     parser.add_argument("--assembly_overlapLength", nargs="?", default="200",
                         help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
                         metavar = 'N') 
@@ -230,6 +215,9 @@ def main():
         #Arrange stuff before start
         logistic.check_create_dir(wd)
         logistic.check_file(ref)
+        gmap_wd = wd + '/gmap_output/'
+        logistic.check_create_dir(gmap_wd)
+
                 
         ###COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         star_out = wd + '/STAR/'
@@ -262,12 +250,10 @@ def main():
                 ##BAM SORTED FILES GET IN HERE
                 elif 'sorted.bam' in args.short_reads:
                     short_sorted_bam = os.path.abspath(args.short_reads)
-                    
-                
-                
                 else:
                     short_sorted_bam = False
                     print 'No short reads file'
+                print '='*70
                     
                 ##LONG READS
                 if 'fastq' in args.long_reads or 'fq' in args.long_reads :
@@ -298,9 +284,10 @@ def main():
                         long_sorted_bam = False
 
                 else:
-                    print '### NO LONG READS FILE ###'
+                    print '='*70
+                    print '\n###NO LONG READS FILE###\n'
                     long_sorted_bam = False
-                print '='*70
+                    print '='*70
                 
                 
                 if short_sorted_bam: #If there are short reads, these will serve to the transcript assembly pipeline
@@ -327,12 +314,10 @@ def main():
                 align_pasa_conf = transcripts.pasa_configuration(pasa_dir, args.pasa_db)
                 #Launch PASA
                 pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length, args.threads)
-                print '='*70
-                print '='*70
                 ##HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
               
                 
-                if args.protein_evidence != '' and args.short_reads != '':
+                if args.short_reads != '' or args.long_reads != '':
                     check_species = ['augustus', '--species=help']
                     process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
                     out, err = process.communicate()
@@ -350,7 +335,7 @@ def main():
                                 t.daemon = True
                                 t.start()
                         queue.join()
-                    elif (args.protein_evidence != '' and args.short_reads) or (args.protein_evidence != '' and args.long_reads): ### USING PROTEINS AND READS 
+                    elif args.short_reads: ### USING PROTEINS AND READS 
                         queue = Queue()
                         print '='*70
                         print '\n###RUNNING BRAKER1 AND AAT###\n'
@@ -362,19 +347,22 @@ def main():
                             t.daemon = True
                             t.start()
                         queue.join()
-                    elif args.short_reads or args.long_reads:  ### USING ONLY READS WITH BRAKER
+                        
+                    elif args.long_reads: ### USING PROTEINS AND READS 
+                        queue = Queue()
                         print '='*70
-                        print '\n###BRAKER1###\n'
+                        print '\n###RUNNING BRAKER1 AND AAT###\n'
                         print '='*70
-                        braker_out = transcripts.braker_call(wd, ref, default_bam, args.species, args.threads, arg.fungus)
-                        print '='*70
-                        print '='*70
-                        print '='*70
-                        sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
-
+                        for i in range(2):
+                            queue.put(i) #QUEUE WITH A ZERO AND A ONE
+                        for i in range(2):
+                            t = Thread(target=handler.BrakerAAT, args =(queue, ref, long_sorted_bam, args.species, args.protein_evidence, args.threads, args.fungus, list_fasta_names, wd))
+                            t.daemon = True
+                            t.start()
+                        queue.join()
                 
                     
-            elif args.protein_evidence != '' and args.short_reads == ''  and args.long_reads == '':  ### USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE LAST) 
+            elif args.short_reads == ''  and args.long_reads == '':  ### USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE LAST) 
                 check_species = ['augustus', '--species=help']
                 process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
                 out, err = process.communicate()
@@ -394,45 +382,23 @@ def main():
                     queue.join()
                 else:
                     print '='*70
-                    
                     sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
                     print '='*70
 
 
 
-            elif args.protein_evidence == '' and args.short_reads == '' and args.long_reads == '': ### USING AUGUSTUS AND GMES_PETAP
-                check_species = ['augustus', '--species=help']
-                process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
-                out, err = process.communicate()
-                if args.species in err:
-                    print '='*70
-                    print '\n###RUNNING AUGUSTUS AND GENEMARK-ES###\n'
-                    print '='*70
-                    queue = Queue()
-                    for i in range(2):
-                        queue.put(i) #QUEUE WITH A ZERO AND A ONE
-                        for i in range(2):
-                            t = Thread(target=handler.AugustGmes, args =(queue, ref, args.species, args.fungus, args.threads, list_fasta_names, wd))
-                            t.daemon = True
-                            t.start()
-                    queue.join()
-                else:
-                    print '='*70
-                    sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
-                    print '='*70
 
             print '='*70
             print '\n###GMAP###\n'
             print '='*70
-            gmap_wd = wd + '/gmap_output/'
-            logistic.check_create_dir(gmap_wd)
             trinityGFF3 = mapping.gmap('trin', ref, trinity_out, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = True )
+
             
             
             
             ##Prepare EVM input files
             print '='*70
-            print '\n### RUNNING EVM ###\n'
+            print '\n###RUNNING EVM###\n'
             print '='*70
             ##HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
             gmap_name = args.ref + '_GMAPindex'
@@ -450,7 +416,7 @@ def main():
                     genemark_file = braker_out+'GeneMark-ET/genemark.gtf'
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 mergedProtGFF3 = wd+'AAT/protein_evidence.gff3'
-                trinity_path= wd + 'gmap.trinity.gff3'
+                trinity_path= gmap_wd + 'gmap.trinity.gff3'
                 weights_dic = {'Augustus':args.augustus, 'assembler-'+args.pasa_db:args.pasa, 
                     'GeneMark.hmm':args.genemark, 'AAT':args.AAT, gmap_name :args.trinity}
                 
@@ -468,7 +434,7 @@ def main():
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                 genemark_file = braker_out+'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                trinity_path= wd + 'gmap.trinity.gff3'
+                trinity_path= gmap_wd + 'gmap.trinity.gff3'
                 weights_dic = {'Augustus':args.augustus, 'assembler-'+args.pasa_db:args.pasa, 
                     'GeneMark.hmm':args.genemark, gmap_name :args.trinity}
                 
@@ -560,8 +526,9 @@ def main():
                     print '='*70
                     updatedGff3 = firstRound
                 elif args.long_reads == "":
-                    trinity_evm =  wd + 'trinity_evm_combined.gff3'
-                    trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, wd)
+                    merge_gff = wd + '/merge_file'
+                    logistic.check_create_dir(merge_gff)
+                    trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, merge_gff)
                     updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
                 else:
                     print '='*70
@@ -578,9 +545,18 @@ def main():
             #updatedGff3 = wd+'PASA/annotation.PASAupdated.round1.gff3'      
             ##HERE WE CHECK IF WE HAVE LONG READS; IF LONG READS ARE NOT PROVIDED, THE SOFTWARE STOPS
             if args.long_reads == '':
+                final_output_dir = wd+'output/'
+                logistic.check_create_dir(final_output_dir)
+                for filename in FinalFiles:
+                    if filename != '':
+                        logistic.copy_file(filename, final_output_dir)                
+                cmdstring = "chmod -R 775 %s" % (wd)
+                os.system(cmdstring)
                 print '='*70
                 sys.exit("#####ANNOTATION FINISHED WITHOUT USING LONG READS#####\n")
                 print '='*70
+
+
             ## HERE WE START WITH LONG READS
             else:
                 print '='*70
@@ -697,6 +673,8 @@ def main():
         for filename in FinalFiles:
             if filename != '':
                 logistic.copy_file(filename, final_output_dir)
+                cmdstring = "chmod -R 777 %s" % (wd)
+                os.system(cmdstring)
         if args.keep_tmp:
             dirs_list = ['/PASA/', 'augustus/', 'gmes/', 'AAT/',  'split/']
             for dirs in dirs_list:

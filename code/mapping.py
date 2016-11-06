@@ -37,19 +37,22 @@ def star_build(reference, genome_dir, threads, wd):
         else:  #Genome small enough
             args = ['STAR', '--runThreadN', str(threads), '--runMode', 'genomeGenerate', '--genomeDir', genome_dir, '--genomeFastaFiles', reference]
             
+        log_name_err = wd + 'star_build.err.log'
+        log_err = open(log_name_err, 'w')
         log_name = wd + 'star_build.log'
         log = open(log_name, 'w')
         
-        print '\nCMD: ' + ' '.join(args) + '\n'   
+ 
         #Call
         try:
-            subprocess.check_call(args, stderr = log, cwd = wd)
-            print 'STAR database built'
+            subprocess.check_call(args, stdout = log , stderr = log_err, cwd = wd)
+
         except:
             print 'STAR build failed'
             raise NameError('')
         
         log.close()
+        log_err.close()
         
     return None
 
@@ -81,11 +84,13 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     
 
     
-    log_name = wd + 'star_map.log'
+    log_name_err = wd + 'star.err.log'
+    log_err = open(log_name_err, 'w')
+    log_name = wd + 'star.log'
     log = open(log_name, 'w')
     
     try:
-        subprocess.check_call(args, stderr = log, cwd = wd)
+        subprocess.check_call(args,stdout = log ,stderr = log, cwd = wd)
         #print '>STAR worked. Output is: ' + filename +'\n'
     except:
         #print 'STAR did not work properly\n'
@@ -93,6 +98,8 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     
     
     log.close()
+    log_err.close()
+    
     return filename
 
 def star(reference, fastq_reads, threads, max_intron_length, wd):
