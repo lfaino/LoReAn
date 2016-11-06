@@ -16,7 +16,7 @@ def convert_augustus(aug_file, wd):
     '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
     script EVMUtils/misc/augustus_GTF_to_EVM_GFF3.pl which needs to be in PATH
     '''
-    print '\n#CONVERTING AUGUSTUS TO GFF3\n'
+    print '\n\t###CONVERTING AUGUSTUS TO GFF3###\n'
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
     
@@ -30,7 +30,6 @@ def convert_augustus(aug_file, wd):
     log = open(log_name, 'w')  
     out_f = open(out_file, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stdout = out_f, stderr = log)
         
@@ -48,7 +47,7 @@ def convert_genemark(genemark_file, wd):
     '''Converts genemark.gtf to genemark.gff3 (from BRAKER1) using gtf2gff3.pl,
     which needs to be in PATH'''
     
-    print '\n#CONVERTING GENEMARK TO GFF3\n'
+    print '\n\t###CONVERTING GENEMARK TO GFF3###\n'
     args = ['gtf2gff3.pl', genemark_file]
     #COMMANDS.append(' '.join(args))
     
@@ -62,7 +61,6 @@ def convert_genemark(genemark_file, wd):
     log = open(log_name, 'w')  
     out_f = open(out_file, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stdout = out_f, stderr = log)
         
@@ -88,7 +86,6 @@ def move_single_file (filename, key, evm_dir, new_file_d):
         new_file_d[key] = out_file
         return new_file_d
     
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args)  
         new_file_d[key] = out_file
@@ -109,7 +106,6 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
         new_file_d[key] = out_file
         return new_file_d
     
-    print '\nCMD: ' + ' '.join(args) + '\n'    
     file_ = open(out_file, 'w')
     try:
         subprocess.check_call(args, stdout = file_)  
@@ -123,7 +119,7 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
 def move_EVM_inputs(evm_dir, inputs):
     '''Takes a dictionary with files that are inputs for EVM and groups them in
     the same directory'''
-    print '#MOVING INTERESTING FILES\n'
+    print '\n\t###MOVING IMPORTANT FILES###\n'
     new_files = {}
     for key, filename in inputs.items():
         if isinstance(filename, list): # FOR THE GFF3 alignment files in case of short & long reads
@@ -133,7 +129,6 @@ def move_EVM_inputs(evm_dir, inputs):
         
         
     #print '> EVM input dir full of files: ' + evm_dir
-    print new_files
     return new_files
                 
 def cat_EVM_inputs(evm_dir): #, inputs):
@@ -143,7 +138,7 @@ def cat_EVM_inputs(evm_dir): #, inputs):
     alignments go into transcripts.gff3'''
     #GENE PREDICTIONS
     
-    print '\n#CONCATENATING FILES\n'
+    print '\n\t###CONCATENATING FILES###\n'
     
     #GENE PREDICTION
     file_list = []

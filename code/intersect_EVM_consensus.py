@@ -97,7 +97,6 @@ def intersectConsensusEVM(consensusBed, evmGeneGFF):
     not in the EVM file, returning only the identifiers'''
     args = ['bedtools', 'intersect', '-a', consensusBed, '-b', evmGeneGFF,
             '-v']
-    print 'CMD: ' + ' '.join(args)
     intersect = subprocess.check_output(args)
     geneRecords = intersect.splitlines()
     

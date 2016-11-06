@@ -84,8 +84,6 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     log_name = wd + 'star_map.log'
     log = open(log_name, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
     try:
         subprocess.check_call(args, stderr = log, cwd = wd)
         #print '>STAR worked. Output is: ' + filename +'\n'
@@ -105,11 +103,11 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
     genome_dir = wd + refer + '_STARindex/'
     logistic.check_create_dir(genome_dir)
     #Build the reference
-    print '\n#BUILD INDEX\n'
+    print '\n\t###BUILD INDEX###\n'
     star_build(reference, genome_dir, threads, wd)
         
     #Mapping
-    print '\n#MAP\n'
+    print '\n\t###MAP###\n'
     out_file = star_map(reference, fastq_reads, threads, genome_dir, max_intron_length, wd)
     return out_file
     
@@ -154,11 +152,9 @@ def gmap_build(reference, working_dir):
     log_name = working_dir + 'gmap_build.log'
     log = open(log_name, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'   
     #Call
     try:
         subprocess.check_call(args, stdout = log, stderr = log)
-        print 'GMAP database built'
     except:
         print 'GMAP build failed'
         raise NameError('')
@@ -172,11 +168,11 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     then uses gmap_map() to map'''
     
     #Build the reference
-    print '\n#BUILD INDEX\n'
+    print '\n\t###BUILD INDEX###\n'
     reference_db = gmap_build(reference, wd)
         
     #Mapping
-    print '\n#MAP\n'
+    print '\n\t###MAP###\n'
     out_file = gmap_map(reference_db, fastq_reads, threads, out_format, min_intron_length, max_intron_length, exon_length, wd, Fflag, type_out)
     return out_file
 
@@ -201,7 +197,6 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         log = open(log_name, 'w')
         if not Fflag:
             args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
-            print '\nCMD: ' + ' '.join(args) + '\n'
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
                 #print '>GMAP worked. Output is: ' + filename +'\n'
@@ -212,7 +207,6 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
                 '--min-intronlength', str(min_intron_length), '-F','-Y', '--microexon-spliceprob' , '1' ,'-n', '1', '-K', str(max_intron_length),
                 '-f', str(out_format), '-t', str(threads), reads]
-            print '\nCMD: ' + ' '.join(args) + '\n'
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
                 #print '>GMAP worked. Output is: ' + filename +'\n'
@@ -232,7 +226,6 @@ def samtools_view(sam_file, wd):
         return bam_filename
     log_name = wd + 'samtools_view.log'
     log = open(log_name, 'w')   
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stderr = log)
         #print '> SAM converted to BAM in ' + bam_filename
@@ -254,7 +247,6 @@ def samtools_sort(bam_file, threads, wd):
         return s_bam_filename
     log_name = wd + 'samtools_sort.log'
     log = open(log_name, 'w')  
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stderr = log)
         
@@ -267,9 +259,9 @@ def samtools_sort(bam_file, threads, wd):
     return sor_bam_filename
    
 def sam_to_sorted_bam (sam_file, threads, wd):
-    print '#SAM to BAM'
+    print '\n\t###SAM to BAM###\n'
     bam_filename = samtools_view(sam_file, wd)
     
-    print'\n#Sorting BAM'
+    print'\n\t###SORTING BAM###\n'
     s_bam_filename = samtools_sort(bam_filename, threads, wd)
     return s_bam_filename

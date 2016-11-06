@@ -44,8 +44,6 @@ def gffread(gff3File, reference, working_dir):
         return out_name
     
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
     try:
         subprocess.check_call(args)
         #print '>gff3read worked. Output is: ' + out_name +'\n'
@@ -63,10 +61,10 @@ def cluster_pipeline(gff3File, mergeDistance, strand ,wd):
     if strand:
         BTmerge1 = ['bedtools', 'merge','-s', '-i', gff3File + '.sorted.bed', '-d', str(dist), '-c', '4,4', '-o', 'count,distinct']
         
-        print "\n###CLUSTERING IN STRANDED MODE###\n"
+        print "\n\t###CLUSTERING IN STRANDED MODE###\n"
     else:
         BTmerge1 = ['bedtools', 'merge', '-i', gff3File + '.sorted.bed', '-d', str(dist), '-c', '4,4', '-o', 'count,distinct']
-        print "\n###CLUSTERING IN NON-STRANDED MODE###\n"
+        print "\n\t###CLUSTERING IN NON-STRANDED MODE###\n"
     BTsort2 = ['bedtools', 'sort', '-i', gff3File + '.sorted.merged.bed']
     
     #Sort the GFF3 file

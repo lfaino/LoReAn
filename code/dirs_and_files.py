@@ -35,11 +35,11 @@ def check_create_dir(path):
 def copy_file(in_file, directory):
     '''Copies a file into a directory'''
     args = ['cp', '-f', in_file, directory]   
-    print '\nCMD: ' + ' '.join(args) + '\n'
+    
     try:
         subprocess.check_call(args)
     except:
-        print 'Could not move file: '+ in_file + '\n'
+        
         raise NameError('')
     
 

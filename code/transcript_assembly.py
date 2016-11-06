@@ -27,10 +27,8 @@ def trinity(bam_file, wd, max_intron_length, threads):
     log_err = open(log_name_err, 'w')
     log_name = wd + 'trinity.log'
     log = open(log_name, 'w')
-    print '\nCMD: ' + ' '.join(args) + '\n'
     try:
         subprocess.check_call(args, stdout = log,stderr = log_err)
-        print '>Trinity worked. Output is: ' + out_name +'\n'
     except:
         print 'Trinity did not work properly\n'
         raise NameError('')
@@ -50,10 +48,8 @@ def seqclean(trinity_file, wd):
         return out_name
     log_name = wd + 'seqclean.log'
     log = open(log_name, 'w')
-    print '\nCMD: ' + ' '.join(args) + '\n'
     try:
         subprocess.check_call(args, stderr=log, cwd = out_dir)
-        print '>Seqclean worked. Output is: ' + out_name +'\n'
     except:
         print 'Seqclean did not work properly\n'
         raise NameError('')
@@ -74,7 +70,6 @@ def pasa_configuration(pasa_dir, pasa_db):
     for line in lines:
         conf.write(line + '\n')   
     conf.close()
-    print '> PASA configuration file created in: ' + conf_file + '\n'
     return conf_file
 
 def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length,threads):
@@ -91,79 +86,14 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     log_out_name = pasa_dir + 'pasa.out.log'
     log = open(log_name, 'w') 
     out_log = open(log_out_name, 'w')
-    print '\nCMD: ' + ' '.join(args) + '\n'      
     try:
         subprocess.check_call(args, stdout = out_log, stderr = log, cwd = pasa_dir)
-        
-        print '> PASA completed' 
     except:
         print 'PASA failed'
         raise NameError('')
     log.close()
     out_log.close()
     return out_file
-
-def td_longORFs(td_dir, transcripts_fasta):
-   '''Calls TransDecoder.LongOrfs to extract the long open reading frames'''
-   args = ['TransDecoder.LongOrfs', '-t', transcripts_fasta]
-   transcripts_name = transcripts_fasta.split('/')[-1]
-   out_file = td_dir+transcripts_name+'.transdecoder_dir/longest_orfs.gff3'
-   if os.path.isfile(out_file): 
-       print ('TransDecoder LongORFs file existed already: ' + 
-              out_file + ' --- skipping\n')
-       return out_file
-   log_name = td_dir + 'transDecoder_LongORFs.log'
-   log = open(log_name, 'w')     
-   print '\nCMD: ' + ' '.join(args) + '\n'      
-   try:
-       subprocess.check_call(args, stderr = log, cwd = td_dir)
-        
-       print '> TransDecoder LongORFs completed' 
-   except:
-       print 'TransDecoder LongORFs failed'
-       raise NameError('')
-   log.close()   
-   return out_file
-
-def td_Predict(td_dir, transcripts_fasta, threads):
-   '''Calls TransDecoder.Predict to predict the likely coding regions'''
-   args = ['TransDecoder.Predict', '-t', transcripts_fasta, '--cpu', str(threads)]
-   #COMMANDS.append(' '.join(args))
-   
-   transcripts_name = transcripts_fasta.split('/')[-1]
-   out_file = td_dir+transcripts_name+'.transdecoder.gff3'
-   print transcripts_fasta, transcripts_fasta.split('/')[-1], td_dir+transcripts_name+'.transdecoder.gff3'
-     
-   if os.path.isfile(out_file): 
-       print ('TransDecoder GFF3 file existed already: ' + 
-              out_file + ' --- skipping\n')
-       return out_file
-    
-   log_name = td_dir + 'transDecoder_Predict.log'
-   log = open(log_name, 'w')     
-   
-   print '\nCMD: ' + ' '.join(args) + '\n'      
-   try:
-       subprocess.check_call(args, stderr = log, cwd = td_dir)
-        
-       print '> TransDecoder Predict completed\n' 
-   except:
-       print 'TransDecoder Predict failed\n'
-       raise NameError('')
-    
-   log.close()   
-        
-   return out_file
-
-def transdecoder(td_dir, transcripts_fasta, threads):
-    '''Calls transdecoder to predict ORFs in a FASTA file with assembled
-    transcripts'''
-    #Firsts calls TransDecoder.LongOrfs
-    print '\n#TransDecoder.LongORFs\n'
-    longest_orfs = td_longORFs(td_dir, transcripts_fasta)
-    print '\n#TransDecoder.Predict\n'
-    transdecoder_gff3 = td_Predict(td_dir, transcripts_fasta, threads)
-    return transdecoder_gff3
 
 def braker_call(wd, reference, bam_file, species_name, threads, fungus):
     '''Calls braker, may take a while'''
@@ -173,7 +103,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus):
     if fungus:
         args = ['braker.pl', '--cores='+str(threads), '--useexisting', '--species='+species_name, 
             '--workingdir='+wd, '--genome='+reference, '--fungus' , '--bam='+bam_file]
-        print args
+
     else:
         args = ['braker.pl', '--cores='+str(threads), '--useexisting', '--species='+species_name, 
             '--workingdir='+wd, '--genome='+reference, '--bam='+bam_file]

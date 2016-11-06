@@ -232,12 +232,15 @@ def main():
         logistic.check_file(ref)
                 
         ###COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
-
+        star_out = wd + '/STAR/'
+        logistic.check_create_dir(star_out)
         if not args.collect_only:
             list_fasta_names = multiple.single_fasta(ref, wd)
             if args.short_reads != '' or args.long_reads != '':
                 print '='*70
-                print '\n###MAPPING###\n'
+                print '\n###STAR MAPPING###\n'
+                print '='*70
+                
                     
                 ##SHORT READS
                 if 'fastq' in args.short_reads or 'fq' in args.short_reads :
@@ -246,13 +249,13 @@ def main():
                         short_1 = c
                         short_2 = os.path.abspath(pairedEndFiles[1])
                         short_reads_file = [short_1, short_2]
-                        print "Paired short reads detected: " + ' '.join(short_reads_file)
+                        
                     else:
                         short_reads_file = os.path.abspath(args.short_reads)
-                        print "Short reads detected: " + short_reads_file
+                        
 
                     #Map with STAR
-                    short_sorted_bam = mapping.star(ref, short_reads_file, args.threads, args.max_intron_length, wd) 
+                    short_sorted_bam = mapping.star(ref, short_reads_file, args.threads, args.max_intron_length, star_out) 
                     
                     #Keep the output
                     FinalFiles.append(short_sorted_bam)
@@ -269,17 +272,21 @@ def main():
                 ##LONG READS
                 if 'fastq' in args.long_reads or 'fq' in args.long_reads :
                     ### with this operation, reads are filtered for their length. Nanopore reads can be chimaras or sequencing artefacts. filtering on length reduces the amount of sequencing artefacts
-                    print "##FILTERING OUT LONG READS"
+                    print '='*70
+                    print "\n###FILTERING OUT LONG READS###\n"
+                    print '='*70
                     long_fastq, filter_count = mapping.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, wd)
                     
                         
                         
                     if filter_count != 0:
-                        print "\n> " + str(filter_count) + " reads kept\n"
+                        print "LOREAN KEPT " + str(filter_count) + " READS AFTER LENGTH FILTERING\n"
                     if not short_sorted_bam:
                         ##If short reads have been mapped dont do it
-                        print '##GMAP'
-                        long_sam = mapping.gmap('sam', ref, long_fastq, args.threads, 'samse', args.min_intron_length, args.max_intron_length, args.H, wd, Fflag = False)
+                        print '='*70
+                        print '\n###GMAP###\n'
+                        print '='*70
+                        long_sam = mapping.gmap('sam', ref, long_fastq, args.threads, 'samse', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = False)
                         split_option = 'split'        
                         
                         #Convert to sorted BAM
@@ -291,7 +298,7 @@ def main():
                         long_sorted_bam = False
 
                 else:
-                    print 'No long reads file'
+                    print '### NO LONG READS FILE ###'
                     long_sorted_bam = False
                 print '='*70
                 
@@ -306,21 +313,19 @@ def main():
                 #TRINITY
                 print '='*70
                 print '\n###TRINITY###\n'
-                trinity_out = transcripts.trinity(default_bam, wd, args.max_intron_length, args.threads)
                 print '='*70
-                trinityGFF3 = mapping.gmap('trin', ref, trinity_out, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, wd, Fflag = True )
-                
+                trinity_out = transcripts.trinity(default_bam, wd, args.max_intron_length, args.threads)
+                              
                     
                 #PASA Pipeline
                 print '='*70
                 print '\n###PASA###\n'
+                print '='*70
                 #Create PASA folder and configuration file
-                print '##Configuration\n'
                 pasa_dir = wd + 'PASA/'
                 logistic.check_create_dir(pasa_dir)
                 align_pasa_conf = transcripts.pasa_configuration(pasa_dir, args.pasa_db)
                 #Launch PASA
-                print '\n##LAUNCH PASA\n'
                 pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length, args.threads)
                 print '='*70
                 print '='*70
@@ -389,8 +394,9 @@ def main():
                     queue.join()
                 else:
                     print '='*70
-                    print '='*70
+                    
                     sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
+                    print '='*70
 
 
 
@@ -412,12 +418,22 @@ def main():
                     queue.join()
                 else:
                     print '='*70
-                    print '='*70
                     sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
+                    print '='*70
 
+            print '='*70
+            print '\n###GMAP###\n'
+            print '='*70
+            gmap_wd = wd + '/gmap_output/'
+            logistic.check_create_dir(gmap_wd)
+            trinityGFF3 = mapping.gmap('trin', ref, trinity_out, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = True )
+            
+            
+            
             ##Prepare EVM input files
             print '='*70
-            print '\n###CONVERTING FILES###\n'
+            print '\n### RUNNING EVM ###\n'
+            print '='*70
             ##HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
             gmap_name = args.ref + '_GMAPindex'
 
@@ -464,18 +480,12 @@ def main():
                 weights_dic = {'Augustus':args.augustus, 'GeneMark.hmm':args.genemark}
 
             
-            print '='*70
-            print '='*70
+
             ## HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE WEIGTH TABLE
             if not args.no_EVM:
-                print'\n###PREPARE EVM INPUTS###\n'
-                
-                print'##CREATING EVM DIRECTORY\n'
-
                 evm_dir = wd+'evm_inputs/'
                 logistic.check_create_dir(evm_dir)
                 #print '> EVM input directory created in ' + evm_dir
-                print '\n##PREPARING THE FILES\n'
                 if args.protein_evidence != '' and args.short_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
                     evm_inputs = {'pasa':pasa_gff3, 'augustus':augustus_gff3, 'genemark':genemark_gff3, 'AAT':mergedProtGFF3, 'gmap': trinity_path}
                 elif  args.protein_evidence == '' and args.short_reads != '' :  ### WE HAVE SHORT READS BUT NOT PROTEINS
@@ -488,15 +498,12 @@ def main():
                 
                 list_soft, pred_file, transcript_file, protein_file= inputEvm.group_EVM_inputs(evm_dir, evm_inputs)
                 
-                print'##PREPARING WEIGHTS FILE\n'
                 pasa_name = 'assembler-'+args.pasa_db
                 weight_file = inputEvm.evm_weight(evm_dir, weights_dic, list_soft, pasa_name, gmap_name)
-                print '='*70
+
                 
                 ###EVM PIPELINE
-                print '='*70
-                
-                print'\n###RUNNING EVM PIPELINE###\n'
+
                 if args.protein_evidence != '' and args.short_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
                     evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, ref, weight_file, pred_file, transcript_file, 
                                                     protein_file, args.segmentSize, args.overlapSize)
@@ -540,21 +547,26 @@ def main():
             
             if args.short_reads != "" and not args.no_update:
                 
-                    
+                print '='*70     
                 print'\n###UPDATE WITH PASA DATABASE###\n'
+                print '='*70 
                 
                 #for round_n in range(1,3): #Two rounds, 1 & 2
                 round_n = "1"    
                 firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
                 if os.path.isfile(firstRound): 
-                    print ('Update already performed --- skipping')
+                    print '='*70
+                    print ('UPDATE ALREADY PERFORMED --- skipping')
+                    print '='*70
                     updatedGff3 = firstRound
                 elif args.long_reads == "":
                     trinity_evm =  wd + 'trinity_evm_combined.gff3'
                     trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, wd)
                     updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
                 else:
+                    print '='*70
                     print '\n##UPDATE ROUND ###\n'
+                    print '='*70
                     updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     
                 ##Keep this output
@@ -566,19 +578,21 @@ def main():
             #updatedGff3 = wd+'PASA/annotation.PASAupdated.round1.gff3'      
             ##HERE WE CHECK IF WE HAVE LONG READS; IF LONG READS ARE NOT PROVIDED, THE SOFTWARE STOPS
             if args.long_reads == '':
+                print '='*70
                 sys.exit("#####ANNOTATION FINISHED WITHOUT USING LONG READS#####\n")
+                print '='*70
             ## HERE WE START WITH LONG READS
             else:
                 print '='*70
-                print '\n###CONSENSUS###\n'
+                print '\n###RUNNING iASSEMBLER###\n'
+                print '='*70
                 if args.long_reads and not args.no_consensus: 
                     #Means there are long reads to map and user wants to run this pipeline
-                    print "\n###CONSENSUS PIPELINE###\n"
+
                     consensus_wd = (wd+'consensus/')   
                     logistic.check_create_dir(consensus_wd)
-                    print "\n#MAPPING TO GFF3\n"
             ##HERE WE MAP THE READS ON THE GENOME USING GMAP
-                    long_sam = mapping.gmap('sam', ref, long_fastq, args.threads, 'samse', args.min_intron_length, args.max_intron_length, args.H, wd, Fflag = False ) ## change in 1 and 2
+                    long_sam = mapping.gmap('sam', ref, long_fastq, args.threads, 'samse', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = False ) ## change in 1 and 2
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd)
                     
             ##HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE FILE
@@ -589,15 +603,21 @@ def main():
                         logistic.catTwoBeds(long_sorted_bam, updatedGff3, mergedmapGFF3)
                     else:
                         logistic.catTwoBeds(long_sorted_bam, evm_gff3, mergedmapGFF3)
-                    print "\n#GFFREAD\n"
+                    print '='*70
+                    print "\n\t#GFFREAD\n"
+                    print '='*70
                     ##HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE REFERENCE
                     gffreadFastaFile = consensus.gffread(mergedmapGFF3, ref, consensus_wd)
                     ##HERE WE STORE THE SEQUENCE IN A DICTIONARY
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
-                    print "\n#CLUSTERING\n"
+                    print '='*70
+                    print "\n\t#CLUSTERING\n"
+                    print '='*70
                     ##HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME POSITION
                     cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlapLength, args.stranded, consensus_wd)
-                    print "\n#CONSENSUS FOR EACH CLUSTER\n"
+                    print '='*70
+                    print "\n\t#CONSENSUS FOR EACH CLUSTER\n"
+                    print '='*70
                     ##HERE WE MAKE CONSENSUS FOR EACH CLUSTER
                     tmp_wd = consensus_wd+'tmp/'
                     logistic.check_create_dir(tmp_wd)
@@ -634,17 +654,17 @@ def main():
         #shutil.rmtree(tmp_wd)
         
         print '='*70     
-        print '='*70        
+                
 
-        print "\n###MAPPING CONSENSUS ASSEMBLY###\n"
+        print "\n###MAPPING CONSENSUS ASSEMBLIES###\n"
+        print '='*70
         ##HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
-        consensusMappedGFF3 = mapping.gmap('cons', ref, mergedFastaFilename, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, wd, Fflag = True )
+        consensusMappedGFF3 = mapping.gmap('cons', ref, mergedFastaFilename, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = True )
         FinalFiles.append(consensusMappedGFF3)
         
         print '='*70     
-        print '='*70        
-
         print "\n###GETTING THE STRAND RIGHT###\n"
+        print '='*70
         ##IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP INVERT THE ORIGINAL STRAND
         outputList_gmap_multi = grs.gffread_multiexons(consensusMappedGFF3, multiExonFlag = True)
         outputList_gmap_all = grs.gffread_multiexons(consensusMappedGFF3)
@@ -665,15 +685,15 @@ def main():
         FinalFiles.append(finalOutput)
         
         print '='*70        
-
-            
         print'\n###CREATING OUTPUT DIRECTORY###\n'
+        print '='*70
         final_output_dir = wd+'output/'
         logistic.check_create_dir(final_output_dir)
-        print "\n###DONE###\n "
+
         
-        
+        print '='*70
         print "\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY"
+        print '='*70
         for filename in FinalFiles:
             if filename != '':
                 logistic.copy_file(filename, final_output_dir)

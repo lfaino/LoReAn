@@ -48,8 +48,6 @@ def evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, seg
     log = open(log_name, 'w')
     stdout_f = open(stdout_file, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
     try:
         subprocess.check_call(args, stdout = stdout_f, stderr = log, cwd = evm_output)
         #print '> Partitions created\n'
@@ -87,8 +85,6 @@ def evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
     command = open(command_file, 'w')
     log = open(log_name, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
     try:
         subprocess.check_call(args, stdout = command, stderr = log, cwd = evm_output)
         #print '> Command list created. Output is: ' + command_file +'\n'
@@ -115,10 +111,6 @@ def evm_run(evm_output, command_list, threads):
         
     log_name = evm_output + 'run.log'
     log = open(log_name, 'w')
-    
-    print '\nCMD: ' + ' '.join(args1) + ' | ' + ' '.join(args2) + '\n'
-    #print 'Running EVM in parallel with ' + str(threads) + \
-    ' threads, it may take a while\n'
     
     try:
         cat = subprocess.Popen(args1, stdout = subprocess.PIPE, cwd = evm_output)
@@ -148,7 +140,6 @@ def evm_combine(evm_output, partitions):
     st_out = open(st_file, 'w')
     log = open(log_name, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
 
     try:
         subprocess.check_call(args, stdout = st_out, stderr = log, cwd = evm_output)
@@ -178,8 +169,6 @@ def evm_to_gff3(evm_output, partitions, reference):
     st_out = open(st_file, 'w')
     log = open(log_name, 'w')
     
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
     try:
         subprocess.check_call(args, stdout = st_out, stderr = log, cwd = evm_output)
         #print '> Converted to GFF3 \n'
@@ -211,31 +200,31 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
     It will spit out evm.out.gff3 '''
     
     # Creates output directory
-    print '##CREATE AN OUTPUT DIRECTORY\n'
+    print '\n\t###CREATE AN OUTPUT DIRECTORY###\n'
     evm_output = working_dir + 'evm_output/'
     check_create_dir(evm_output)
     #print '> Output directory is: ' + evm_output + '\n'
     
     # Partitions
-    print '##PARTITIONING THE INPUTS'
+    print '\n\t###PARTITIONING THE INPUTS###\n'
     partitions = evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, 
                                 segmentSize, overlapSize)
     
     # Write Commands
-    print '##GROUPING COMMANDS'
+    print '\n\t###GROUPING COMMANDS###\n'
     command_list = evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
                                      proteins, partitions)
     
     # Run
-    print '##RUNNING EVM'
+    print '\n\t###RUNNING EVM###\n'
     evm_run(evm_output, command_list, threads)
     
     # Combine partitions
-    print '##COMBINING PARTITIONS'
+    print '\n\t###COMBINING PARTITIONS###\n'
     evm_combine(evm_output, partitions)
     
     # Convert to GFF3
-    print '##CONVERTING TO GFF3'
+    print '\n\t###CONVERTING TO GFF3###\n'
     evm_to_gff3(evm_output, partitions, reference)
     
     # Combine the different chromosomes
@@ -276,17 +265,10 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
     '''Loads a gff3 file into a PASA database '''
     args = ['Load_Current_Gene_Annotations.dbi', '-c', align_conf_file, '-g',
             reference, '-P', gff3_file]
-    
-    
-        
     log_name = pasa_dir + 'load_gff3.log'
     stdout_file = pasa_dir + 'load_gff3.stdout'
     log = open(log_name, 'w')
     stdout_f = open(stdout_file, 'w')
-    
-    print '\nCMD: ' + ' '.join(args) + '\n'
-
-
     try:
         load = subprocess.Popen(args, stderr = log, stdout = stdout_f, cwd = pasa_dir)
         load.communicate()
@@ -310,17 +292,11 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
     log_out_name = pasa_dir + 'pasa.out.log'
     out_log = open(log_out_name, 'w')
 
-    print '\nCMD: ' + ' '.join(args) + '\n'
+   
 
     try:
-        #update_call = subprocess.Popen(args, stdout = file(log_name , "w"), cwd = pasa_dir)
-        #update_call.communicate()
         update_process = subprocess.check_call(args, stdout = out_log ,stderr = log, cwd = pasa_dir)
-        #processID = update_process.pid
-        
-        #print '> GFF3 updated \n'
     except:
-        #print 'Could not update GFF3 from PASA DB\n'
         raise NameError('')
 
     out_log.close()
@@ -342,27 +318,25 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
         
     new_filename = pasa_dir + 'annotation.PASAupdated.round'+str(round_n)+'.gff3'
     args = ['mv', update_file, new_filename]
-    print '\nCMD: ' + ' '.join(args) + '\n'
+
 
     try:
         subprocess.check_call(args, cwd = pasa_dir)
-        #print '> GFF3 name changed to: ' + new_filename
     except:
-        #print 'Could not move GFF3 name\n'
         raise NameError('')
     return new_filename
 
 def update_database(n_cpu , round_n,  pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file):
     '''Updates the gff3 file with the PASA database'''       
-    print '\n#CREATING CONFIGURATION FILE\n'
+    print '\n\t###CREATING CONFIGURATION FILE###\n'
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
        
-    print '\n#LOADING GFF3 FILE INTO DATABASE\n'
+    print '\n\t###LOADING GFF3 FILE INTO DATABASE###\n'
     processID = load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file)
-    print '\n#UPDATING GFF3 FILE\n'
+    print '\n\t###UPDATING GFF3 FILE###\n'
     annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, 
                      transcripts_file, n_cpu)
-    print '\n#PARSING OUTPUT'
+    print '\n\t###PARSING OUTPUT###\n'
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
     return gff3_out
 

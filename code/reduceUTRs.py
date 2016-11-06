@@ -18,7 +18,7 @@ def lengthSupport (tmp_wd):
     we do this by using the information from the iAssembly outputs'''
 
     wd = tmp_wd #+'consensus/tmp/'
-    print '\n\n\n###############\t FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT\t###############\n\n'
+    print '\n\t###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n'
 
     for root , dirs, _ in os.walk(wd):
     	for direc in dirs:
