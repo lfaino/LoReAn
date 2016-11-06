@@ -112,14 +112,19 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus):
         print ('BRAKER1 output existed already: ' + out_dir + ' --- skipping\n')
         return out_dir
     log_name = wd + 'braker.log'
-    log = open(log_name, 'w')      
+    log = open(log_name, 'w') 
+    log_name_err = wd + 'braker.error.log'
+    log_err = open(log_name_err, 'w')
     try:
-        braker_ex = subprocess.Popen(args, stderr = log)
+        braker_ex = subprocess.Popen(args, stdout = log, stderr = log_err)
         braker_ex.communicate()
     except:
         raise NameError('')
-    log.close()   
+    log.close()
+    log_err.close()
     return out_dir
+
+
 def augustus_call(wd, ref, species_name):
     args = ['augustus','--species='+species_name, ref]
     chromo = ref.split('/')[-1]

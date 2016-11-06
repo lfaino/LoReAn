@@ -49,7 +49,7 @@ RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
 
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2015-12-31.v10.tar.gz && tar -zxvf gmap-gsnap-2015-12-31.v10.tar.gz && rm gmap-gsnap-2015-12-31.v10.tar.gz &&\
-    mv gmap-2015-12-31// gmap && cd gmap/ && make clean && ./configure && make && sudo make install 
+    mv gmap-2015-12-31// gmap && cd gmap/  && ./configure && make && sudo make install 
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /home/lorean/bin/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta

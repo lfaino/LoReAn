@@ -316,7 +316,7 @@ def main():
                 pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length, args.threads)
                 ##HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
               
-                
+
                 if args.short_reads != '' or args.long_reads != '':
                     check_species = ['augustus', '--species=help']
                     process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
@@ -335,7 +335,7 @@ def main():
                                 t.daemon = True
                                 t.start()
                         queue.join()
-                    elif args.short_reads: ### USING PROTEINS AND READS 
+                    elif args.short_reads: ### USING PROTEINS AND SHORT READS 
                         queue = Queue()
                         print '='*70
                         print '\n###RUNNING BRAKER1 AND AAT###\n'
@@ -347,8 +347,9 @@ def main():
                             t.daemon = True
                             t.start()
                         queue.join()
+ 
                         
-                    elif args.long_reads: ### USING PROTEINS AND READS 
+                    elif args.long_reads: ### USING PROTEINS AND LONG READS 
                         queue = Queue()
                         print '='*70
                         print '\n###RUNNING BRAKER1 AND AAT###\n'
@@ -360,6 +361,7 @@ def main():
                             t.daemon = True
                             t.start()
                         queue.join()
+
                 
                     
             elif args.short_reads == ''  and args.long_reads == '':  ### USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE LAST) 
@@ -403,24 +405,26 @@ def main():
             ##HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
             gmap_name = args.ref + '_GMAPindex'
 
-            if args.short_reads != '' and args.protein_evidence != '': ### WE HAVE SHORT READS AND PROTEINS
-                if args.no_braker:
-                    augustus_file = wd + 'augustus/augustus.gff'
-                    augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                    genemark_file =  wd +  'gmes/genemark.gtf'
-                    genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)                
-                else:
-                    braker_out=wd+'braker/'+args.species+'/'
+            if args.short_reads != '' or args.long_reads != '': ### WE HAVE SHORT READS AND PROTEINS
+               
+                braker_out=wd+'braker/'+args.species+'/'
+                if os.path.exists(braker_out):
                     augustus_file = braker_out +'augustus.gff'
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_file = braker_out+'GeneMark-ET/genemark.gtf'
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
+                else:
+                    augustus_file = wd + 'augustus/augustus.gff'
+                    augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
+                    genemark_file =  wd +  'gmes/genemark.gtf'
+                    genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd) 
+
                 mergedProtGFF3 = wd+'AAT/protein_evidence.gff3'
                 trinity_path= gmap_wd + 'gmap.trinity.gff3'
                 weights_dic = {'Augustus':args.augustus, 'assembler-'+args.pasa_db:args.pasa, 
                     'GeneMark.hmm':args.genemark, 'AAT':args.AAT, gmap_name :args.trinity}
                 
-            elif args.short_reads == '' and args.protein_evidence != '': ### WE HAVE PROTEINS BUT NOT SHORT READS
+            elif args.short_reads == '' and args.long_reads == '' : ### WE HAVE PROTEINS BUT NOT SHORT READS
                 augustus_file = wd + 'augustus/augustus.gff'
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                 genemark_file =  wd +  'gmes/genemark.gtf'
@@ -428,39 +432,17 @@ def main():
                 mergedProtGFF3 = wd+'AAT/protein_evidence.gff3'
                 weights_dic = {'Augustus':args.augustus, 'GeneMark.hmm':args.genemark, 'AAT':args.AAT}
                 
-            elif args.short_reads != '' and args.protein_evidence == '': ### WE HAVE SHORT READS BUT NOT PROTEINS
-                braker_out=wd+'braker/'+args.species+'/'
-                augustus_file = braker_out +'augustus.gff'
-                augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_out+'GeneMark-ET/genemark.gtf'
-                genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                trinity_path= gmap_wd + 'gmap.trinity.gff3'
-                weights_dic = {'Augustus':args.augustus, 'assembler-'+args.pasa_db:args.pasa, 
-                    'GeneMark.hmm':args.genemark, gmap_name :args.trinity}
-                
-            elif args.short_reads == '' and args.protein_evidence == '':  ### WE NOT USE EITHER PROTEINS OR SHORT READS
-                augustus_file = wd + 'augustus/augustus.gff'
-                augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file =  wd +  'gmes/genemark.gtf'
-                genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                weights_dic = {'Augustus':args.augustus, 'GeneMark.hmm':args.genemark}
-
-            
+           
 
             ## HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE WEIGTH TABLE
             if not args.no_EVM:
                 evm_dir = wd+'evm_inputs/'
                 logistic.check_create_dir(evm_dir)
                 #print '> EVM input directory created in ' + evm_dir
-                if args.protein_evidence != '' and args.short_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
+                if args.short_reads != '' or  args.long_reads != '':  ### WE HAVE SHORT READS AND PROTEINS
                     evm_inputs = {'pasa':pasa_gff3, 'augustus':augustus_gff3, 'genemark':genemark_gff3, 'AAT':mergedProtGFF3, 'gmap': trinity_path}
-                elif  args.protein_evidence == '' and args.short_reads != '' :  ### WE HAVE SHORT READS BUT NOT PROTEINS
-                    evm_inputs = {'pasa':pasa_gff3, 
-                            'augustus':augustus_gff3, 'genemark':genemark_gff3,'gmap': trinity_path}
-                elif  args.protein_evidence != '' and args.short_reads == '' : ### WE HAVE PROTEINS BUT NOT SHORT READS
+                elif  args.short_reads == '' and args.long_reads == '': ### WE HAVE PROTEINS BUT NOT SHORT READS
                     evm_inputs = { 'augustus':augustus_gff3, 'genemark':genemark_gff3, 'AAT':mergedProtGFF3}
-                elif  args.protein_evidence == '' and args.short_reads == '' : ### WE NOT USE EITHER PROTEINS OR SHORT READS
-                    evm_inputs = { 'augustus':augustus_gff3, 'genemark':genemark_gff3}
                 
                 list_soft, pred_file, transcript_file, protein_file= inputEvm.group_EVM_inputs(evm_dir, evm_inputs)
                 
@@ -470,19 +452,10 @@ def main():
                 
                 ###EVM PIPELINE
 
-                if args.protein_evidence != '' and args.short_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
+                if args.short_reads != '' or  args.long_reads != '' :  ### WE HAVE SHORT READS AND PROTEINS
                     evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, ref, weight_file, pred_file, transcript_file, 
                                                     protein_file, args.segmentSize, args.overlapSize)
-                elif  args.protein_evidence == '' and args.short_reads != '' :  ### WE HAVE SHORT READS BUT NOT PROTEINS
-                    protein_file = ''
-                    evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, ref, weight_file, pred_file, transcript_file, 
-                                                    protein_file, args.segmentSize, args.overlapSize)
-                elif  args.protein_evidence != '' and args.short_reads == '' : ### WE HAVE PROTEINS BUT NOT SHORT READS
-                    transcript_file = ''
-                    evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, ref, weight_file, pred_file, transcript_file, 
-                                                    protein_file, args.segmentSize, args.overlapSize)
-                elif  args.protein_evidence == '' and args.short_reads == '' : ### WE NOT USE EITHER PROTEINS OR SHORT READS
-                    protein_file = ''
+                elif  args.short_reads == '' and args.long_reads == '' : ### WE HAVE PROTEINS BUT NOT SHORT READS
                     transcript_file = ''
                     evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, ref, weight_file, pred_file, transcript_file, 
                                                     protein_file, args.segmentSize, args.overlapSize)
