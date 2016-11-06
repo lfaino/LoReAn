@@ -361,9 +361,11 @@ def main():
                             t.daemon = True
                             t.start()
                         queue.join()
+                print '='*70
+                print '\n###GMAP###\n'
+                print '='*70
+                trinityGFF3 = mapping.gmap('trin', ref, trinity_out, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = True )
 
-                
-                    
             elif args.short_reads == ''  and args.long_reads == '':  ### USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE LAST) 
                 check_species = ['augustus', '--species=help']
                 process = subprocess.Popen(check_species, stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
@@ -387,26 +389,13 @@ def main():
                     sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
                     print '='*70
 
-
-
-
-            print '='*70
-            print '\n###GMAP###\n'
-            print '='*70
-            trinityGFF3 = mapping.gmap('trin', ref, trinity_out, args.threads, 'gff3_gene', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = True )
-
-            
-            
-            
             ##Prepare EVM input files
             print '='*70
             print '\n###RUNNING EVM###\n'
             print '='*70
             ##HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
             gmap_name = args.ref + '_GMAPindex'
-
             if args.short_reads != '' or args.long_reads != '': ### WE HAVE SHORT READS AND PROTEINS
-               
                 braker_out=wd+'braker/'+args.species+'/'
                 if os.path.exists(braker_out):
                     augustus_file = braker_out +'augustus.gff'
@@ -628,7 +617,7 @@ def main():
         pasa_dict_all = grs.gffread_parser(outputList_pasa_all)
         
         gmapOut, pasaOut = grs.compare_dicts(gmap_dict_multi, gmap_dict_all, pasa_dict_all)
-        finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, wd)
+        finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, gmap_wd)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, finalOutput)
@@ -648,7 +637,7 @@ def main():
         for filename in FinalFiles:
             if filename != '':
                 logistic.copy_file(filename, final_output_dir)
-                cmdstring = "chmod -R 777 %s" % (wd)
+                cmdstring = "chmod -R 775 %s" % (wd)
                 os.system(cmdstring)
         if args.keep_tmp:
             dirs_list = ['/PASA/', 'augustus/', 'gmes/', 'AAT/',  'split/']
