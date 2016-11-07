@@ -531,7 +531,7 @@ def main():
                     logistic.check_create_dir(consensus_wd)
                     ##HERE WE MAP THE READS ON THE GENOME USING GMAP
 
-                    if not os.path.isfile(long_sam):
+                    if not long_sorted_bam:
                         long_sam = mapping.gmap('sam', ref, long_fastq, args.threads, 'samse', args.min_intron_length, args.max_intron_length, args.H, gmap_wd, Fflag = False ) ## change in 1 and 2
                         long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd)
                     

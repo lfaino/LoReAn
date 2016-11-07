@@ -12,21 +12,22 @@ https://docs.docker.com/engine/installation/
 After Docker installation, you can download LoReAn by using:
 docker pull lfaino/lorean
 
-Next create a folder in your preferred location (be sure that you have enogh storage space on your drive) and place all your files (short reads, long reads, protein sequence, genome sequences) in the folder. 
+Next, create a folder in your preferred location (be sure that you have enogh storage space on your drive) and place all your files (short reads, long reads, protein sequence, genome sequences) in the folder. 
 
 
 Subsequently, from the folder where you input files are, LoReAn can be launched using:
 docker run -it --rm -v $PWD:/data lfaino/lorean bash
 
-once inside the container, you can check if LoReAn works using:
+Once inside the container, you can check if LoReAn works using:
 
 lorean.py -help
 
 
 ### KNOWN PROBLEMS 
 
-GMAP compiling
-Docker builds container every time the code is updated or modified. Therefore, all the software are compiled using the infrastructure provided by docker. However, the compilation of GMAP is infrastructure dependent. Therefore, if you get a PASA error, try to re-compile GMAP from inside the container using:
+GMAP compiling:
+
+Docker builds container every time the code is updated or modified. Therefore, all the software are compiled using the infrastructure provided by docker. However, the compilation of GMAP is infrastructure dependent. Therefore, if you get a PASA error and the file " gmap.spliced_alignments.gff3" is empty, try to re-compile GMAP from inside the container using:
 
 cd ~/bin/LoReAn/third_party/software/gmap; make clean; ./configure ; make ; sudo make install
 
