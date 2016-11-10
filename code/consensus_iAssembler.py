@@ -62,10 +62,10 @@ def cluster_pipeline(gff3File, mergeDistance, strand ,wd):
     if strand:
         BTmerge1 = ['bedtools', 'merge','-s', '-i', gff3File + '.sorted.bed', '-d', str(dist), '-c', '4,4', '-o', 'count,distinct']
         
-        print "\n\t###CLUSTERING IN STRANDED MODE###\n"
+        print "\t###CLUSTERING IN STRANDED MODE###\n"
     else:
         BTmerge1 = ['bedtools', 'merge', '-i', gff3File + '.sorted.bed', '-d', str(dist), '-c', '4,4', '-o', 'count,distinct']
-        print "\n\t###CLUSTERING IN NON-STRANDED MODE###\n"
+        print "\t###CLUSTERING IN NON-STRANDED MODE###\n"
     BTsort2 = ['bedtools', 'sort', '-i', gff3File + '.sorted.merged.bed']
     
     #Sort the GFF3 file
@@ -100,7 +100,6 @@ def fasta2Dict(fastaFilename):
     
     
 def write_fastas(count, bedline, fastaDict, min_length, min_evidence, max_evidence, wd):
-    print '\t###WRITING FASTA FILE BEFORE ASSEMBLY###\n'
     '''From the output list of the pipeline, recovers the ID and goes back to the 
     fasta file to retrieve the sequence'''
     

@@ -110,11 +110,11 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
     genome_dir = wd + refer + '_STARindex/'
     logistic.check_create_dir(genome_dir)
     #Build the reference
-    print '\n\t###BUILD INDEX###\n'
+    print '\t###BUILD INDEX###\n'
     star_build(reference, genome_dir, threads, wd)
         
     #Mapping
-    print '\n\t###MAP###\n'
+    print '\t###MAP###\n'
     out_file = star_map(reference, fastq_reads, threads, genome_dir, max_intron_length, wd)
     return out_file
     
@@ -175,11 +175,11 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     then uses gmap_map() to map'''
     
     #Build the reference
-    print '\n\t###BUILD INDEX###\n'
+    print '\t###BUILD INDEX###\n'
     reference_db = gmap_build(reference, wd)
         
     #Mapping
-    print '\n\t###MAP###\n'
+    print '\t###MAP###\n'
     out_file = gmap_map(reference_db, fastq_reads, threads, out_format, min_intron_length, max_intron_length, exon_length, wd, Fflag, type_out)
     return out_file
 
@@ -266,9 +266,9 @@ def samtools_sort(bam_file, threads, wd):
     return sor_bam_filename
    
 def sam_to_sorted_bam (sam_file, threads, wd):
-    print '\n\t###SAM to BAM###\n'
+    print '\t###SAM to BAM###\n'
     bam_filename = samtools_view(sam_file, wd)
     
-    print'\n\t###SORTING BAM###\n'
+    print'\t###SORTING BAM###\n'
     s_bam_filename = samtools_sort(bam_filename, threads, wd)
     return s_bam_filename

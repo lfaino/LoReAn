@@ -64,7 +64,7 @@ def parseOnly (threshold_float, unitigs ,tmp_wd):
 
 
 def parse_contigs(outputAssembly, threshold_float, unitigs):
-    print '\t###PARSE ASEMBLED CONTIGS###\n'
+
     '''Parses the output from iAssembler, to a single FASTA file'''
     #PARSE CONTIG MEMBERS FILE
     fname = outputAssembly+'contig_member'

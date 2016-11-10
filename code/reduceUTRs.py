@@ -110,24 +110,6 @@ def lengthSupport (tmp_wd):
 ################
 
 def main():
-    '''Main body of the function'''
-    #wd = 'consensus/'   
-    #check_create_dir(wd)
-    #wd = os.path.abspath(wd) + '/'
-        
-    ##gff3FileName = os.path.abspath(sys.argv[1])
-    ##reference = os.path.abspath(sys.argv[2])
-    #fastaFilename = os.path.abspath(sys.argv[1])
-    #tmp_wd = lengthSupport(fastaFilename)
-    ##print gffreadDict
-    ##cluster_list = cluster_pipeline(gff3FileName, 200, wd)    
-     
-    
-#    assembly(cluster_list, gffreadDict, 100, 5, 5000, 200, 97, 20, wd)
-#    outputFilename = catAssembled(wd)
-            
-#    mergedFastaFilename = wd+'assembly.wEVM.fasta'
-#    addEVM(fastaFilename, outputFilename, unitigs ,mergedFastaFilename)
     
     print '\n\n\n###############\n###FINISHED###\n###############\n\n'
 

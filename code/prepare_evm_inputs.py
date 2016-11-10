@@ -16,7 +16,7 @@ def convert_augustus(aug_file, wd):
     '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
     script EVMUtils/misc/augustus_GTF_to_EVM_GFF3.pl which needs to be in PATH
     '''
-    print '\n\t###CONVERTING AUGUSTUS TO GFF3###\n'
+    print '\t###CONVERTING AUGUSTUS TO GFF3###\n'
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
     
@@ -47,7 +47,7 @@ def convert_genemark(genemark_file, wd):
     '''Converts genemark.gtf to genemark.gff3 (from BRAKER1) using gtf2gff3.pl,
     which needs to be in PATH'''
     
-    print '\n\t###CONVERTING GENEMARK TO GFF3###\n'
+    print '\t###CONVERTING GENEMARK TO GFF3###\n'
     args = ['gtf2gff3.pl', genemark_file]
     #COMMANDS.append(' '.join(args))
     
@@ -119,7 +119,7 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
 def move_EVM_inputs(evm_dir, inputs):
     '''Takes a dictionary with files that are inputs for EVM and groups them in
     the same directory'''
-    print '\n\t###MOVING IMPORTANT FILES###\n'
+    print '\t###MOVING IMPORTANT FILES###\n'
     new_files = {}
     for key, filename in inputs.items():
         if isinstance(filename, list): # FOR THE GFF3 alignment files in case of short & long reads
@@ -138,7 +138,7 @@ def cat_EVM_inputs(evm_dir): #, inputs):
     alignments go into transcripts.gff3'''
     #GENE PREDICTIONS
     
-    print '\n\t###CONCATENATING FILES###\n'
+    print '\t###CONCATENATING FILES###\n'
     
     #GENE PREDICTION
     file_list = []

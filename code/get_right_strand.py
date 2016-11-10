@@ -16,7 +16,6 @@ def gffread_multiexons(gff3Filename, multiExonFlag = False):
         args = ['gffread', gff3Filename, '-o-', '-U']
     else:
         args = ['gffread', gff3Filename, '-o-']
-    print '\nCMD: ' + ' '.join(args) + '\n'
     output = subprocess.check_output(args)
     outputList = output.splitlines()    
     return outputList

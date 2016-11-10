@@ -27,6 +27,7 @@ def check_file(path_file):
 def check_create_dir(path):
     '''Checks a directory and creates it if it does not exist'''
     try:
+
         os.makedirs(path) #Try to make it, otherwise don't do anything
     except OSError as exception:
         if exception.errno != errno.EEXIST:

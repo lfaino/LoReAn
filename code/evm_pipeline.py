@@ -286,7 +286,7 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
     '''Loads a gff3 file into a PASA database '''
     args = ['Launch_PASA_pipeline.pl', '--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
             reference, '-t', transcripts_file]
-    print args    
+    
     log_name = pasa_dir + 'update_gff3.log'
     log = open(log_name, 'w')
     log_out_name = pasa_dir + 'pasa.out.log'

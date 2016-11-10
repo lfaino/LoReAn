@@ -31,7 +31,8 @@ import dirs_and_files as logistic
 ###FUNCTIONS###
 ###############
 
-def parseConsensus(consensusFilename):    
+def parseConsensus(consensusFilename):
+    print "\t###PARSE THE CONSENSUS AFTER ASSEMBLY###\n"
     '''Reads the consensus GFF3 file and returns 2 dictionaries,
     one with features and other with locations'''
     consensusFile = open(consensusFilename, 'r')
@@ -64,6 +65,7 @@ def parseConsensus(consensusFilename):
 
 
 def location2Bed(locationDict):
+    print "\t###location2Bed###\n"
     '''From the location dictionary, returns an array with elements
     as if they were sorted bed files:
     Chr \t start \t end \t identifier'''
@@ -82,6 +84,7 @@ def location2Bed(locationDict):
 
 
 def geneGFF3(gff3Filename):
+    print "\t###geneGFF3###\n"
     '''From a gff3 file, writes a "tmp" file with only genes'''
     gff3File = open(gff3Filename, 'r')
     tmpFilename = gff3Filename+'.gene.tmp' 
@@ -93,6 +96,7 @@ def geneGFF3(gff3Filename):
    
    
 def intersectConsensusEVM(consensusBed, evmGeneGFF):
+    print "\t###intersectConsensusEVM###\n"
     '''Uses bedtools intersect to get the consensus genes that are 
     not in the EVM file, returning only the identifiers'''
     args = ['bedtools', 'intersect', '-a', consensusBed, '-b', evmGeneGFF,
@@ -108,6 +112,7 @@ def intersectConsensusEVM(consensusBed, evmGeneGFF):
 
 
 def getFeatures(geneIDs, consensusDict):
+    print "\t###getFeatures###\n"
     '''Returns an array with the features to write, when the geneID matches'''
     featureIDlist = []
     for gene in geneIDs:
@@ -115,6 +120,7 @@ def getFeatures(geneIDs, consensusDict):
     return featureIDlist
 
 def featuresGFF3 (features, originalGFF3Filename, outFilename):
+    print "\t###featuresGFF3###\n"
     '''Writes the features from the list that are in the original GFF3
     to the file in filename'''
     inFile = open(originalGFF3Filename, 'r')
@@ -129,6 +135,7 @@ def featuresGFF3 (features, originalGFF3Filename, outFilename):
     outFile.close()
     
 def parseGFF3_out(gff3Filename):
+    print "\t###parseGFF3_out###\n"
     '''Parses the GFF3 file resulting from featuresGFF3 as it writes a lot of
     annoying ##'''
     outFilename = '.'.join(gff3Filename.split('.')[:-1])+'.gff3'
