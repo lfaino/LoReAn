@@ -80,93 +80,41 @@ def catTwoFasta(trinity, consens, wd):
 def catTwoFiles(trinityGFF3, evm_gff3, wd):
     '''Concatenates the two inFiles into the outFile'''
     
-    skipped_lines = 0
-    first_skipped_line = 0
-    
-    p1 = subprocess.Popen(['gffread' , '-o-' , '-T', evm_gff3 ], stdout=PIPE)
-    p2 = subprocess.Popen(['gffread' , '-o-' , '-T', trinityGFF3 ], stdout=PIPE)
-    
-    p3 = subprocess.Popen(['gtf2bed.py', '/dev/stdin'], stdin=p1.stdout, stdout=file(evm_gff3 + ".bed12", "w"))
-    out1 = p3.communicate()
-    p4 = subprocess.Popen(['gtf2bed.py', '/dev/stdin'], stdin=p2.stdout, stdout=file(trinityGFF3 + ".bed12", "w"))
-    out2 = p4.communicate()
-    
-    file1 = BedTool(evm_gff3 + ".bed12")
-    file2 = BedTool(trinityGFF3 + ".bed12")
-    
-    intergenic_snps = file2.intersect(file1, v = True)
-    intergenic_snps.saveas(wd + '/merged.bed12')
-    
-    outFile = wd + '/combinedGMAP_EVM.bed12'
-    
-    o = open(outFile,'w')
-    a = open(wd + "/merged.bed12", 'r')
+    gffCombined = wd + "/combined.intermediate"
+    o = open(gffCombined,'w')
+    a = open(trinityGFF3, 'r')
+    b = open(evm_gff3, 'r')
     for line in a:
         o.write(line)
-       
-    f = open(evm_gff3 + ".bed12", 'r')
-    for line in f:
+    
+    for line in b:
         o.write(line)
-    
-    output_name = wd + '/combinedGMAP_EVM.gff3'
-    out = open( output_name, 'w' )
-    i = 0
-    for i, line in enumerate( file( wd + '/combinedGMAP_EVM.bed12' ) ):
-        complete_bed = False
-        line = line.rstrip( '\r\n' )
-        if line and not line.startswith( '#' ) and not line.startswith( 'track' ) and not line.startswith( 'browser' ):
-            try:
-                elems = line.split( '\t' )
-                if len( elems ) == 12:
-                    complete_bed = True
-                chrom = elems[0]
-                if complete_bed:
-                    feature = "mRNA"
-                else:
-                    try:
-                        feature = elems[3]
-                    except:
-                        feature = 'feature%d' % ( i + 1 )
-                start = int( elems[1] ) + 1
-                end = int( elems[2] )
-                try:
-                    score = elems[4]
-                except:
-                    score = '0'
-                try:
-                    strand = elems[5]
-                except:
-                    strand = '+'
-                try:
-                    group = elems[3]
-                except:
-                    group = 'group%d' % ( i + 1 )
-                if complete_bed:
-                    out.write( '%s\tbed2gff\t%s\t%d\t%d\t%s\t%s\t.\tID=%s;\n' % ( chrom, feature, start, end, score, strand,  group  ) )
-                else:
-                    out.write( '%s\tbed2gff\t%s\t%d\t%d\t%s\t%s\t.\t%s;\n' % ( chrom, feature, start, end, score, strand, group  ) )
-                if complete_bed:
-                    # We have all the info necessary to annotate exons for genes and mRNAs
-                    block_count = int( elems[9] )
-                    block_sizes = elems[10].split( ',' )
-                    block_starts = elems[11].split( ',' )
-                    for j in range( block_count ):
-                        exon_start = int( start ) + int( block_starts[j] )
-                        exon_end = exon_start + int( block_sizes[j] ) - 1
-                        out.write( '%s\tbed2gff\texon\t%d\t%d\t%s\t%s\t.\tParent=%s\n' % ( chrom, exon_start, exon_end, score, strand, group ) )
-            except:
-                skipped_lines += 1
-                if not first_skipped_line:
-                    first_skipped_line = i + 1
-    out.close()
-    
-    
-    
-    f.close()
+        
+    b.close()
+    a.close()
     o.close() 
     
+    #gffCombined = wd+ "/combined.intermediate"
+    #print "test1"
+    #p1 = subprocess.Popen(['cat' , evm_gff3, trinityGFF3 ], stdout=file(gffCombined, "w"))
+    #print "test2"
+    #out1 = p1.communicate()
+    #print "test3"
+    finalout = wd + "/combined.intermediate.merged"
+    p2 = subprocess.Popen(['gffread' , '-o-' , '-F', '-M' , gffCombined], stdout=file(finalout , "w"))
+    p2.communicate()
+    #print "test4" 
+    #o = open(wd + "/combined.intermediate.final.gff3",'w')
+    #a = open(gffCombined, 'r')
+    #for line in a:
+        #line.replace('locus', 'gene')
+        #o.write(line)
     
-    return output_name
+    #a.close()
+    #o.close() 
+    
+    
+    return finalout
     
 
     

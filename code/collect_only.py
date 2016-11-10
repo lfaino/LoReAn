@@ -64,6 +64,7 @@ def parseOnly (threshold_float, unitigs ,tmp_wd):
 
 
 def parse_contigs(outputAssembly, threshold_float, unitigs):
+    print '\t###PARSE ASEMBLED CONTIGS###\n'
     '''Parses the output from iAssembler, to a single FASTA file'''
     #PARSE CONTIG MEMBERS FILE
     fname = outputAssembly+'contig_member'
@@ -126,6 +127,7 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
     return
 
 def catAssembled(wd):
+    print '\t###GENERATE FASTA FILE FROM CONTIGS###\n'
     '''C at all the assembled single fasta files in to a uniq file'''
     wd_tmp = wd + 'consensus/tmp/'
     fileName = wd_tmp + 'assembly.fasta'
@@ -146,6 +148,7 @@ def catAssembled(wd):
 
 
 def addEVM(wholeFastaName, outputFilename, unitigs, evm_nosupport, outputMergedFastaName):
+    print '\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n'
     '''Adds the EVM records that are not present in the final contig evidence'''
     wholeFasta = open(wholeFastaName, 'r')
     outFastaFile = open(outputFilename, 'r')    
@@ -215,6 +218,7 @@ def addEVM(wholeFastaName, outputFilename, unitigs, evm_nosupport, outputMergedF
     outputMerged.close()
     
 def getEVMnoUnitig(target_wd):
+    print '\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n'
     '''Gets the name of evm prediction in the assembly that do not have support'''
     evm_list = []
     for root, dirs, _ in os.walk(target_wd):

@@ -200,31 +200,31 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
     It will spit out evm.out.gff3 '''
     
     # Creates output directory
-    print '\n\t###CREATE AN OUTPUT DIRECTORY###\n'
+    print '\t###CREATE AN OUTPUT DIRECTORY###\n'
     evm_output = working_dir + 'evm_output/'
     check_create_dir(evm_output)
     #print '> Output directory is: ' + evm_output + '\n'
     
     # Partitions
-    print '\n\t###PARTITIONING THE INPUTS###\n'
+    print '\t###PARTITIONING THE INPUTS###\n'
     partitions = evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, 
                                 segmentSize, overlapSize)
     
     # Write Commands
-    print '\n\t###GROUPING COMMANDS###\n'
+    print '\t###GROUPING COMMANDS###\n'
     command_list = evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
                                      proteins, partitions)
     
     # Run
-    print '\n\t###RUNNING EVM###\n'
+    print '\t###RUNNING EVM###\n'
     evm_run(evm_output, command_list, threads)
     
     # Combine partitions
-    print '\n\t###COMBINING PARTITIONS###\n'
+    print '\t###COMBINING PARTITIONS###\n'
     evm_combine(evm_output, partitions)
     
     # Convert to GFF3
-    print '\n\t###CONVERTING TO GFF3###\n'
+    print '\t###CONVERTING TO GFF3###\n'
     evm_to_gff3(evm_output, partitions, reference)
     
     # Combine the different chromosomes
@@ -286,7 +286,7 @@ def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, t
     '''Loads a gff3 file into a PASA database '''
     args = ['Launch_PASA_pipeline.pl', '--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
             reference, '-t', transcripts_file]
-        
+    print args    
     log_name = pasa_dir + 'update_gff3.log'
     log = open(log_name, 'w')
     log_out_name = pasa_dir + 'pasa.out.log'
@@ -328,15 +328,15 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
 
 def update_database(n_cpu , round_n,  pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file):
     '''Updates the gff3 file with the PASA database'''       
-    print '\n\t###CREATING CONFIGURATION FILE###\n'
+    print '\t###CREATING CONFIGURATION FILE###\n'
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
        
-    print '\n\t###LOADING GFF3 FILE INTO DATABASE###\n'
+    print '\t###LOADING GFF3 FILE INTO DATABASE###\n'
     processID = load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file)
-    print '\n\t###UPDATING GFF3 FILE###\n'
+    print '\t###UPDATING GFF3 FILE###\n'
     annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, 
                      transcripts_file, n_cpu)
-    print '\n\t###PARSING OUTPUT###\n'
+    print '\t###PARSING OUTPUT###\n'
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
     return gff3_out
 

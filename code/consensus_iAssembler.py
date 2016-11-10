@@ -34,6 +34,7 @@ length_cluster = 0
 
 
 def gffread(gff3File, reference, working_dir):
+    
     '''Runs gffread on a gff3 file to produce fasta files with the 
     matching records'''
     out_name = working_dir + 'getFasta.fasta'
@@ -99,6 +100,7 @@ def fasta2Dict(fastaFilename):
     
     
 def write_fastas(count, bedline, fastaDict, min_length, min_evidence, max_evidence, wd):
+    print '\t###WRITING FASTA FILE BEFORE ASSEMBLY###\n'
     '''From the output list of the pipeline, recovers the ID and goes back to the 
     fasta file to retrieve the sequence'''
     

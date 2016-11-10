@@ -463,7 +463,7 @@ def main():
             
                 
             else:
-                print "NOT RUNNING EVM PIPELINE"
+                print "\n###NOT RUNNING EVM PIPELINE###\n"
                 evm_gff3 = wd + '/evm_output/evm.out.combined.gff3'
                 print '='*70        
                 print '='*70  
@@ -480,7 +480,7 @@ def main():
                 print '='*70 
                 
                 #for round_n in range(1,3): #Two rounds, 1 & 2
-                round_n = "1"    
+                round_n = 0    
                 firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
                 if os.path.isfile(firstRound): 
                     print '='*70
@@ -488,15 +488,26 @@ def main():
                     print '='*70
                     updatedGff3 = firstRound
                 elif args.long_reads == "":
-                    merge_gff = wd + '/merge_file'
-                    logistic.check_create_dir(merge_gff)
-                    trinity_evm = logistic.catTwoFiles(trinityGFF3, evm_gff3, merge_gff)
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
-                else:
                     print '='*70
                     print '\n##UPDATE ROUND ###\n'
                     print '='*70
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  round_n, pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                    round_n += 1 ### to check if this is correct
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                    round_n += 1
+                    print '='*70
+                    print '\n##UPDATE ROUND AFTER COMBINING TRINITY_GMAP AND EVM###\n'
+                    print '='*70
+                    merge_gff = wd + '/merge_file'
+                    logistic.check_create_dir(merge_gff)
+                    trinity_evm = logistic.catTwoFiles(trinityGFF3, updatedGff3, merge_gff)
+                    
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
+                else:
+                    round_n += 1
+                    print '='*70
+                    print '\n##UPDATE ROUND ###\n'
+                    print '='*70
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     
                 ##Keep this output
                 FinalFiles.append(firstRound)
@@ -620,6 +631,7 @@ def main():
         finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, gmap_wd)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
+        round_n += 1
         final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, finalOutput)
         FinalFiles.append(final) 
         FinalFiles.append(finalOutput)
