@@ -57,7 +57,7 @@ def compare_dicts(multiExon, gmapAll, pasaAll):
     return gmapOut, pasaSingle
 
 
-def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, wd):
+def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, ref, wd):
     '''the function check for the rigth strand between the GMAP gff3 and the PASA gff3'''
     outputFilename = wd+'finalAnnotation.gff3'
     outputFile = open(outputFilename, 'w')
@@ -162,23 +162,37 @@ def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, wd):
     gt_con = ['gt', 'gff3', '-sort', '-tidy', outputFilename ]
     gt_call = subprocess.Popen(gt_con, stdout = file(outputFileSort , "w"), stderr = file (outputFileLog, "w"))
     gt_call.communicate()
-    return outputFileSort
+    countGene = ""
+    old = ""
+    outputSimply = outputFileSort + '.newGeneName' 
+    f = open(outputFileSort, 'r')
+    o = open(outputSimply, 'w')
+    for line in f:
+        fields = line.split(";")
+        if "gene" in fields[0]:
+            chrNub = fields[0].split("\t")
+            num = chrNub[0]
+            if old == num:
+                #print "inside"
+                countGene += 1
+                newName = fields[0] + ";Name=" + ref + "_" + old + "g" + str(countGene) + "\n"
+                o.write(newName)
+            else:
+                countGene = 1
+                old = num
+                newName = fields[0] + ";Name=" + ref + "_" + old + "g" + str(countGene) + "\n"
+                o.write(newName)
+        else:
+            o.write(line)
+    o.close()
+    f.close()
+    
+    return outputSimply
 
             
             
             
 if __name__ == '__main__':
-    gff3Pasa = argv[1]
-    gff3GMAP = argv[2]
-    wd = './'
-    outputList_gmap_multi = gffread_multiexons(gff3GMAP, multiExonFlag = True)
-    outputList_gmap_all = gffread_multiexons(gff3GMAP)
-    outputList_pasa_all = gffread_multiexons(gff3Pasa)
-    gmap_dict_multi = gffread_parser(outputList_gmap_multi)
-    gmap_dict_all = gffread_parser(outputList_gmap_all)
-    pasa_dict_all = gffread_parser(outputList_pasa_all)
-        
-    gmapOut, pasaOut = compare_dicts(gmap_dict_multi, gmap_dict_all, pasa_dict_all)
-        
-    combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, wd)
-        
+    change = argv[1]
+    test = changeName(change)
+    

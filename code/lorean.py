@@ -120,6 +120,8 @@ def arguments():
                         help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]", type=int)
     parser.add_argument("--pasa_db", nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
+    parser.add_argument("--prefix_gene", nargs="?", default="species",
+                        help="Prefix to add to the final Gff3 gene name [specie]")
     parser.add_argument('-wd', "--working_dir", nargs="?", default="annotation",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument('-t', "--threads", nargs="?", default="1",
@@ -629,7 +631,7 @@ def main():
         pasa_dict_all = grs.gffread_parser(outputList_pasa_all)
         
         gmapOut, pasaOut = grs.compare_dicts(gmap_dict_multi, gmap_dict_all, pasa_dict_all)
-        finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, gmap_wd)
+        finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, args.prefix_gene ,gmap_wd)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
