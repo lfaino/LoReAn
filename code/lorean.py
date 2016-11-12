@@ -229,9 +229,6 @@ def main():
             if args.short_reads != '' or args.long_reads != '':
                 
                 print '\n###STAR MAPPING###\n'
-                
-                
-                    
                 ##SHORT READS
                 if 'fastq' in args.short_reads or 'fq' in args.short_reads :
                     if ',' in args.short_reads:
@@ -252,11 +249,14 @@ def main():
                 ##BAM SORTED FILES GET IN HERE
                 elif 'sorted.bam' in args.short_reads:
                     short_sorted_bam = os.path.abspath(args.short_reads)
+                    cmdstring = "mv %s %s" % (short_sorted_bam, star_out)
+                    os.system(cmdstring)
+                    bam_file = args.short_reads.split("/")
+                    short_sorted_bam = star_out + "/" + bam_file[2]
+                    print short_sorted_bam
                 else:
                     short_sorted_bam = False
                     print 'No short reads file'
-                
-                    
                 ##LONG READS
                 if 'fastq' in args.long_reads or 'fq' in args.long_reads :
                     ### with this operation, reads are filtered for their length. Nanopore reads can be chimaras or sequencing artefacts. filtering on length reduces the amount of sequencing artefacts
@@ -495,7 +495,6 @@ def main():
                     round_n += 1 ### to check if this is correct
                     updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     round_n += 1
-                    
                     print '\n##UPDATE ROUND AFTER COMBINING TRINITY_GMAP AND EVM###\n'
                     
                     merge_gff = wd + '/merge_file'
