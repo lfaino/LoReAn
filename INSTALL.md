@@ -12,7 +12,13 @@ https://docs.docker.com/engine/installation/
 After Docker installation, you can download LoReAn by using:
 docker pull lfaino/lorean
 
-Next, create a folder in your preferred location (be sure that you have enogh storage space on your drive) and place all your files (short reads, long reads, protein sequence, genome sequences) in the folder. 
+Next, create a folder in your preferred location (be sure that you have enogh storage space on your drive) and run: 
+
+chmod -R 777 <folder>
+
+Place all your files (short reads, long reads, protein sequence, genome sequences) in the folder and run:
+
+chmod -R 777 < from inside the folder> 
 
 
 Subsequently, from the folder where you input files are, LoReAn can be launched using:

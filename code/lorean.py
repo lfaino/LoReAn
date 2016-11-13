@@ -482,7 +482,7 @@ def main():
                 
                 #for round_n in range(1,3): #Two rounds, 1 & 2
                 round_n = 0    
-                firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
+                firstRound = pasa_dir + 'annotation.PASAupdated.round2.gff3'
                 if os.path.isfile(firstRound): 
                     
                     print ('UPDATE ALREADY PERFORMED --- skipping')
@@ -500,8 +500,8 @@ def main():
                     merge_gff = wd + '/merge_file'
                     logistic.check_create_dir(merge_gff)
                     trinity_evm = logistic.catTwoFiles(trinityGFF3, updatedGff3, merge_gff)
-                    
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm)
+                    trinity_evm_new =grs.changeName(trinity_evm, args.prefix_gene)
+                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm_new)
                     FinalFiles.append(updatedGff3)
                 else:
                     round_n += 1
