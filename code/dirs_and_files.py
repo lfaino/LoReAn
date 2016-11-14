@@ -81,38 +81,10 @@ def catTwoFasta(trinity, consens, wd):
 def catTwoFiles(trinityGFF3, evm_gff3, wd):
     '''Concatenates the two inFiles into the outFile'''
     
-    gffCombined = wd + "/combined.intermediate"
-    o = open(gffCombined,'w')
-    a = open(trinityGFF3, 'r')
-    b = open(evm_gff3, 'r')
-    for line in a:
-        o.write(line)
-    
-    for line in b:
-        o.write(line)
-        
-    b.close()
-    a.close()
-    o.close() 
-    
-    #gffCombined = wd+ "/combined.intermediate"
-    #print "test1"
-    #p1 = subprocess.Popen(['cat' , evm_gff3, trinityGFF3 ], stdout=file(gffCombined, "w"))
-    #print "test2"
-    #out1 = p1.communicate()
-    #print "test3"
-    finalout = wd + "/combined.intermediate.merged"
-    p2 = subprocess.Popen(['gffread' , '-o-' , '-F', '-M' , gffCombined], stdout=file(finalout , "w"))
+    finalout = wd + "/combined.evm_gmapTrinity.gff3"
+    p1 = subprocess.Popen(['cat', trinityGFF3, evm_gff3], stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(["awk '$1 ~! /^#PROT/ {print} '"], stdin = p1.stdout ,stdout=file(finalout , "w"), shell = True)
     p2.communicate()
-    #print "test4" 
-    #o = open(wd + "/combined.intermediate.final.gff3",'w')
-    #a = open(gffCombined, 'r')
-    #for line in a:
-        #line.replace('locus', 'gene')
-        #o.write(line)
-    
-    #a.close()
-    #o.close() 
     
     
     return finalout

@@ -159,133 +159,160 @@ def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, ref, wd):
     return outputFilename
 
 
-def changeName(outputFilename, ref):
+def changeName(trinity_evm, ref):
 
+    errorF = ''
+    GTsort1 = ['gt', 'gff3', '-tidy', '-sort', trinity_evm]
+    GTsort1_call = subprocess.Popen(GTsort1, stdout = subprocess.PIPE, stderr=file(trinity_evm + '.gt.log.err', 'w') )
+    out = GTsort1_call.stdout.readlines()
     
-    outputFileSort = outputFilename+'.changed.Name.sort.gff3'
-    outputFileLog = outputFilename+'.changed.Name.sort.gff3.log'
-    ###here we use gt software ro reduce the ID length in the gff for each gene. It is important because with long names and ID, PASA will complain
-    gt_con = ['gt', 'gff3', '-sort', '-tidy', outputFilename ]
-    gt_call = subprocess.Popen(gt_con, stdout = file(outputFileSort , "w"), stderr = file (outputFileLog, "w"))
-    gt_call.communicate()
-    countGene = ""
-    old = ""
-    outputSimply = outputFileSort + '.newGeneName' 
-    f = open(outputFileSort, 'r')
-    o = open(outputSimply, 'w')
-    for line in f:
-        testLine = line.rstrip()
-        fields = testLine.split(";")
-        if "merged" in outputFilename:
-            newLine = fields[0]
-
-            chrNub = fields[0].split("\t")
-            num = chrNub[0]
-            if len(chrNub) > 8:
-                if "locus" in fields[0]:
-                    next
-                elif "mRNA" in chrNub[2]:
-                    if old == num:
-                        #print "inside"
-                        countGene += 1
-                        chrNub[2] = "gene"
-                        chrNub.pop()
-                        tab = '\t'
-                        name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) 
-                        newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
-                        newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
-
-                        o.write(newGeneLine)
-                        o.write(newName)
-                    else:
-                        countGene = 1
-                        old = num
-                        chrNub[2] = "gene"
-                        chrNub.pop()
-                        tab = '\t'
-                        name_gene = "Name=" + ref + "_" + old + "g" + str(countGene)
-                        newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
-                        newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
-                        o.write(newGeneLine)
-                        o.write(newName)
-                else: 
-                    o.write(newLine + ";" + name_gene + "\n")
-                    
-
-        elif "final" in outputFilename:
-            if "gene" in fields[0]:
-                chrNub = fields[0].split("\t")
-                num = chrNub[0]
-                if old == num:
-                    #print "inside"
-                    countGene += 1
-                    newName = fields[0] + ";Name=" + ref + "_" + old + "g" + str(countGene) + "\n"
-                    o.write(newName)
-                else:
-                    countGene = 1
-                    old = num
-                    newName = fields[0] + ";Name=" + ref + "_" + old + "g" + str(countGene) + "\n"
-                    o.write(newName)
-            else:
-                o.write(line)
-            
-    o.close()
-    f.close()
     
-    simplifiedGff = cluster_gff(outputSimply)
-    return simplifiedGff
+    #countGene = ""
+    #old = ""
+    #outputSimply = trinity_evm + '.newGeneName' 
+    ##f = open(trinity_evm, 'r')
+    #o = open(outputSimply, 'w')
+    #for line in out:
+        #testLine = line.rstrip()
+        #fields = testLine.split(";")
 
+        #newLine = fields[0]
+        #chrNub = fields[0].split("\t")
+        #num = chrNub[0]
+        #if len(chrNub) > 8:
+            #if "gene" in fields[0]:
+                #next
+            #elif "mRNA" in chrNub[2]:
+                #if "GMAP" in chrNub[1]:
+                    #if old == num:
+                        ##print "inside"
+                        #countGene += 1
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "GMAP"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                    #else:
+                        #countGene = 1
+                        #old = num
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "GMAP"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                #elif "EVM" in chrNub[1]:
+                     #if old == num:
+                        ##print "inside"
+                        #countGene += 1
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "EVM"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                     #else:
+                        #countGene = 1
+                        #old = num
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "EVM"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                #elif "." in chrNub[1]:
+                     #if old == num:
+                        ##print "inside"
+                        #countGene += 1
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "EVM"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                     #else:
+                        #countGene = 1
+                        #old = num
+                        #chrNub[2] = "gene"
+                        #chrNub.pop()
+                        #tab = '\t'
+                        #name_gene = "Name=" + ref + "_" + old + "g" + str(countGene) + "EVM"
+                        #newGeneLine = tab.join(chrNub) + "\tID=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #newName = fields[0] + ";Parent=" + ref + "_" + old + "g" + str(countGene) + ";" + name_gene + "\n"
+                        #o.write(newGeneLine)
+                        #o.write(newName)
+                
 
-def cluster_gff(outputSimply): 
-    '''here the cluseter of sequence from the same locus are prepared'''    
+            #else: 
+                #o.write(newLine + ";" + name_gene + "\n")
+                
+                
 
-
-    f = open(outputSimply, 'r')
-    listGenes = []
-    for line in f:
+#    f = open(outputSimply, 'r')
+    dictGenes = {}
+    listGene = ''
+    for line in out:
         geneLine = line.rstrip()
-        listGenes.append(line)
+        bedLine = geneLine.rsplit(';')
+        for element in bedLine:
+            if 'Name' in element:
+           
+                if dictGenes.has_key(element):
+                    oldLine = dictGenes[element]
+                    newLine = oldLine  + line 
+                    dictGenes[element] = newLine
+                else:
+                    dictGenes[element] = line  
+
         
-    f.close()
+    BTsort1 = ['bedtools', 'sort', '-i', trinity_evm]
+    awk = ["awk ' $3 ~ /gene/ {print}'"]
 
-
-    BTsort1 = ['bedtools', 'sort', '-i', outputSimply]
-    BTgrep = ['grep' , 'gene']
     BTmerge1 = ['bedtools', 'merge' , '-o', 'distinct,count' , '-c' , '9,9']
 
     BTsort1_call = subprocess.Popen(BTsort1, stdout = subprocess.PIPE )
-    Grep_call = subprocess.Popen(BTgrep , stdout = subprocess.PIPE, stdin = BTsort1_call.stdout)
-    BTmerge1_call = subprocess.Popen(BTmerge1,stdin = Grep_call.stdout , stdout = subprocess.PIPE)
+    awk_call = subprocess.Popen(awk , stdout = subprocess.PIPE, stdin = BTsort1_call.stdout, shell = True)
+    BTmerge1_call = subprocess.Popen(BTmerge1,stdin = awk_call.stdout , stdout=subprocess.PIPE)
+    #BTmerge1_call.communicate()
     out = BTmerge1_call.stdout.readlines()
-
-    simplifiedGff = outputSimply + 'simply.gff3'
+    simplifiedGff = trinity_evm + 'simply.gff3'
     o = open(simplifiedGff, 'w')
-
     for line in out:
         bedLine = line.split('\t')
         count = int(bedLine[4])
-        if count < 30:
+        if count < 2:
             fieldAll = re.split(';|,',bedLine[3])
             for element in fieldAll:
-                if 'Name=' in element:
-                    #print element
-                    for lineGene in listGenes:
-                        if element in lineGene:
-                            bedLine = lineGene.split(';')
-                            if "gene" in bedLine[0]:
-                                geneLine = lineGene.rstrip()
-                                listGenes.remove(lineGene)
-                                o.write(lineGene)
-                            else:
-                                bedLine.pop(-1)
-                                newBed = ';'.join(bedLine)
-                                listGenes.remove(lineGene)
-                                o.write(newBed)
+                if dictGenes.has_key(element):
+                    o.write(dictGenes[element])
+        elif count > 1:
+            fieldAll = re.split(';|,',bedLine[3])
+            valueT = False
+            for element in fieldAll:
+                if dictGenes.has_key(element) and 'EVM' in element and not valueT:
+                    o.write(dictGenes[element])
+                    valueT = True
+                elif dictGenes.has_key(element) and not 'EVM' in element and not valueT:
+                    if "Name=" in element:
+                        o.write(dictGenes[element])
+                        valueT = True
+
+                        
+
     o.close()
     return simplifiedGff
-
-            
-            
+    
             
 if __name__ == '__main__':
     change = argv[1]
