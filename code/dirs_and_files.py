@@ -78,16 +78,7 @@ def catTwoFasta(trinity, consens, wd):
     cat_call.communicate()
     return outFileFasta
 
-def catTwoFiles(trinityGFF3, evm_gff3, wd):
-    '''Concatenates the two inFiles into the outFile'''
-    
-    finalout = wd + "/combined.evm_gmapTrinity.gff3"
-    p1 = subprocess.Popen(['cat', trinityGFF3, evm_gff3], stdout=subprocess.PIPE)
-    p2 = subprocess.Popen(["awk '$1 ~! /^#PROT/ {print} '"], stdin = p1.stdout ,stdout=file(finalout , "w"), shell = True)
-    p2.communicate()
-    
-    
-    return finalout
+
     
 
     

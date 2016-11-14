@@ -349,8 +349,7 @@ def main():
                             t.daemon = True
                             t.start()
                         queue.join()
- 
-                        
+  
                     elif args.long_reads: ### USING PROTEINS AND LONG READS 
                         queue = Queue()
                         
@@ -482,47 +481,18 @@ def main():
                 
                 #for round_n in range(1,3): #Two rounds, 1 & 2
                 round_n = 0    
-                secondRound = pasa_dir + 'annotation.PASAupdated.round2.gff3'
-                if os.path.isfile(secondRound): 
+                firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
+                if os.path.isfile(firstRound): 
                     
-                    print ('UPDATE ALREADY PERFORMED --- skipping')
-                    
-                    updatedGff3 = secondRound
-                elif args.long_reads == "":
-                    
-                    print '\n##UPDATE ROUND ###\n'
-                    if not os.path.isfile(pasa_dir + 'annotation.PASAupdated.round1.gff3'):
-                        round_n += 1 ### to check if this is correct
-                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
-                        round_n += 1
-
-                        print '\n##UPDATE ROUND AFTER COMBINING TRINITY_GMAP AND EVM###\n'
-                        
-                        merge_gff = wd + '/merge_file'
-                        logistic.check_create_dir(merge_gff)
-                        trinity_evm = logistic.catTwoFiles(trinityGFF3, updatedGff3, merge_gff)
-                        trinity_evm_new =grs.changeName(trinity_evm, args.prefix_gene)
-                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm_new)
-                        FinalFiles.append(updatedGff3)
-                    else:
-                        firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
-                        round_n = 2
-                        merge_gff = wd + '/merge_file'
-                        logistic.check_create_dir(merge_gff)
-                        trinity_evm = logistic.catTwoFiles(trinityGFF3, firstRound, merge_gff)
-                        trinity_evm_new =grs.changeName(trinity_evm, args.prefix_gene)
-                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, trinity_evm_new)
-                        FinalFiles.append(updatedGff3)
-
+                    print ('UPDATE ALREADY PERFORMED --- skipping') 
+                    updatedGff3 = firstRound
                 else:
                     round_n += 1
-                    
                     print '\n##UPDATE ROUND ###\n'
-                    
                     updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     
                 ##Keep this output
-                FinalFiles.append(secondRound)
+                FinalFiles.append(updatedGff3)
                 
                 
             else:
