@@ -264,7 +264,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
     '''Loads a gff3 file into a PASA database '''
     args = ['Load_Current_Gene_Annotations.dbi', '-c', align_conf_file, '-g',
-            reference, '-P', gff3_file]
+            reference, '-P', gff3_file, '--ALT_SPLICE']
     log_name = pasa_dir + 'load_gff3.log'
     stdout_file = pasa_dir + 'load_gff3.stdout'
     log = open(log_name, 'w')

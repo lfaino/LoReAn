@@ -159,6 +159,17 @@ def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, ref, wd):
     return outputFilename
 
 
+
+def newNames(oldname):
+
+    finalout = oldname + ".sorted.gff"
+    errorFile = oldname + ".gt_err.log"
+    gt_com=['gt', 'gff3','-sort' , '-tidy' , oldname ]
+    gt_call=subprocess.Popen(gt_com, stdout = file(finalout, 'w') , stderr = file(errorFile, 'w'))
+    gt_call.communicate()
+    
+    return finalout
+
     
             
 if __name__ == '__main__':

@@ -208,7 +208,8 @@ def main():
         args = arguments()
 
         #Useful variables for later
-        wd = os.path.abspath(args.working_dir) + '/'
+        wd_base = os.path.abspath(args.working_dir) + '/'
+        wd = wd_base + 'run/'
         wd_gmap = wd
         ref = os.path.abspath(args.ref)
 
@@ -222,8 +223,6 @@ def main():
 
                 
         ###COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
-        star_out = wd + '/STAR/'
-        logistic.check_create_dir(star_out)
         if not args.collect_only:
             list_fasta_names = multiple.single_fasta(ref, wd)
             if args.short_reads != '' or args.long_reads != '':
@@ -231,6 +230,8 @@ def main():
                 print '\n###STAR MAPPING###\n'
                 ##SHORT READS
                 if 'fastq' in args.short_reads or 'fq' in args.short_reads :
+                    star_out = wd + '/STAR/'
+                    logistic.check_create_dir(star_out)
                     if ',' in args.short_reads:
                         pairedEndFiles = args.short_reads.split(',')
                         short_1 = c
@@ -248,6 +249,8 @@ def main():
                     FinalFiles.append(short_sorted_bam)
                 ##BAM SORTED FILES GET IN HERE
                 elif 'sorted.bam' in args.short_reads:
+                    star_out = wd + '/STAR/'
+                    logistic.check_create_dir(star_out)
                     short_sorted_bam = os.path.abspath(args.short_reads)
                     cmdstring = "mv %s %s" % (short_sorted_bam, star_out)
                     os.system(cmdstring)
@@ -263,7 +266,7 @@ def main():
                     
                     print "\n###FILTERING OUT LONG READS###\n"
                     
-                    long_fastq, filter_count = mapping.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, wd)
+                    long_fastq, filter_count = mapping.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd)
                     
                         
                         
@@ -489,7 +492,12 @@ def main():
                 else:
                     round_n += 1
                     print '\n##UPDATE ROUND ###\n'
-                    updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                    if args.long_reads == "":
+                        finalOutput = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                        updatedGff3 = grs.newNames(finalOutput)
+                    else:
+                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                    
                     
                 ##Keep this output
                 FinalFiles.append(updatedGff3)
@@ -612,17 +620,18 @@ def main():
         
         gmapOut, pasaOut = grs.compare_dicts(gmap_dict_multi, gmap_dict_all, pasa_dict_all)
         finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, args.prefix_gene ,gmap_wd)
+        newName = grs.newNames(finalOutput)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
-        final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, finalOutput)
+        final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName)
         FinalFiles.append(final) 
         FinalFiles.append(finalOutput)
         
                 
         print'\n###CREATING OUTPUT DIRECTORY###\n'
         
-        final_output_dir = wd+'output/'
+        final_output_dir = wd_base +'output/'
         logistic.check_create_dir(final_output_dir)
 
         
