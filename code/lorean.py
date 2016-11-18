@@ -620,11 +620,13 @@ def main():
         
         gmapOut, pasaOut = grs.compare_dicts(gmap_dict_multi, gmap_dict_all, pasa_dict_all)
         finalOutput = grs.combineGff3(gmapOut, pasaOut, outputList_gmap_all, outputList_pasa_all, args.prefix_gene ,gmap_wd)
-        newName = grs.newNames(finalOutput)
+        simplified = grs.parseGff(finalOutput)
+        newName = grs.newNames(simplified)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
-        final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName)
+        final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, newName)
+        FinalFiles.append(simplified)
         FinalFiles.append(final) 
         FinalFiles.append(finalOutput)
         

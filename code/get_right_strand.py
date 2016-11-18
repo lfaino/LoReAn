@@ -9,6 +9,11 @@ import subprocess
 import re
 import copy
 from BCBio import GFF
+from gffutils.iterators import DataIterator
+import gffutils
+
+
+
 
 def gffread_multiexons(gff3Filename, multiExonFlag = False):
     '''Reports the multiexon genes in a GFF3 file - Output from GMAP'''
@@ -158,6 +163,17 @@ def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, ref, wd):
     outputFile.close()
     return outputFilename
 
+
+def parseGff(input_filename):
+    
+    
+    finalout = input_filename + ".simplifyied.gff3"
+    errorFile = input_filename + "._err.log"
+    py_com=['parseGff3.py', input_filename , ">" ,finalout ]
+    py_call=subprocess.Popen(py_com, shell = True)
+    py_call.communicate()
+    return finalout
+    
 
 
 def newNames(oldname):

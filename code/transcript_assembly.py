@@ -75,8 +75,8 @@ def pasa_configuration(pasa_dir, pasa_db):
 def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length,threads):
     '''PASA to construct a database of transcripts. It will overwrite any 
     database with the same name -the one of the reference-.'''
-    args = ['Launch_PASA_pipeline.pl', '-c', conf_file, '--TRANSDECODER', '-C', '-r', '-R', '-g',
-            reference, '-t', transcripts, '--ALIGNERS', 'gmap', '-I', max_intron_length, '--CPU', str(threads)]
+    args = ['Launch_PASA_pipeline.pl', '-c', conf_file, '-C', '-r', '-R', '-g',
+            reference, '-t', transcripts, '--ALIGNERS', 'gmap', '--TRANSDECODER' ,'-I', max_intron_length, '--CPU', str(threads)]
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     #print out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file): 
