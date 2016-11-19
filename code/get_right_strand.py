@@ -169,8 +169,9 @@ def parseGff(input_filename):
     
     finalout = input_filename + ".simplifyied.gff3"
     errorFile = input_filename + "._err.log"
-    py_com=['parseGff3.py', input_filename , ">" ,finalout ]
-    py_call=subprocess.Popen(py_com, shell = True)
+    py_list=['parseGff3.py' ,  input_filename ]
+    py_com = ' '.join(py_list)
+    py_call=subprocess.Popen(py_com, stdout = file(finalout, 'w'), shell = True)
     py_call.communicate()
     return finalout
     
@@ -190,6 +191,6 @@ def newNames(oldname):
             
 if __name__ == '__main__':
     change = argv[1]
-    ref = "test"
-    test = changeName(change, ref)
+
+    test = parseGff(input_filename)
     
