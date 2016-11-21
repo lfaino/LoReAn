@@ -234,7 +234,7 @@ def main():
                     logistic.check_create_dir(star_out)
                     if ',' in args.short_reads:
                         pairedEndFiles = args.short_reads.split(',')
-                        short_1 = c
+                        short_1 = os.path.abspath(pairedEndFiles[0])
                         short_2 = os.path.abspath(pairedEndFiles[1])
                         short_reads_file = [short_1, short_2]
                         
@@ -243,20 +243,22 @@ def main():
                         
 
                     #Map with STAR
-                    short_sorted_bam = mapping.star(ref, short_reads_file, args.threads, args.max_intron_length, star_out) 
+                    short_bam = mapping.star(ref, short_reads_file, args.threads, args.max_intron_length, star_out)
+                    short_sorted_bam = mapping.samtools_sort(short_bam, args.threads, wd)
                     
                     #Keep the output
                     FinalFiles.append(short_sorted_bam)
                 ##BAM SORTED FILES GET IN HERE
-                elif 'sorted.bam' in args.short_reads:
+                elif 'bam' in args.short_reads:
                     star_out = wd + '/STAR/'
                     logistic.check_create_dir(star_out)
                     short_sorted_bam = os.path.abspath(args.short_reads)
                     cmdstring = "mv %s %s" % (short_sorted_bam, star_out)
                     os.system(cmdstring)
                     bam_file = args.short_reads.split("/")
-                    short_sorted_bam = star_out + "/" + bam_file[2]
-                    print short_sorted_bam
+                    short_bam = star_out + "/" + bam_file[2]
+                    short_sorted_bam = mapping.samtools_sort(short_bam, args.threads, wd)
+                    #print short_sorted_bam
                 else:
                     short_sorted_bam = False
                     print 'No short reads file'

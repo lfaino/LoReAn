@@ -62,21 +62,21 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     prefix = 'STAR_shortreads'
     if isinstance(reads, str): #Only one file
         args = ['STAR', '--runThreadN', threads, '--genomeDir', genome_dir, 
-            '--outSAMtype', 'BAM', 'SortedByCoordinate',  '--alignIntronMax', 
+            '--outSAMtype', 'BAM', 'Unsorted',  '--alignIntronMax', 
             max_intron_length, '--alignMatesGapMax', '1000', '--outFilterMismatchNmax', 
             '15', '--outFileNamePrefix', prefix, '--outSAMstrandField', 'intronMotif',
-            '--outFilterIntronMotifs', 'RemoveNoncanonical', '--outSAMattrIHstart', '1',
+            '--outFilterIntronMotifs', 'RemoveNoncanonical', '--outSAMattrIHstart', '1', '--outFilterMultimapNmax', '3',
             '--readFilesIn', reads] #### '--limitGenomeGenerateRAM', '1100000000',
     elif isinstance(reads, list): #Paired end reads
         args = ['STAR', '--runThreadN', threads, '--genomeDir', genome_dir, 
-            '--outSAMtype', 'BAM', 'SortedByCoordinate', '--alignIntronMax',
+            '--outSAMtype', 'BAM', 'Unsorted' ,'--alignIntronMax',
             max_intron_length, '--alignMatesGapMax', '1000', '--outFilterMismatchNmax', 
             '15', '--outFileNamePrefix', prefix, '--outSAMstrandField', 'intronMotif',
-            '--outFilterIntronMotifs', 'RemoveNoncanonical', '--outSAMattrIHstart', '1',
+            '--outFilterIntronMotifs', 'RemoveNoncanonical', '--outSAMattrIHstart', '1', '--outFilterMultimapNmax', '3',
             '--readFilesIn', reads[0], reads[1]]
     
     
-    filename = wd+prefix+'Aligned.sortedByCoord.out.bam'
+    filename = wd+prefix+'Aligned.out.bam'
    
     if os.path.isfile(filename): 
         print ('STAR alignment file existed already: ' + filename + ' --- skipping\n')
@@ -203,7 +203,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
         if not Fflag:
-            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '1' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
+            args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', '--min-intronlength', str(min_intron_length), '-n' , '3' , '--microexon-spliceprob' , '1' , '-K', str(max_intron_length), '-f', str(out_format), '-t', str(threads), reads]
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
                 #print '>GMAP worked. Output is: ' + filename +'\n'
@@ -212,7 +212,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                 raise NameError('')
         else:
             args = ['gmap', '-D', str(working_dir), '-d', str(reference_database),  '-H', str(exon_length), '--cross-species', '--expand-offsets', '1', '-B',  '5', 
-                '--min-intronlength', str(min_intron_length), '-F','-Y', '--microexon-spliceprob' , '1' ,'-n', '1', '-K', str(max_intron_length),
+                '--min-intronlength', str(min_intron_length), '-F','-Y', '--microexon-spliceprob' , '1' ,'-n', '3', '-K', str(max_intron_length),
                 '-f', str(out_format), '-t', str(threads), reads]
             try:
                 subprocess.check_call(args, stdout = out_f, stderr = log)
