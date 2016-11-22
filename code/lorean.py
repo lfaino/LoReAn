@@ -308,7 +308,19 @@ def main():
                 
                 print '\n###TRINITY###\n'
                 
-                trinity_out = transcripts.trinity(default_bam, wd, args.max_intron_length, args.threads)
+                trin_dir = wd + 'Trinity/'
+                logistic.check_create_dir(trin_dir)
+                #queue = Queue()
+                #for i in range(3):
+                    #queue.put(i) #QUEUE WITH A ZERO AND A ONE
+                    #for i in range(1):
+                        #t = Thread(target=handler.trinity, args =(default_bam, trin_dir, args.max_intron_length, args.threads, list_fasta_names ))
+                        ##AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd):
+                        #t.daemon = True
+                        #t.start()
+                #queue.join()
+
+                trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, args.threads)
                               
                     
                 #PASA Pipeline
