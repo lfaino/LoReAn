@@ -284,7 +284,7 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
 
 def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, transcripts_file, n_cpu):
     '''Loads a gff3 file into a PASA database '''
-    args = ['Launch_PASA_pipeline.pl', '--TRANSDECODER','--ALT_SPLICE','--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
+    args = ['Launch_PASA_pipeline.pl', '--TRANSDECODER','--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
             reference, '-t', transcripts_file]
     
     log_name = pasa_dir + 'update_gff3.log'
