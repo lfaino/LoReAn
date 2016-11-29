@@ -510,7 +510,8 @@ def main():
                         finalOutput = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                         updatedGff3 = grs.newNames(finalOutput)
                     else:
-                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                        #updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                        updatedGff3 = evm_gff3
                     
                     
                 ##Keep this output
