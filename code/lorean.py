@@ -510,8 +510,7 @@ def main():
                         finalOutput = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                         updatedGff3 = grs.newNames(finalOutput)
                     else:
-                        #updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
-                        updatedGff3 = evm_gff3
+                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
                     
                     
                 ##Keep this output
@@ -553,13 +552,13 @@ def main():
                         long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd)
                     
             ##HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE FILE
-                    mergedmapGFF3 = consensus_wd + 'mergedGmapEvm.beforeAssembly.gff3'
+                    fileName = consensus_wd + 'mergedGmapEvm.beforeAssembly.gff3'
             ##HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM ORIGINAL FILE        
                     if os.path.isfile(updatedGff3):
                         ##HERE WE MERGE THE TWO FILES
-                        logistic.catTwoBeds(long_sorted_bam, updatedGff3, mergedmapGFF3)
+                        mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName)
                     else:
-                        logistic.catTwoBeds(long_sorted_bam, evm_gff3, mergedmapGFF3)
+                        mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName)
                     
                     print "\n\t#GFFREAD\n"
                     

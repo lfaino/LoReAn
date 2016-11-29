@@ -246,22 +246,24 @@ def samtools_view(sam_file, wd):
 def samtools_sort(bam_file, threads, wd):
     '''BAM sorting'''
     s_bam_filename = bam_file + '.sorted'
-    args = ['samtools', 'sort', '-@', str(threads), bam_file , s_bam_filename]
-    s_bam_filename = s_bam_filename
-    if os.path.isfile(s_bam_filename): 
-        print ('Sorted BAM file existed already: ' + s_bam_filename + 
-               '.bam --- skipping\n')
-        return s_bam_filename
-    log_name = wd + 'samtools_sort.log'
-    log = open(log_name, 'w')  
-    try:
-        subprocess.check_call(args, stderr = log)
-        
-        #print '> BAM sorted in ' + s_bam_filename + '\n'
-    except:
-        #print 'Samtools sort failed'
-        raise NameError('')
-    log.close()
+    
+    if not os.path.isfile(s_bam_filename + '.bam'):
+        args = ['samtools', 'sort', '-@', str(threads), bam_file , s_bam_filename]
+        s_bam_filename = s_bam_filename
+        if os.path.isfile(s_bam_filename): 
+            print ('Sorted BAM file existed already: ' + s_bam_filename + 
+                '.bam --- skipping\n')
+            return s_bam_filename
+        log_name = wd + 'samtools_sort.log'
+        log = open(log_name, 'w')  
+        try:
+            subprocess.check_call(args, stderr = log)
+            
+            #print '> BAM sorted in ' + s_bam_filename + '\n'
+        except:
+            #print 'Samtools sort failed'
+            raise NameError('')
+        log.close()
     sor_bam_filename = s_bam_filename + ".bam"
     return sor_bam_filename
    
