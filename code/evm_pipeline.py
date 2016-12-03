@@ -282,11 +282,18 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file):
     stdout_f.close()
     return processID
 
-def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, transcripts_file, n_cpu):
+def annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, transcripts_file, n_cpu, valueS):
     '''Loads a gff3 file into a PASA database '''
-    args = ['Launch_PASA_pipeline.pl', '--TRANSDECODER','--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
-            reference, '-t', transcripts_file]
+    '''Loads a gff3 file into a PASA database '''
     
+    if valueS is "a":
+	print "\t UPDATING WITH ALT-SPLICE"
+        args = ['Launch_PASA_pipeline.pl', '--ALT_SPLICE','--TRANSDECODER','--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
+            reference, '-t', transcripts_file]
+    else:
+	print "\t UPDATING WITHOUT ALT-SPLICE"
+        args = ['Launch_PASA_pipeline.pl', '--TRANSDECODER','--CPU', str(n_cpu) , '-c', annot_conf_file, '-A', '-g',
+            reference, '-t', transcripts_file]
     log_name = pasa_dir + 'update_gff3.log'
     log = open(log_name, 'w')
     log_out_name = pasa_dir + 'pasa.out.log'
@@ -326,7 +333,7 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
         raise NameError('')
     return new_filename
 
-def update_database(n_cpu , round_n,  pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file):
+def update_database(n_cpu , round_n,  pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file, valueS):
     '''Updates the gff3 file with the PASA database'''       
     print '\t###CREATING CONFIGURATION FILE###\n'
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
@@ -335,7 +342,7 @@ def update_database(n_cpu , round_n,  pasa_dir, pasa_db, align_conf_file, refere
     processID = load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file)
     print '\t###UPDATING GFF3 FILE###\n'
     annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference, 
-                     transcripts_file, n_cpu)
+                     transcripts_file, n_cpu, valueS)
     print '\t###PARSING OUTPUT###\n'
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
     return gff3_out

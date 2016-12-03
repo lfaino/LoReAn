@@ -503,15 +503,16 @@ def main():
                     
                     print ('UPDATE ALREADY PERFORMED --- skipping') 
                     updatedGff3 = firstRound
+                    round_n = 1
                 else:
                     round_n += 1
                     print '\n##UPDATE ROUND ###\n'
                     if args.long_reads == "":
-                        finalOutput = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
+                        finalOutput = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3, "a")
                         updatedGff3 = grs.newNames(finalOutput)
                     else:
-                        updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3)
-                    
+                        #updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3, "b")
+                    	updatedGff3 = evm_gff3
                     
                 ##Keep this output
                 FinalFiles.append(updatedGff3)
@@ -637,9 +638,17 @@ def main():
         simplified = grs.parseGff(finalOutput)
         newName = grs.newNames(simplified)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
+        round_n += 1
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, newName, "a")
+        FinalFiles.append(final)
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
-        final = evm_pipeline.update_database(args.threads, "2", pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, newName)
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName, "a")
+        FinalFiles.append(final)
+        fastaAll = logistic.catTwoFasta(fastaAll, gffreadFastaFile, pasa_dir)
+        round_n += 1
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName, "a")
+
         FinalFiles.append(simplified)
         FinalFiles.append(final) 
         FinalFiles.append(finalOutput)

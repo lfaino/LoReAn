@@ -77,18 +77,32 @@ def catTwoBeds(gmap, evm, outFilename):
     for line in lastFile:
         countLine += 1
         linenew = line.split('\t')
-        linenew[3] = str(countLine)
-        aline = '\t'.join(linenew)
-        o.write(aline)
+        if "evm" in linenew[3]:
+            #aline = '\t'.join(linenew)
+            o.write(line)
+#            print line
+        else:
+            linenew[3] = str(countLine)
+            aline = '\t'.join(linenew)
+            o.write(aline)
     o.close()
     return outNameNew
 
 def catTwoFasta(trinity, consens, wd):
     '''Concatenates the two fasta file into one output'''
     outFileFasta = wd + "/allFasta.fasta.clean"
-    cat_con = ['cat', trinity, consens ]
-    cat_call = subprocess.Popen(cat_con, stdout = file(outFileFasta , "w"))
-    cat_call.communicate()
+    if os.path.isfile(outFileFasta):
+        allOutFasta = outFileFasta + ".long.clean"
+        cat_con = ['cat', trinity, consens ]
+        cat_call = subprocess.Popen(cat_con, stdout = file(allOutFasta , "w"))
+        cat_call.communicate()
+        outFileFasta = allOutFasta
+    else:
+        cat_con = ['cat', trinity, consens ]
+        cat_call = subprocess.Popen(cat_con, stdout = file(outFileFasta , "w"))
+        cat_call.communicate()
+
+        
     return outFileFasta
 
 
