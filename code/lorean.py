@@ -638,9 +638,21 @@ def main():
         simplified = grs.parseGff(finalOutput)
         newName = grs.newNames(simplified)
         ##HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN PASA TO CORRECT SMALL ERRORS
+<<<<<<< HEAD
         round_n += 1
         final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, newName, "a")
         FinalFiles.append(final)
+=======
+        round_n += 1
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, newName, "a")
+        FinalFiles.append(final)
+        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
+        round_n += 1
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName, "a")
+        FinalFiles.append(final)
+        fastaAll = logistic.catTwoFasta(fastaAll, gffreadFastaFile, pasa_dir)
+        round_n += 1
+        final = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll, newName, "a")
 
         FinalFiles.append(simplified)
         FinalFiles.append(final) 
