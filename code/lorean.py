@@ -646,9 +646,7 @@ def main():
             # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
             # AFTER EVM; #We only want to update if it ran with short reads
 
-            if (args.short_reads != "" and not args.no_update) or (
-                    args.long_reads != "" and not args.no_update):
-
+            if (args.short_reads != "" and not args.no_update) and (args.long_reads == "" and not args.no_update):
                 print'\n###UPDATE WITH PASA DATABASE###\n'
 
                 # for round_n in range(1,3): #Two rounds, 1 & 2
@@ -674,12 +672,6 @@ def main():
                             evm_gff3,
                             "a")
                         updatedGff3 = grs.newNames(finalOutput)
-                    else:
-                        #updatedGff3 = evm_pipeline.update_database(args.threads ,  str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, trinity_out, evm_gff3, "b")
-                        updatedGff3 = evm_gff3
-
-                # Keep this output
-                FinalFiles.append(updatedGff3)
 
             else:
                 updatedGff3 = evm_gff3
@@ -871,9 +863,9 @@ def main():
             newName,
             "a")
 
-        FinalFiles.append(simplified)
+
         FinalFiles.append(final)
-        FinalFiles.append(finalOutput)
+
 
         print'\n###CREATING OUTPUT DIRECTORY###\n'
 
