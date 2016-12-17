@@ -800,7 +800,6 @@ def main():
             evm_nosupport,
             mergedFastaFilename)
 
-        FinalFiles.append(mergedFastaFilename)
         # shutil.rmtree(tmp_wd)
 
         print "\n###MAPPING CONSENSUS ASSEMBLIES###\n"
@@ -817,7 +816,6 @@ def main():
             args.H,
             gmap_wd,
             Fflag=True)
-        FinalFiles.append(consensusMappedGFF3)
 
         print "\n###GETTING THE STRAND RIGHT###\n"
 
