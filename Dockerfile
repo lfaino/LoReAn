@@ -40,8 +40,8 @@ RUN tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
 
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.0.2.tar.gz && tar -zxvf v2.0.2.tar.gz && rm v2.0.2.tar.gz &&\
     cd PASApipeline-2.0.2 && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/ 
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.2.tar.gz && \
-    tar -zxvf augustus-3.2.2.tar.gz && rm augustus-3.2.2.tar.gz && mv augustus-3.2.2 augustus && cd augustus  && make clean && make 
+RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.3.tar.gz && \
+    tar -zxvf augustus-3.2.3.tar.gz && rm augustus-3.2.3.tar.gz && mv augustus-3.2.3 augustus && cd augustus  && make clean && make 
     
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz && tar -zxvf v2.2.0.tar.gz && rm v2.2.0.tar.gz && cd trinityrnaseq-2.2.0 && make && make plugins 
 
