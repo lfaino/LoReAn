@@ -450,7 +450,7 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
             update_file = filename
 
     new_filename = pasa_dir + \
-        'annotation.PASAupdated.round' + str(round_n) + '.gff3'
+        'FinalAnnotationLorean' + '.gff3'
     args = ['mv', update_file, new_filename]
 
     try:
@@ -481,4 +481,11 @@ def update_database(
                      transcripts_file, n_cpu, valueS)
     print '\t###PARSING OUTPUT###\n'
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
+    
+    #gffread_con = ['gffread', '-o-', '-T', gff3_out]
+    #gffread_call = subprocess.Popen(gffread_con, stdout=PIPE.subprocess)
+    #gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy'], stdin = stdout.gffread_call)
+    
+    #gffread_call.communicate()
+    
     return gff3_out
