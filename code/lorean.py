@@ -59,6 +59,7 @@ import handlers as handler
 import get_right_strand as grs
 import multithread_large_fasta as multiple
 import reduceUTRs as utrs
+import parseGff3 as parsegff3
 
 ####################################
 ### CHEKS BEFORE START LOREAN ######
@@ -671,7 +672,8 @@ def main():
                             trinity_out,
                             evm_gff3,
                             "a")
-                        updatedGff3 = grs.newNames(finalOutput)
+                        final = parsegff3.genename(finalOutput, prefix)
+                        updatedGff3 = grs.newNames(final)
 
             else:
                 updatedGff3 = evm_gff3
@@ -850,7 +852,7 @@ def main():
         fastaAll = logistic.catTwoFasta(
             trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
-        final = evm_pipeline.update_database(
+        finalupdate = evm_pipeline.update_database(
             args.threads,
             str(round_n),
             pasa_dir,
@@ -860,6 +862,7 @@ def main():
             fastaAll,
             newName,
             "a")
+        final = parsegff3.genename(finalupdate, prefix)
 
 
         FinalFiles.append(final)

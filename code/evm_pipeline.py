@@ -482,10 +482,5 @@ def update_database(
     print '\t###PARSING OUTPUT###\n'
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
     
-    #gffread_con = ['gffread', '-o-', '-T', gff3_out]
-    #gffread_call = subprocess.Popen(gffread_con, stdout=PIPE.subprocess)
-    #gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy'], stdin = stdout.gffread_call)
-    
-    #gffread_call.communicate()
     
     return gff3_out
