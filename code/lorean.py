@@ -672,7 +672,7 @@ def main():
                             trinity_out,
                             evm_gff3,
                             "a")
-                        final = parsegff3.genename(finalOutput, prefix)
+                        final = parsegff3.genename(finalOutput, args.prefix_gene)
                         updatedGff3 = grs.newNames(final)
 
             else:
@@ -842,7 +842,6 @@ def main():
             pasaOut,
             outputList_gmap_all,
             outputList_pasa_all,
-            args.prefix_gene,
             gmap_wd)
         simplified = grs.parseGff(finalOutput)
         newName = grs.newNames(simplified)
@@ -862,7 +861,7 @@ def main():
             fastaAll,
             newName,
             "a")
-        final = parsegff3.genename(finalupdate, prefix)
+        final = parsegff3.genename(finalupdate, args.prefix_gene)
 
 
         FinalFiles.append(final)

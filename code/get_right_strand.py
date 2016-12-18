@@ -62,7 +62,7 @@ def compare_dicts(multiExon, gmapAll, pasaAll):
     return gmapOut, pasaSingle
 
 
-def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, ref, wd):
+def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, wd):
     '''the function check for the rigth strand between the GMAP gff3 and the PASA gff3'''
     outputFilename = wd + 'finalAnnotation.gff3'
     outputFile = open(outputFilename, 'w')
