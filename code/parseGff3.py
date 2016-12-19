@@ -59,6 +59,7 @@ def genename(gff_filename, prefix):
             else:
                 o.write ('\t'.join(fields) + '\n')
     o.close()
+    return newpath
 #Chr8    VDAG_Jr2_v4.0.NCBIorder.fasta_GMAPindex gene    3358883 3360550 .       +       .       ID=gene11025;Name=Gene12296_evm.model.Chr8.941
 #Chr8    VDAG_Jr2_v4.0.NCBIorder.fasta_GMAPindex mRNA    3358883 3360550 .       +       .       ID=mRNA11134;Parent=gene11025;Name=Gene12296_evm.model.Chr8.941
         
