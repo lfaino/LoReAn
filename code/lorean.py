@@ -86,9 +86,6 @@ def arguments():
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Jose Espejo Valle-Inclan - April 2016')
 
-    # Specify arguments
-    #parser.add_argument('--example', nargs='?', const=1, type=int, default=1)
-
     parser.add_argument('protein_evidence',
                         help="Path to protein sequences FASTA file []")
     parser.add_argument("ref",
@@ -100,11 +97,9 @@ def arguments():
                         help="Run LoReAn on stranded mode [FALSE]",
                         action='store_true')
     parser.add_argument("--fungus",
-                        help="Run LoReAn on fungal species [FALSE]",
+                        help="Use this option for fungal species or for species with overlappinh UTRs [FALSE]",
                         action='store_true')
-    parser.add_argument("--collect_only",
-                        help="Collect only assebmled transcripts [FALSE]",
-                        action='store_true')
+    
     parser.add_argument(
         "--only_unitigs",
         help="Removes gene models that are not supported by long reads [FALSE]",
@@ -195,9 +190,6 @@ def arguments():
     parser.add_argument("-H", nargs="?", default="20",
                         help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
-    # parser.add_argument("--cluster_min_read_length", nargs="?", default="100",
-    #help="Minimal read length to be considered for CONSENSUS pipeline [100]",
-    # metavar = 'N')
     parser.add_argument("--cluster_min_evidence", nargs="?", default="5",
                         help="Minimal evidence needed to form a cluster [5]",
                         metavar='N')
@@ -232,6 +224,15 @@ def arguments():
     parser.add_argument("--no_update",
                         help="Do not run the PASA update[FALSE]",
                         action='store_true')
+    parser.add_argument("--collect_only",
+                        help="Collect only assebmled transcripts [FALSE]",
+                        action='store_true')
+    #parser.add_argument("--SS_lib_type",
+                        #help="For strand specific short reads RNA-Seq set the orientation (see Trinity manual):
+                        #if paired options are RF or FR; 
+                        #if single options are F or R (dUTP method = RF)",
+                        #nargs="?")
+
 
     # Parse and set defaults for optional arguments
     args = parser.parse_args()
@@ -311,7 +312,7 @@ def main():
                     short_sorted_bam = False
                     print 'No short reads file'
                 # LONG READS
-                if 'fastq' in args.long_reads or 'fq' in args.long_reads:
+                if 'fastq' in args.long_reads or 'fq' in args.long_reads or 'fasta' in args.long_reads or 'fa' in args.long_reads  :
                     # with this operation, reads are filtered for their length.
                     # Nanopore reads can be chimaras or sequencing artefacts.
                     # filtering on length reduces the amount of sequencing
@@ -319,7 +320,7 @@ def main():
 
                     print "\n###FILTERING OUT LONG READS###\n"
 
-                    long_fastq, filter_count = mapping.filterLongReads(
+                    long_fasta, filter_count = mapping.filterLongReads(
                         args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd)
 
                     if filter_count != 0:
@@ -332,7 +333,7 @@ def main():
                         long_sam = mapping.gmap(
                             'sam',
                             ref,
-                            long_fastq,
+                            long_fasta,
                             args.threads,
                             'samse',
                             args.min_intron_length,
@@ -369,18 +370,9 @@ def main():
 
                 trin_dir = wd + 'Trinity/'
                 logistic.check_create_dir(trin_dir)
-                #queue = Queue()
-                # for i in range(3):
-                # queue.put(i) #QUEUE WITH A ZERO AND A ONE
-                # for i in range(1):
-                #t = Thread(target=handler.trinity, args =(default_bam, trin_dir, args.max_intron_length, args.threads, list_fasta_names ))
-                # AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd):
-                #t.daemon = True
-                # t.start()
-                # queue.join()
 
                 trinity_out = transcripts.trinity(
-                    default_bam, trin_dir, args.max_intron_length, args.threads)
+                    default_bam, trin_dir, args.max_intron_length, args.threads, args.fungus, long_fasta)
 
                 # PASA Pipeline
 
@@ -710,7 +702,7 @@ def main():
                         long_sam = mapping.gmap(
                             'sam',
                             ref,
-                            long_fastq,
+                            long_fasta,
                             args.threads,
                             'samse',
                             args.min_intron_length,

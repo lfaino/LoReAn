@@ -197,23 +197,44 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
 
 def filterLongReads(fastqFilename, min_length, max_length, wd):
     '''Filters out reads longer than length provided'''
-    fastqFile = open(fastqFilename, 'r')
-    fastq = SeqIO.parse(fastqFile, 'fastq')
-    outFilename = wd + 'longreads.filtered.fastq'
-    if os.path.isfile(outFilename):
-        print ('Filtered FASTQ existed already: ' +
-               outFilename + ' --- skipping\n')
-        return outFilename, 0
-    outFile = open(outFilename, 'w')
-    filter_count = 0
-    for record in fastq:
-        if len(str(record.seq)) > int(min_length) and len(
-                str(record.seq)) < int(max_length):
-            record.id = str(filter_count)
-            SeqIO.write(record, outFile, 'fastq')
-            filter_count += 1
-    fastqFile.close()
-    outFile.close()
+    if 'fastq' in fastqFilename or 'fq' in fastqFilename:
+        fastqFile = open(fastqFilename, 'r')
+        fastq = SeqIO.parse(fastqFile, 'fastq')
+        outFilename = wd + 'longreads.filtered.fasta'
+        if os.path.isfile(outFilename):
+            print ('Filtered FASTQ existed already: ' +
+                outFilename + ' --- skipping\n')
+            return outFilename, 0
+        outFile = open(outFilename, 'w')
+        filter_count = 0
+        for record in fastq:
+            if len(str(record.seq)) > int(min_length) and len(
+                    str(record.seq)) < int(max_length):
+                record.id = str(filter_count)
+                SeqIO.write(record, outFile, 'fasta')
+                filter_count += 1
+        fastqFile.close()
+        outFile.close()
+        
+    else:
+        fastqFile = open(fastqFilename, 'r')
+        fastq = SeqIO.parse(fastqFile, 'fasta')
+        outFilename = wd + 'longreads.filtered.fasta'
+        if os.path.isfile(outFilename):
+            print ('Filtered FASTA existed already: ' +
+                outFilename + ' --- skipping\n')
+            return outFilename, 0
+        outFile = open(outFilename, 'w')
+        filter_count = 0
+        for record in fastq:
+            if len(str(record.seq)) > int(min_length) and len(
+                    str(record.seq)) < int(max_length):
+                record.id = str(filter_count)
+                SeqIO.write(record, outFile, 'fasta')
+                filter_count += 1
+        fastqFile.close()
+        outFile.close()
+
     return outFilename, filter_count
 
 

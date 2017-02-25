@@ -11,25 +11,47 @@ import os
 import subprocess
 
 
-def trinity(bam_file, wd, max_intron_length, threads):
+def trinity(bam_file, wd, max_intron_length, threads, fungus, long_reads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
-    real_threads = (int(threads)) / 2
+    real_threads = (int(threads))
     out_dir = wd + 'trinity_out_dir/'
-    args = [
-        'Trinity',
-        '--genome_guided_bam',
-        bam_file,
-        '--genome_guided_max_intron',
-        max_intron_length,
-        '--max_memory',
-        '10G',
-        '--output',
-        out_dir,
-        '--CPU',
-        str(real_threads)]
+    
+    basearg = [
+                'Trinity',
+                '--genome_guided_bam',
+                bam_file,
+                '--genome_guided_max_intron',
+                max_intron_length,
+                '--max_memory',
+                '10G',
+                '--output',
+                out_dir,
+                '--CPU',
+                str(real_threads),
+                '--full_cleanup']
+    
+    if long_reads == '':
+        if fungus:
+            args = basearg + [
+                '--jaccard_clip']
+        else:
+            args = basearg
+    else:
+        if fungus:
+            args = basearg + [
+                '--jaccard_clip',
+                '--long_reads',
+                long_reads]
+        else:
+            args = basearg + [
+                '--long_reads',
+                long_reads]
+        
+    
     out_name = out_dir + 'Trinity-GG.fasta'
 
+        
     if os.path.isfile(out_name):
         print (
             'Trinity-GG file existed already: ' +
