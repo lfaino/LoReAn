@@ -11,13 +11,13 @@ import os
 import subprocess
 
 
-def trinity(bam_file, wd, max_intron_length, threads, fungus, long_reads):
+def trinity(bam_file, wd, max_intron_length, threads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
     real_threads = (int(threads))
     out_dir = wd + 'trinity_out_dir/'
     
-    basearg = [
+    args = [
                 'Trinity',
                 '--genome_guided_bam',
                 bam_file,
@@ -30,24 +30,6 @@ def trinity(bam_file, wd, max_intron_length, threads, fungus, long_reads):
                 '--CPU',
                 str(real_threads),
                 '--full_cleanup']
-    
-    if long_reads == '':
-        if fungus:
-            args = basearg + [
-                '--jaccard_clip']
-        else:
-            args = basearg
-    else:
-        if fungus:
-            args = basearg + [
-                '--jaccard_clip',
-                '--long_reads',
-                long_reads]
-        else:
-            args = basearg + [
-                '--long_reads',
-                long_reads]
-        
     
     out_name = out_dir + 'Trinity-GG.fasta'
 

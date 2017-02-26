@@ -84,7 +84,7 @@ def arguments():
         prog='lorean',
         usage='%(prog)s [options] protein_sequences reference species_name',
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
-        epilog='Jose Espejo Valle-Inclan - April 2016')
+        epilog='Luigi Faino - March 2017')
 
     parser.add_argument('protein_evidence',
                         help="Path to protein sequences FASTA file []")
@@ -97,9 +97,8 @@ def arguments():
                         help="Run LoReAn on stranded mode [FALSE]",
                         action='store_true')
     parser.add_argument("--fungus",
-                        help="Use this option for fungal species or for species with overlappinh UTRs [FALSE]",
+                        help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
                         action='store_true')
-    
     parser.add_argument(
         "--only_unitigs",
         help="Removes gene models that are not supported by long reads [FALSE]",
@@ -112,7 +111,8 @@ def arguments():
         '--short_reads',
         nargs="?",
         default="",
-        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
+        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). 
+        BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
         metavar='FASTQ_file')
     parser.add_argument('--long_reads', nargs="?", default="",
                         help="Path to long reads FASTQ []",
@@ -341,7 +341,7 @@ def main():
                             args.H,
                             gmap_wd,
                             Fflag=False)
-                        split_option = 'split'
+                        
 
                         # Convert to sorted BAM
                         long_sorted_bam = mapping.sam_to_sorted_bam(
@@ -372,7 +372,7 @@ def main():
                 logistic.check_create_dir(trin_dir)
 
                 trinity_out = transcripts.trinity(
-                    default_bam, trin_dir, args.max_intron_length, args.threads, args.fungus, long_fasta)
+                    default_bam, trin_dir, args.max_intron_length, args.threads)
 
                 # PASA Pipeline
 
