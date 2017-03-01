@@ -7,6 +7,10 @@ LoReAn requires three mandatory files:
 * Reference genome 
 * Genome name
 
+To install the software go to:
+
+[Installation of LoReAn] (INSTALL.md)
+
 The software can be run after installatio by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
