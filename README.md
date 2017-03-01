@@ -1,10 +1,6 @@
 # LoReAn
-Authors:
-- Luigi Faino
-- David Cook 
-- Jose A. Espejo
 
-# HOT TO RUN
+##HOT TO RUN
 
 LoReAn requires three mandatory files:
 * Protein Sequences
@@ -20,7 +16,7 @@ LoReAn can run BRAKER1 to improve Augustus gene prediction;
 
 To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
-# SOFTWARE USED IN THE PIPELINE
+##SOFTWARE USED IN THE PIPELINE
 
 - samtools
 - bedtools
@@ -39,3 +35,8 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 - EVidenceModeler1.1.1
 - gffread
 - genometools-1.5.9
+
+##AUTHORS:
+- Luigi Faino
+- David Cook 
+- Jose A. Espejo
