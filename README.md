@@ -11,6 +11,7 @@ LoReAn requires three mandatory files:
 * Reference genome 
 * Genome name
 The software can be run after installatio by:
+
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 
 
