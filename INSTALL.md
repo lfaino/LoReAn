@@ -1,6 +1,6 @@
-#### LOREAN INSTALLATION
+# LOREAN INSTALLATION
 
-### IMPORTANT
+# IMPORTANT
 LoReAn uses GeneMark-ES as ab-initio software which needs a license key to run. Therefore, IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.32" website (http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the folder together with your data.
 
 The best way to use LoReAn is by installing and running the software by Docker
@@ -14,8 +14,9 @@ docker pull lfaino/lorean
 
 Next, create a folder in your preferred location (be sure that you have enogh storage space on your drive) and run: 
 
+```bash
 chmod -R 777 <folder>
-
+```
 Place all your files (short reads, long reads, protein sequence, genome sequences) in the folder and run:
 
 chmod -R 777 < from inside the folder> 
