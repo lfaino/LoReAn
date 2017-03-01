@@ -4,7 +4,7 @@ Authors:
 - David Cook 
 - Jose A. Espejo
 
-# HOT OT RUN
+# HOT TO RUN
 
 LoReAn requires three mandatory files:
 * Protein Sequences
@@ -15,6 +15,10 @@ The software can be run after installatio by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 ```
+
+LoReAn can run BRAKER1 to improve Augustus gene prediction;
+
+To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 # SOFTWARE USED IN THE PIPELINE
 
