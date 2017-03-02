@@ -195,12 +195,16 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
     return out_file
 
 
-def filterLongReads(fastqFilename, min_length, max_length, wd):
+def filterLongReads(fastqFilename, min_length, max_length, wd, a):
     '''Filters out reads longer than length provided'''
+    if a:
+        outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
+    else:
+        outFilename = fastqFilename + '.longreads.filtered.fasta'
+    
     if 'fastq' in fastqFilename or 'fq' in fastqFilename:
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fastq')
-        outFilename = wd + 'longreads.filtered.fasta'
         if os.path.isfile(outFilename):
             print ('Filtered FASTQ existed already: ' +
                 outFilename + ' --- skipping\n')
@@ -219,7 +223,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd):
     else:
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fasta')
-        outFilename = wd + 'longreads.filtered.fasta'
+#        outFilename = fastqFilename + 'longreads.filtered.fasta'
         if os.path.isfile(outFilename):
             print ('Filtered FASTA existed already: ' +
                 outFilename + ' --- skipping\n')

@@ -124,6 +124,7 @@ def fasta2Dict(fastaFilename):
     for key, seq2 in fastaDict2.items():
         seq = str(seq2.seq).replace("N", "")
         fastaDict[key] = seq
+        del fastaDict2[key]
     fastaFile.close()
     return fastaDict
 

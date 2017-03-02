@@ -320,7 +320,7 @@ def main():
                     print "\n###FILTERING OUT LONG READS###\n"
 
                     long_fasta, filter_count = mapping.filterLongReads(
-                        args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd)
+                        args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd , a = True)
 
                     if filter_count != 0:
                         print "LOREAN KEPT " + str(filter_count) + " READS AFTER LENGTH FILTERING\n"
@@ -732,6 +732,10 @@ def main():
                     gffreadFastaFile = consensus.gffread(
                         mergedmapGFF3, ref, consensus_wd)
                     # HERE WE STORE THE SEQUENCE IN A DICTIONARY
+                    
+                    long_fasta, filter_count = mapping.filterLongReads(
+                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, a = False)
+
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
 
                     print "\n\t#CLUSTERING\n"
