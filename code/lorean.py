@@ -111,8 +111,7 @@ def arguments():
         '--short_reads',
         nargs="?",
         default="",
-        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). 
-        BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
+        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
         metavar='FASTQ_file')
     parser.add_argument('--long_reads', nargs="?", default="",
                         help="Path to long reads FASTQ []",
