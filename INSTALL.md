@@ -44,6 +44,6 @@ Docker builds container every time the code is updated or modified. Therefore, a
 infrastructure dependent. Therefore, if you get a PASA error and the file **annotation/run/PASA/gmap.spliced_alignments.gff3** is empty, try to re-compile GMAP from inside the 
 container using:
 ```bash
-cd ~/bin/LoReAn/third_party/software/gmap; make clean; ./configure ; make ; sudo make install
+cd ~/bin/LoReAn/third_party/software/gmap; make clean; ./configure ; make ; sudo make install ; cd /data/
 ```
 
