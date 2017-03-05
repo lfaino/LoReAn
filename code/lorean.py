@@ -819,6 +819,8 @@ def main():
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
+        
+        
         outputList_gmap_multi = grs.gffread_multiexons(
             consensusMappedGFF3, multiExonFlag=True)
         outputList_gmap_all = grs.gffread_multiexons(consensusMappedGFF3)
