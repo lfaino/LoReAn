@@ -821,27 +821,29 @@ def main():
         # INVERT THE ORIGINAL STRAND
         
         
-        outputList_gmap_multi = grs.gffread_multiexons(
-            consensusMappedGFF3, multiExonFlag=True)
-        outputList_gmap_all = grs.gffread_multiexons(consensusMappedGFF3)
-        if os.path.isfile(updatedGff3):
-            outputList_pasa_all = grs.gffread_multiexons(updatedGff3)
-        else:
-            outputList_pasa_all = grs.gffread_multiexons(evm_gff3)
-        gmap_dict_multi = grs.gffread_parser(outputList_gmap_multi)
-        gmap_dict_all = grs.gffread_parser(outputList_gmap_all)
-        pasa_dict_all = grs.gffread_parser(outputList_pasa_all)
+        #outputList_gmap_multi = grs.gffread_multiexons(
+            #consensusMappedGFF3, multiExonFlag=True)
+        #outputList_gmap_all = grs.gffread_multiexons(consensusMappedGFF3)
+        #if os.path.isfile(updatedGff3):
+            #outputList_pasa_all = grs.gffread_multiexons(updatedGff3)
+        #else:
+            #outputList_pasa_all = grs.gffread_multiexons(evm_gff3)
+        #gmap_dict_multi = grs.gffread_parser(outputList_gmap_multi)
+        #gmap_dict_all = grs.gffread_parser(outputList_gmap_all)
+        #pasa_dict_all = grs.gffread_parser(outputList_pasa_all)
 
-        gmapOut, pasaOut = grs.compare_dicts(
-            gmap_dict_multi, gmap_dict_all, pasa_dict_all)
-        finalOutput = grs.combineGff3(
-            gmapOut,
-            pasaOut,
-            outputList_gmap_all,
-            outputList_pasa_all,
-            gmap_wd)
-        simplified = grs.parseGff(finalOutput)
-        newName = grs.newNames(simplified)
+        #gmapOut, pasaOut = grs.compare_dicts(
+            #gmap_dict_multi, gmap_dict_all, pasa_dict_all)
+        #finalOutput = grs.combineGff3(
+            #gmapOut,
+            #pasaOut,
+            #outputList_gmap_all,
+            #outputList_pasa_all,
+            #gmap_wd)
+            
+        finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
+        #simplified = grs.parseGff(finalOutput)
+        newName = grs.newNames(finalOutput)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
@@ -858,7 +860,7 @@ def main():
             fastaAll,
             newName,
             "a")
-        final = parsegff3.genename(finalupdate, args.prefix_gene)
+        final = grs.genename(finalupdate, args.prefix_gene)
 
 
         FinalFiles.append(final)

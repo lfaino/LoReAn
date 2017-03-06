@@ -4,169 +4,13 @@
 ###IMPORTS###
 ###############
 
-from sys import argv
-import subprocess
-import re
-import copy
-from BCBio import GFF
-from gffutils.iterators import DataIterator
 import gffutils
+from sys import argv
+import re
+import subprocess
+import gffutils.gffwriter as gffwriter
 
 
-def gffread_multiexons(gff3Filename, multiExonFlag=False):
-    '''Reports the multiexon genes in a GFF3 file - Output from GMAP'''
-    if multiExonFlag:
-        args = ['gffread', gff3Filename, '-o-', '-U']
-    else:
-        args = ['gffread', gff3Filename, '-o-']
-    output = subprocess.check_output(args)
-    outputList = output.splitlines()
-    return outputList
-
-
-def gffread_parser(gffreadOutput):
-    '''Parses the multiexon output to write a dict with names'''
-    multiexon_dict = {}
-    for line in gffreadOutput:
-        if 'mRNA' in line:
-            modline = re.split('\t|;', line)
-            for element in modline:
-                if element.startswith('ID='):
-                    key = element.split('=')[-1]
-                    if '_' in key:
-                        spl_key = key.split('_')
-                        key = spl_key[0]
-                        el = spl_key[1]
-                    else:
-                        el = ''
-                    if '.mrna' in el:
-                        el = el.split('.mrna')[0]
-                    multiexon_dict[key] = el
-    return multiexon_dict
-
-
-def compare_dicts(multiExon, gmapAll, pasaAll):
-    '''first compares the pasa dict with the multiexon, then the ones from gmap
-    to take all the single exon genes'''
-    pasaSingle = {}
-
-    for key in pasaAll.keys():
-        if key not in multiExon.values():
-            pasaSingle[key] = ''
-    gmapSingle = {}
-    for key, value in gmapAll.items():
-        if key not in multiExon and value not in pasaSingle:
-
-            gmapSingle[key] = value
-    gmapOut = dict(multiExon.items() + gmapSingle.items())
-    return gmapOut, pasaSingle
-
-
-def combineGff3(gmapDict, pasaDict, gffreadGMAP, gffreadPASA, wd):
-    '''the function check for the rigth strand between the GMAP gff3 and the PASA gff3'''
-    outputFilename = wd + 'finalAnnotation.gff3'
-    outputFile = open(outputFilename, 'w')
-    for line in gffreadGMAP:
-        line = line.strip()
-        if line.startswith('#'):
-            continue
-        modline = re.split('\t|;', line)
-        if modline[2] == 'mRNA':
-            for element in modline:
-                if element.startswith('ID='):
-                    cand_key = element.split('=')[-1]
-                    cand_key = cand_key.split('.mrna')[0]
-                    cand_key = cand_key.split('_')[0]
-                    if cand_key in gmapDict:
-                        gene_line = copy.copy(line)
-                        gene_line = gene_line.split('\t')
-                        gene_line[2] = 'gene'
-                        attr = gene_line[-1].split(';')
-                        attr_changed = ''
-                        for element in attr:
-                            if element.startswith('geneID='):
-                                attr_changed += 'ID=' + \
-                                    element.split('=')[-1] + ';'
-                            elif element.startswith('gene_name='):
-                                attr_changed += 'Name=' + \
-                                    element.split('=')[-1]
-                        gene_line[-1] = attr_changed
-                        gene_line = '\t'.join(gene_line)
-                        outputFile.write(gene_line + '\n')
-                        mrna_line = copy.copy(line)
-                        mrna_line = mrna_line.split('\t')
-                        attr = mrna_line[-1].split(';')
-                        attr_changed = ''
-                        for element in attr:
-                            if element.startswith('geneID='):
-                                attr_changed += 'Parent=' + \
-                                    element.split('=')[-1]
-                            elif element.startswith('ID='):
-                                attr_changed += element + ';'
-                        mrna_line[-1] = attr_changed
-                        mrna_line = '\t'.join(mrna_line)
-                        outputFile.write(mrna_line + '\n')
-        elif modline[2] == 'CDS' or modline[2] == 'exon':
-            for element in modline:
-                if element.startswith('Parent='):
-                    cand_key = element.split('=')[-1]
-                    cand_key = cand_key.split('.mrna')[0]
-                    cand_key = cand_key.split('_')[0]
-                    if cand_key in gmapDict:
-                        outputFile.write(line + '\n')
-    for line in gffreadPASA:
-        line = line.strip()
-        if line.startswith('#'):
-            continue
-        modline = re.split('\t|;', line)
-        if modline[2] == 'mRNA':
-
-            for element in modline:
-                if element.startswith('ID='):
-
-                    cand_key = element.split('=')[-1]
-                    cand_key = cand_key.split('.mrna')[0]
-                    if cand_key in pasaDict:
-                        gene_line = copy.copy(line)
-                        gene_line = gene_line.split('\t')
-                        gene_line[2] = 'gene'
-                        attr = gene_line[-1].split(';')
-                        attr_changed = ''
-                        for element in attr:
-                            if element.startswith('geneID='):
-                                attr_changed += 'ID=' + \
-                                    element.split('=')[-1] + ';'
-                            elif element.startswith('gene_name='):
-                                attr_changed += 'Name=' + \
-                                    element.split('=')[-1]
-                        gene_line[-1] = attr_changed
-                        gene_line = '\t'.join(gene_line)
-                        outputFile.write(gene_line + '\n')
-                        mrna_line = copy.copy(line)
-                        mrna_line = mrna_line.split('\t')
-                        attr = mrna_line[-1].split(';')
-                        attr_changed = ''
-                        for element in attr:
-                            if element.startswith('geneID='):
-                                attr_changed += 'Parent=' + \
-                                    element.split('=')[-1]
-                            elif element.startswith('ID='):
-                                attr_changed += element + ';'
-                        mrna_line[-1] = attr_changed
-                        mrna_line = '\t'.join(mrna_line)
-                        outputFile.write(mrna_line + '\n')
-
-        elif modline[2] == 'CDS' or modline[2] == 'exon':
-            for element in modline:
-
-                if element.startswith('Parent='):
-                    cand_key = element.split('=')[-1]
-                    cand_key = cand_key.split('.mrna')[0]
-                    if cand_key in pasaDict:
-                        outputFile.write(line + '\n')
-
-    outputFile.close()
-    return outputFilename
 
 
 def parseGff(input_filename):
@@ -177,6 +21,7 @@ def parseGff(input_filename):
     py_com = ' '.join(py_list)
     py_call = subprocess.Popen(py_com, stdout=file(finalout, 'w'), shell=True)
     py_call.communicate()
+    
     return finalout
 
 
@@ -194,7 +39,126 @@ def newNames(oldname):
     return finalout
 
 
-if __name__ == '__main__':
-    change = argv[1]
 
-    test = parseGff(input_filename)
+def strand(gff_file1, gff_file2, wd):
+
+    outputFilename = wd + 'finalAnnotation.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilename)
+
+    gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
+    errorFile = gff_file1 + ".gt_err.log"
+    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file1]
+    gt_call = subprocess.Popen(
+        gt_com, stdout=file(
+            gff_file1_out, 'w'), stderr=file(
+            errorFile, 'w'))
+    gt_call.communicate()
+
+    gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
+    errorFile = gff_file2 + ".gt_err.log"
+    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file2]
+    gt_call = subprocess.Popen(
+        gt_com, stdout=file(
+            gff_file2_out, 'w'), stderr=file(
+            errorFile, 'w'))
+    gt_call.communicate()
+
+    db1 = gffutils.create_db(gff_file1_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
+    db2 = gffutils.create_db(gff_file2_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
+
+    listgene1 = []
+    listgeneintrons = []
+    listgenetotal = []
+
+    for i in db1.features_of_type("intron"):
+        g = ' '.join (i.attributes['Parent'])
+        listgeneintrons.append(g)
+        
+    for i in db1.features_of_type("CDS"):
+        g = ' '.join (i.attributes['Parent'])
+        listgenetotal.append(g)
+        
+    listgene1 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
+
+    listgene2 = []
+    listgeneintrons = []
+    listgenetotal = []
+    newlist = []
+    
+    for i in db2.features_of_type("intron"):
+        g = ' '.join (i.attributes['Parent'])
+        listgeneintrons.append(g)
+        
+    for i in db2.features_of_type("CDS"):
+        g = ' '.join (i.attributes['Parent'])
+        listgenetotal.append(g)
+    
+    listgene2 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
+    
+    geneDict = {}
+    for a in listgene2:   
+        b =  re.split('_|\.', a)
+        del b[-1]
+        del b[0]
+        evm = '.'.join(b)
+        newlist.append(evm)
+        geneDict[evm]=a
+
+    commonlist = list(set(listgene1).intersection(newlist))
+    
+    for evm in commonlist:
+        if geneDict[evm]:
+            #print geneDict[evm]
+            del geneDict[evm]
+
+    listuniq = [] 
+    listUniqIntrons = []
+    listgmap = []
+
+    for a in geneDict:
+        listuniq.append(geneDict[a])
+    
+    listUniqIntrons = list(set(listgeneintrons))
+    listgmap = list(set(listuniq))
+
+    for evm in commonlist:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        #for i in db1.parents(evm, featuretype='mRNA', order_by='start'):
+            #gff_out.write_rec(i)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+       
+    for evm in listUniqIntrons:
+        for i in db2.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i) 
+        gff_out.write_rec(db2[evm])
+        for i in db2.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        #for i in db2.parents(evm, featuretype='mRNA', order_by='start'):
+            #gff_out.write_rec(i)
+        for i in db2.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    
+    for evm in listgmap:
+        for i in db2.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i) 
+        gff_out.write_rec(db2[evm])
+        for i in db2.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        #for i in db2.parents(evm, featuretype='mRNA', order_by='start'):
+            #gff_out.write_rec(i)
+        for i in db2.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    return outputFilename
+
+if __name__ == '__main__':
+    
+    
+    gff1 = argv[1]
+    gff2 = argv[2]
+    wd = argv[3]
+    strand(gff1, gff2, wd)
