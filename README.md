@@ -1,19 +1,29 @@
-# LoReAn
+# LoReAn (Long-Read Annotation) for automated eukaryotic genome annotation incorporating long-reads
 
-##HOT TO RUN
+The LoReAn software is an automated annotation pipeline designed for eukaryotic genome annotation. It is built using previously defined annotation rationale and programs, but the key improvement is the incorporation of single-molecule cDNA sequencing data, such as that produced from [Oxford Nanopore](https://nanoporetech.com/) and from [PacBio](http://www.pacb.com/applications/rna-sequencing/). We find this significantly improves automated annotations and reduces the requirments for time-consuming manual annotation. 
+
+We are working to improve LoReAn documentation and getting a paper into bioRxiv. For those familar with the annotation process and with docker, there should be enough infomation to run the program. Otherwise, check back soon ...
+
+##HOW TO RUN
 
 LoReAn requires three mandatory files:
 * Protein Sequences
 * Reference genome 
 * Genome name
 
-To install the software go to:
+To install the software:
 
-[Installation of LoReAn] (INSTALL.md)
+Please see the [installation instructions](INSTALL.md) for details. 
 
-The software can be run after installatio by:
+
+The software can be run after installing by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
+```
+
+To see a full list of options type:
+```bash
+lorean.py --help
 ```
 
 LoReAn can run BRAKER1 to improve Augustus gene prediction;
