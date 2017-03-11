@@ -93,17 +93,17 @@ def catTwoBeds(gmap, evm, outFilename):
     return outNameNew
 
 
-def catTwoFasta(trinity, consens, wd):
+def catTwoFasta(trinity, consens, allSeq, wd):
     '''Concatenates the two fasta file into one output'''
     outFileFasta = wd + "/allFasta.fasta.clean"
     if os.path.isfile(outFileFasta):
         allOutFasta = outFileFasta + ".long.clean"
-        cat_con = ['cat', trinity, consens]
+        cat_con = ['cat', trinity, allSeq, consens]
         cat_call = subprocess.Popen(cat_con, stdout=file(allOutFasta, "w"))
         cat_call.communicate()
         outFileFasta = allOutFasta
     else:
-        cat_con = ['cat', trinity, consens]
+        cat_con = ['cat', trinity, allSeq, consens]
         cat_call = subprocess.Popen(cat_con, stdout=file(outFileFasta, "w"))
         cat_call.communicate()
 

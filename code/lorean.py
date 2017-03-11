@@ -842,13 +842,25 @@ def main():
             #gmap_wd)
             
         finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
+        gffPasa = grs.appendID(finalOutput)
+        noOverl = grs.removeOverlap(gffPasa)
         #simplified = grs.parseGff(finalOutput)
-        newName = grs.newNames(finalOutput)
+        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
+        uniqGene = grs.newNames(noDisc)
+
+    #out1 = strand(evmgff, gmapgff, wd)
+    #out2 = appendID(out1)
+    #out3 = removeOverlap(out2)
+    #out4 = removeDiscrepancy(out3, evmgff)
+    #newNames(out4)
+
+
+        
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         fastaAll = logistic.catTwoFasta(
-            trinity_out, mergedFastaFilename, pasa_dir)
+            trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         finalupdate = evm_pipeline.update_database(
             args.threads,
@@ -858,12 +870,23 @@ def main():
             align_pasa_conf,
             ref,
             fastaAll,
-            newName,
+            uniqGene,
             "a")
-        final = grs.genename(finalupdate, args.prefix_gene)
+        round_n += 1
+        finalupdate2 = evm_pipeline.update_database(
+            args.threads,
+            str(round_n),
+            pasa_dir,
+            args.pasa_db,
+            align_pasa_conf,
+            ref,
+            fastaAll,
+            finalupdate,
+            "a")
+        finalupdate3 = grs.genename(finalupdate2, args.prefix_gene)
 
 
-        FinalFiles.append(final)
+        FinalFiles.append(finalupdate3)
 
 
         print'\n###CREATING OUTPUT DIRECTORY###\n'
