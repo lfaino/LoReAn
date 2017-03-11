@@ -883,6 +883,7 @@ def main():
             fastaAll,
             finalupdate,
             "a")
+        
         finalupdate3 = grs.genename(finalupdate2, args.prefix_gene)
 
 
