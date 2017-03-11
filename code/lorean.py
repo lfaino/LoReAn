@@ -104,6 +104,11 @@ def arguments():
         help="Removes gene models that are not supported by long reads [FALSE]",
         action='store_true')
     # TO CHECK WITH JOSE HERE
+    parser.add_argument(
+        "--aggressive",
+        help="Give more weigth to gene identified with Long Reads. However, a lot of false positive gene models are identified   [FALSE]",
+        action='store_true')
+    # TO CHECK WITH JOSE HERE
     parser.add_argument("--keep_tmp",
                         help="Keep temporary files [FALSE]",
                         action='store_true')
@@ -842,13 +847,18 @@ def main():
             #gmap_wd)
             
         finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
+        gffPasa = grs.appendID(finalOutput)
+        noOverl = grs.removeOverlap(gffPasa, args.assembly_overlapLength)
         #simplified = grs.parseGff(finalOutput)
-        newName = grs.newNames(finalOutput)
+        if not args.aggressive:
+            noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
+        uniqGene = grs.newNames(noDisc)
+        
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         fastaAll = logistic.catTwoFasta(
-            trinity_out, mergedFastaFilename, pasa_dir)
+            trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         finalupdate = evm_pipeline.update_database(
             args.threads,
@@ -858,9 +868,20 @@ def main():
             align_pasa_conf,
             ref,
             fastaAll,
-            newName,
+            uniqGene,
             "a")
-        final = grs.genename(finalupdate, args.prefix_gene)
+        round_n += 1
+        finalupdate2 = evm_pipeline.update_database(
+            args.threads,
+            str(round_n),
+            pasa_dir,
+            args.pasa_db,
+            align_pasa_conf,
+            ref,
+            fastaAll,
+            finalupdate,
+            "a")
+        finalupdate2 = grs.genename(finalupdate, args.prefix_gene)
 
 
         FinalFiles.append(final)
