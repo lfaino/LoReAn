@@ -106,7 +106,7 @@ def removeOverlap(gff):
     for line in i:
         listLine = line.split('\t')
         if len(listLine) == 9:
-            if "mRNA" in listLine[2]:
+            if "CDS" in listLine[2]:
                 o.write(line)
     o.close()
     i.close()
@@ -128,14 +128,14 @@ def removeOverlap(gff):
         count += 1
         locus = "locus" + str(count)
         for elm  in nameRNA:
-            if "ID" in elm and int(listLine[4]) > 1:
+            if "Parent" in elm and int(listLine[4]) > 1:
                 mRNAname = elm.split('=')[1]
                 listMultiple.append(mRNAname)
                 if dictRNA.has_key(locus):
                     dictRNA[locus].append(mRNAname)
                 else:
                     dictRNA[locus] = [mRNAname,]
-            elif "ID" in elm:
+            elif "Parent" in elm:
                 mRNAname = elm.split('=')[1]
                 listUniq.append(mRNAname)
     listMultipleUniq = []
@@ -145,10 +145,10 @@ def removeOverlap(gff):
     for line in mRNA:
         listLine = line.split('\t')
         if len(listLine) == 9:
-            if "mRNA" in listLine[2]:
+            if "CDS" in listLine[2]:
                 for key in dictRNA:
                     for el in dictRNA[key]:
-                        nameID = "ID=" + el  +  ';'
+                        nameID = "Parent=" + el  +  ';'
                         if nameID in line:
                             length = (int(line.split('\t')[4]) - int(line.split('\t')[3]))
                             if dictLength.has_key(key):

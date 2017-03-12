@@ -60,6 +60,8 @@ import get_right_strand as grs
 import multithread_large_fasta as multiple
 import reduceUTRs as utrs
 import parseGff3 as parsegff3
+import manupulateSeq as mseq
+
 
 ####################################
 ### CHEKS BEFORE START LOREAN ######
@@ -85,153 +87,144 @@ def arguments():
         usage='%(prog)s [options] protein_sequences reference species_name',
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Luigi Faino - March 2017')
-
     parser.add_argument('protein_evidence',
                         help="Path to protein sequences FASTA file []")
     parser.add_argument("ref",
                         help="Path to reference file")
-    parser.add_argument(
-        "species",
+    parser.add_argument("species",
         help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
-    parser.add_argument("--stranded",
+    parser.add_argument("-d","--stranded",
                         help="Run LoReAn on stranded mode [FALSE]",
                         action='store_true')
-    parser.add_argument("--fungus",
+    parser.add_argument("-f","--fungus",
                         help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
                         action='store_true')
-    parser.add_argument(
-        "--only_unitigs",
+    parser.add_argument("-u","--only_unitigs",
         help="Removes gene models that are not supported by long reads [FALSE]",
         action='store_true')
-    # TO CHECK WITH JOSE HERE
-    parser.add_argument("--keep_tmp",
+    parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
                         action='store_true')
-    parser.add_argument(
-        '--short_reads',
+    parser.add_argument("-s",'--short_reads',
         nargs="?",
         default="",
         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
         metavar='FASTQ_file')
-    parser.add_argument('--long_reads', nargs="?", default="",
+    parser.add_argument("-a",'--adapter',
+        nargs="?",
+        default="",
+        help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
+        metavar='FASTA_file')
+    parser.add_argument("-l",'--long_reads', 
+                        nargs="?", default="",
                         help="Path to long reads FASTQ []",
                         metavar='FASTQ_file')
-    parser.add_argument(
-        '--max_long_read',
+    parser.add_argument("-m",'--max_long_read',
         nargs="?",
         default=20000,
         help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
         type=int)
-    parser.add_argument("--pasa_db", nargs="?", default="annotation",
+    parser.add_argument("-p","--pasa_db", 
+                        nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
-    parser.add_argument(
-        "--prefix_gene",
+    parser.add_argument('-n',"--prefix_gene",
         nargs="?",
         default="species",
         help="Prefix to add to the final Gff3 gene name [specie]")
-    parser.add_argument(
-        '-wd',
+    parser.add_argument('-w','--working_dir',
         "--working_dir",
         nargs="?",
         default="annotation",
         help="Working directory (will create if not present) [./]")
-    parser.add_argument('-t', "--threads", nargs="?", default="1",
+    parser.add_argument('-t',"--threads", 
+                        nargs="?", default="1",
                         help="Number of threads [1]",
                         metavar='N')
-    parser.add_argument(
-        "--overhang",
+    parser.add_argument("-b", "--overhang",
         nargs="?",
         default="20",
         help="CAP3 max overhang percent length; this value should be > 3 [20]",
         metavar='N')
-    parser.add_argument(
-        "--augustus",
+    parser.add_argument("-cw","--augustus",
         nargs="?",
         default="1",
         help="Weight assigned to AUGUSTUS evidence for EVM [1]",
         metavar='N')
-    parser.add_argument(
-        "--genemark",
+    parser.add_argument("-gw","--genemark",
         nargs="?",
         default="1",
         help="Weight assigned to GENEMARK evidence for EVM [1]",
         metavar='N')
-    parser.add_argument(
-        "--trinity",
+    parser.add_argument("-tw","--trinity",
         nargs="?",
         default="1",
         help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
         metavar='N')
-    parser.add_argument("--pasa", nargs="?", default="5",
+    parser.add_argument("-pw","--pasa", 
+                        nargs="?", default="5",
                         help="Weight assigned to PASA evidence for EVM [5]",
                         metavar='N')
-    parser.add_argument(
-        "--AAT",
+    parser.add_argument("-aw","--AAT",
         nargs="?",
         default="1",
         help="Weight assigned to AAT protein evidence for EVM [1]",
         metavar='N')
-    parser.add_argument("--segmentSize", nargs="?", default="100000",
+    parser.add_argument("-c","--segmentSize", 
+                        nargs="?", default="100000",
                         help="Segment size for EVM partitions [100000]",
                         metavar='N')
-    parser.add_argument("--overlapSize", nargs="?", default="10000",
+    parser.add_argument("-e","--overlapSize", 
+                        nargs="?", default="10000",
                         help="Overlap size for EVM partitions [10000]",
                         metavar='N')
-    parser.add_argument("--min_intron_length", nargs="?", default="9",
+    parser.add_argument("-g","--min_intron_length", 
+                        nargs="?", default="9",
                         help="Minimal intron length for GMAP [9]",
                         metavar='N')
-    parser.add_argument(
-        "--max_intron_length",
+    parser.add_argument("-n","--max_intron_length",
         nargs="?",
         default="1000",
         help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
         metavar='N')
-    parser.add_argument("-H", nargs="?", default="20",
+    parser.add_argument("-H", "-h", 
+                        nargs="?", default="20",
                         help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
-    parser.add_argument("--cluster_min_evidence", nargs="?", default="5",
+    parser.add_argument("-cme","--cluster_min_evidence", 
+                        nargs="?", default="5",
                         help="Minimal evidence needed to form a cluster [5]",
                         metavar='N')
-    parser.add_argument(
-        "--cluster_max_evidence",
+    parser.add_argument("-cMe","--cluster_max_evidence",
         nargs="?",
         default="5000",
         help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
         metavar='N')
-    parser.add_argument(
-        "--assembly_overlapLength",
+    parser.add_argument("-aol","--assembly_overlapLength",
         nargs="?",
         default="200",
         help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
         metavar='N')
-    parser.add_argument("--assembly_percentIdentity", nargs="?", default="97",
+    parser.add_argument("-api","--assembly_percentIdentity", 
+                        nargs="?", default="97",
                         help="Minimal identity for the ASSEMBLY (95-100) [97]",
                         metavar='N')
-    parser.add_argument(
-        "--assembly_readThreshold",
+    parser.add_argument("-art","--assembly_readThreshold",
         nargs="?",
         default="0.3",
         help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
         metavar='F')
-    parser.add_argument("--no_EVM",
+    parser.add_argument("-ne","--no_EVM",
                         help="Run until the preparation of EVM inputs [FALSE]",
                         action='store_true')
-    parser.add_argument(
-        "--no_consensus",
+    parser.add_argument("-nc","--no_consensus",
         help="Do not run the long reads consensus pipeline [FALSE]",
         action='store_true')
-    parser.add_argument("--no_update",
+    parser.add_argument("-nu","--no_update",
                         help="Do not run the PASA update[FALSE]",
                         action='store_true')
-    parser.add_argument("--collect_only",
+    parser.add_argument("-co","--collect_only",
                         help="Collect only assebmled transcripts [FALSE]",
                         action='store_true')
-    #parser.add_argument("--SS_lib_type",
-                        #help="For strand specific short reads RNA-Seq set the orientation (see Trinity manual):
-                        #if paired options are RF or FR; 
-                        #if single options are F or R (dUTP method = RF)",
-                        #nargs="?")
-
 
     # Parse and set defaults for optional arguments
     args = parser.parse_args()
@@ -242,7 +235,6 @@ def arguments():
 
 
 def main():
-
     if os.path.isfile("/data/gm_key"):
         os.system('cp /data/gm_key /home/lorean/.gm_key')
         '''Core of the program'''
@@ -318,10 +310,14 @@ def main():
                     # artefacts
 
                     print "\n###FILTERING OUT LONG READS###\n"
-
-                    long_fasta, filter_count = mapping.filterLongReads(
+                    if args.adapter == "":
+                        long_fasta, filter_count = mseq.filterLongReads(
                         args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd , a = True)
-
+                    elif args.adapter != "":
+                        long_fasta, filter_count = mseq.findOrientation(
+                        args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter)
+                        
+                        
                     if filter_count != 0:
                         print "LOREAN KEPT " + str(filter_count) + " READS AFTER LENGTH FILTERING\n"
                     if not short_sorted_bam:
