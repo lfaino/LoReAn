@@ -1,24 +1,11 @@
 #! /usr/bin/env python
 
-###############
-###TO DO AGENDA###
-###############
-
-# DISCARD EVIDENCE BEFORE WRITING FASTA
-
-# ALSO IMPLEMENT INTERRUPTIONS IF FILES IN CONSENSUS PIPELINE
-
-# Implement interruptions at certain points if wished
-
-
 '''
 MASTER THESIS PROJECT
 Author: Jose A. Espejo
 Date: September 2015 - March 2016
-
 Pipeline to go from Oxford Nanopore's long reads to all necessary for EVM modeler
 in Verticillium dahlie.
-
 '''
 
 ###############
@@ -44,7 +31,6 @@ from threading import Thread
 import itertools
 import shutil
 
-
 # OTHER SCRIPTS
 import dirs_and_files as logistic
 import mapping
@@ -61,7 +47,6 @@ import multithread_large_fasta as multiple
 import reduceUTRs as utrs
 import parseGff3 as parsegff3
 import manupulateSeq as mseq
-
 
 ####################################
 ### CHEKS BEFORE START LOREAN ######
@@ -81,13 +66,12 @@ os.system('mysql --user="root" --password="lorean" --execute="set global sql_mod
 def arguments():
     '''Parses the arguments from the program invocation'''
 
-    # Call the argument parse
     parser = argparse.ArgumentParser(
         prog='lorean',
         usage='%(prog)s [options] protein_sequences reference species_name',
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Luigi Faino - March 2017')
-    parser.add_argument('protein_evidence',
+    parser.add_argument("protein_evidence",
                         help="Path to protein sequences FASTA file []")
     parser.add_argument("ref",
                         help="Path to reference file")
@@ -105,21 +89,21 @@ def arguments():
     parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
                         action='store_true')
-    parser.add_argument("-s",'--short_reads',
+    parser.add_argument("-s","--short_reads",
         nargs="?",
         default="",
         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
         metavar='FASTQ_file')
-    parser.add_argument("-a",'--adapter',
+    parser.add_argument("-a","--adapter",
         nargs="?",
         default="",
         help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
         metavar='FASTA_file')
-    parser.add_argument("-l",'--long_reads', 
+    parser.add_argument("-l","--long_reads", 
                         nargs="?", default="",
                         help="Path to long reads FASTQ []",
                         metavar='FASTQ_file')
-    parser.add_argument("-m",'--max_long_read',
+    parser.add_argument("-m","--max_long_read",
         nargs="?",
         default=20000,
         help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
@@ -127,16 +111,16 @@ def arguments():
     parser.add_argument("-p","--pasa_db", 
                         nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
-    parser.add_argument('-n',"--prefix_gene",
+    parser.add_argument("-n","--prefix_gene",
         nargs="?",
         default="species",
         help="Prefix to add to the final Gff3 gene name [specie]")
-    parser.add_argument('-w','--working_dir',
+    parser.add_argument("-w","--working_dir",
         "--working_dir",
         nargs="?",
         default="annotation",
         help="Working directory (will create if not present) [./]")
-    parser.add_argument('-t',"--threads", 
+    parser.add_argument("-t","--threads", 
                         nargs="?", default="1",
                         help="Number of threads [1]",
                         metavar='N')
@@ -226,7 +210,6 @@ def arguments():
                         help="Collect only assebmled transcripts [FALSE]",
                         action='store_true')
 
-    # Parse and set defaults for optional arguments
     args = parser.parse_args()
     return args
 ###############
