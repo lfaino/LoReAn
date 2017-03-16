@@ -106,12 +106,14 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         a = np.array(listScore)
         mean = np.mean(a)
         stderrS = np.std(a)
-        valueOptimal = mean #+ stderrS
+        valueOptimal = mean + stderrS
         count = 0
         revcom = 0
         same = 0
+        lost = 0
         for key, score in scoreDict.items():
             if scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+                lost += 1
                 next
             else:
                 if scoreDict[key][0] > scoreDict[key][1] and scoreDict[key][0] > valueOptimal and listAdapter[0] in seqDict[key][1]:
@@ -157,12 +159,14 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         a = np.array(listScore)
         mean = np.mean(a)
         stderrS = np.std(a)
-        valueOptimal = mean #+ stderrS
+        valueOptimal = mean + stderrS
         count = 0
         revcom = 0
         same = 0
+        lost = 0
         for key, score in scoreDict.items():
             if scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+                lost += 1
                 next
             else:
                 if scoreDict[key][0] > scoreDict[key][1] and scoreDict[key][0] > valueOptimal and listAdapter[0] in seqDict[key][1]:
@@ -181,7 +185,7 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
     outFile.close()
     SeqIO.write(finalSeq, outFilename, "fasta")
     fastqFile.close()
-    return (outFilename, filter_count)
+    return (outFilename, filter_count, lost)
             
     #return()
    

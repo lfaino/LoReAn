@@ -47,7 +47,7 @@ import get_right_strand as grs
 import multithread_large_fasta as multiple
 import reduceUTRs as utrs
 import parseGff3 as parsegff3
-import manupulateSeq as mseq
+import manipulateSeq as mseq
 
 ####################################
 ### CHEKS BEFORE START LOREAN ######
