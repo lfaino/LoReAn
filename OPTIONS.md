@@ -1,9 +1,9 @@
-#Minimal options are:
+# Minimal options are:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 ```
 
-##The specie name used in LoReAn needs to be in the AUGUSTUS database. However, if RNA-seq is supplied,the tool will calculate the best AUGUSTUS sets using Braker1 software
+## The specie name used in LoReAn needs to be in the AUGUSTUS database. However, if RNA-seq is supplied,the tool will calculate the best AUGUSTUS sets using Braker1 software
 
 -d or --stranded: 
     Run LoReAn on stranded mode [FALSE]

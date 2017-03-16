@@ -4,7 +4,7 @@ The LoReAn software is an automated annotation pipeline designed for eukaryotic 
 
 We are working to improve LoReAn documentation and getting a paper into bioRxiv. For those familar with the annotation process and with docker, there should be enough infomation to run the program. Otherwise, check back soon ...
 
-##HOW TO RUN
+## HOW TO RUN
 
 LoReAn requires three mandatory files:
 * Protein Sequences
@@ -20,7 +20,7 @@ The software can be run after installing by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 ```
-Additional oprions can be found at [option instructions](OPTIONS.md)
+Additional options can be found at [option instructions](OPTIONS.md)
 
 To see a full list of options type:
 ```bash
