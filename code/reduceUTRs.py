@@ -1,4 +1,4 @@
-from __future__ import division
+
 from multiprocessing import Pool
 import sys
 import subprocess
@@ -8,7 +8,7 @@ import re
 import shutil
 from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock
 import itertools
 
@@ -17,7 +17,7 @@ def lengthSupport(tmp_wd):
     '''with this function, we try to reduce the UTRs if they have low support (at least 10% of the total reads)
     we do this by using the information from the iAssembly outputs'''
     wd = tmp_wd  # +'consensus/tmp/'
-    print '\n\t###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n'
+    print('\n\t###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n')
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
             if 'output' in direc:
@@ -121,7 +121,7 @@ def lengthSupport(tmp_wd):
 
 def main():
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':

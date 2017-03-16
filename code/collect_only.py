@@ -6,7 +6,7 @@
 #######################################
 
 
-from __future__ import division
+
 from multiprocessing import Pool
 import sys
 import subprocess
@@ -16,7 +16,7 @@ import re
 import shutil
 from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock
 import itertools
 
@@ -85,7 +85,7 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
         global count_sequences
         real_contigs = {}
         count_unitigs = 1
-        for key, element in contigs.items():
+        for key, element in list(contigs.items()):
             # to retrieve only supported assembly
             if unitigs:
                 if len(element) == 2:
@@ -117,7 +117,7 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
         contigDict = SeqIO.to_dict(SeqIO.parse(contigSeq, 'fasta'))
         outputFilename = outputAssembly[:-1] + '_assembled.fasta'
         outputFile = open(outputFilename, 'w')
-        for iden, write_iden in real_contigs.items():
+        for iden, write_iden in list(real_contigs.items()):
             if iden in contigDict:
                 outputFile.write('>' + write_iden + '\n' +
                                  str(contigDict[iden].seq) + '\n')
@@ -127,7 +127,7 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
 
 
 def catAssembled(wd):
-    print '\t###GENERATE FASTA FILE FROM CONTIGS###\n'
+    print('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     '''C at all the assembled single fasta files in to a uniq file'''
     wd_tmp = wd + 'consensus/tmp/'
     fileName = wd_tmp + 'assembly.fasta'
@@ -153,7 +153,7 @@ def addEVM(
         unitigs,
         evm_nosupport,
         outputMergedFastaName):
-    print '\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n'
+    print('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
     wholeFasta = open(wholeFastaName, 'r')
     outFastaFile = open(outputFilename, 'r')
@@ -172,7 +172,7 @@ def addEVM(
             else:
                 SeqIO.write(record, m_file, "fasta")
         newDict = {}
-        for key, values in wholeDict.items():
+        for key, values in list(wholeDict.items()):
             if key in evm_nosupport:
                 continue
             else:
@@ -187,12 +187,12 @@ def addEVM(
             else:
                 dictOut[record.id] = str(record.seq)
         seq_count = 1
-        for key in newDict.keys():
+        for key in list(newDict.keys()):
             if 'evm' in key and key not in dictOut:
                 ident = '>Gene' + str(count) + '_' + key
                 outputMerged.write(ident + '\n' + str(newDict[key].seq) + '\n')
                 count += 1
-        for key, element in dictOut.items():
+        for key, element in list(dictOut.items()):
             ident = '>Gene' + str(count) + '_' + key
             outputMerged.write(ident + '\n' + str(element) + '\n')
             count += 1
@@ -208,13 +208,13 @@ def addEVM(
             else:
                 dictOut[record.id] = str(record.seq)
         seq_count = 1
-        for key in wholeDict.keys():
+        for key in list(wholeDict.keys()):
             if 'evm' in key and key not in dictOut:
                 ident = '>Gene' + str(count) + '_' + key
                 outputMerged.write(
                     ident + '\n' + str(wholeDict[key].seq) + '\n')
                 count += 1
-        for key, element in dictOut.items():
+        for key, element in list(dictOut.items()):
             ident = '>Gene' + str(count) + '_' + key
             outputMerged.write(ident + '\n' + str(element) + '\n')
             count += 1
@@ -225,7 +225,7 @@ def addEVM(
 
 
 def getEVMnoUnitig(target_wd):
-    print '\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n'
+    print('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
     '''Gets the name of evm prediction in the assembly that do not have support'''
     evm_list = []
     for root, dirs, _ in os.walk(target_wd):
@@ -272,7 +272,7 @@ def main():
         evm_list,
         mergedFastaFilename)
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':

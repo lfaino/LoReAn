@@ -131,7 +131,7 @@ def removeOverlap(gff):
             if "Parent" in elm and int(listLine[4]) > 1:
                 mRNAname = elm.split('=')[1]
                 listMultiple.append(mRNAname)
-                if dictRNA.has_key(locus):
+                if locus in dictRNA:
                     dictRNA[locus].append(mRNAname)
                 else:
                     dictRNA[locus] = [mRNAname,]
@@ -151,7 +151,7 @@ def removeOverlap(gff):
                         nameID = "Parent=" + el  +  ';'
                         if nameID in line:
                             length = (int(line.split('\t')[4]) - int(line.split('\t')[3]))
-                            if dictLength.has_key(key):
+                            if key in dictLength:
                                 oldLenght = dictLength[key]
                                 if int(oldLenght[1]) < int(length):
                                     dictLength[key] = [el, str(length)]

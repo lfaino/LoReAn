@@ -80,10 +80,10 @@ def evm_partitions(
 
     partitions = evm_output + 'partitions_list.out'
     if os.path.isfile(partitions):
-        print (
+        print((
             '\nPartitions file file existed already: ' +
             partitions +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return partitions
 
     stdout_file = evm_output + 'partitions.stdout'
@@ -132,10 +132,10 @@ def evm_write_commands(
 
     command_file = evm_output + 'commands.list'
     if os.path.isfile(command_file):
-        print (
+        print((
             '\nCommand file existed already: ' +
             command_file +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return command_file
 
     log_name = evm_output + 'write_commands.log'
@@ -164,7 +164,7 @@ def evm_run(evm_output, command_list, threads):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print ('\nEVM output existed already: ' + out_file + ' --- skipping\n')
+        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
 
     log_name = evm_output + 'run.log'
@@ -194,7 +194,7 @@ def evm_combine(evm_output, partitions):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print ('\nEVM output existed already: ' + out_file + ' --- skipping\n')
+        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
     st_file = evm_output + 'combine_partitions.stdout'
     log_name = evm_output + 'combine_partitions.log'
@@ -224,7 +224,7 @@ def evm_to_gff3(evm_output, partitions, reference):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print ('\nEVM output existed already: ' + out_file + ' --- skipping\n')
+        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
     st_file = evm_output + 'evm_to_gff3.stdout'
     log_name = evm_output + 'evm_to_gff3.log'
@@ -273,13 +273,13 @@ def evm_pipeline(
     It will spit out evm.out.gff3 '''
 
     # Creates output directory
-    print '\t###CREATE AN OUTPUT DIRECTORY###\n'
+    print('\t###CREATE AN OUTPUT DIRECTORY###\n')
     evm_output = working_dir + 'evm_output/'
     check_create_dir(evm_output)
     # print '> Output directory is: ' + evm_output + '\n'
 
     # Partitions
-    print '\t###PARTITIONING THE INPUTS###\n'
+    print('\t###PARTITIONING THE INPUTS###\n')
     partitions = evm_partitions(
         evm_output,
         reference,
@@ -290,7 +290,7 @@ def evm_pipeline(
         overlapSize)
 
     # Write Commands
-    print '\t###GROUPING COMMANDS###\n'
+    print('\t###GROUPING COMMANDS###\n')
     command_list = evm_write_commands(
         evm_output,
         reference,
@@ -301,15 +301,15 @@ def evm_pipeline(
         partitions)
 
     # Run
-    print '\t###RUNNING EVM###\n'
+    print('\t###RUNNING EVM###\n')
     evm_run(evm_output, command_list, threads)
 
     # Combine partitions
-    print '\t###COMBINING PARTITIONS###\n'
+    print('\t###COMBINING PARTITIONS###\n')
     evm_combine(evm_output, partitions)
 
     # Convert to GFF3
-    print '\t###CONVERTING TO GFF3###\n'
+    print('\t###CONVERTING TO GFF3###\n')
     evm_to_gff3(evm_output, partitions, reference)
 
     # Combine the different chromosomes
@@ -322,10 +322,10 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     '''Creates a PASA annotation configuration file'''
     conf_file = pasa_dir + 'annotCompare.config'
     if os.path.isfile(conf_file):
-        print (
+        print((
             'PASA annotation configuration file existed already: ' +
             conf_file +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return conf_file
     conf = open(conf_file, 'w')
 
@@ -391,7 +391,7 @@ def annot_comparison(
     '''Loads a gff3 file into a PASA database '''
 
     if valueS is "a":
-        print "\t UPDATING WITH ALT-SPLICE"
+        print("\t UPDATING WITH ALT-SPLICE")
         args = [
             'Launch_PASA_pipeline.pl',
             '--ALT_SPLICE',
@@ -406,7 +406,7 @@ def annot_comparison(
             '-t',
             transcripts_file]
     else:
-        print "\t UPDATING WITHOUT ALT-SPLICE"
+        print("\t UPDATING WITHOUT ALT-SPLICE")
         args = [
             'Launch_PASA_pipeline.pl',
             '--TRANSDECODER',
@@ -471,15 +471,15 @@ def update_database(
         gff3_file,
         valueS):
     '''Updates the gff3 file with the PASA database'''
-    print '\t###CREATING CONFIGURATION FILE###\n'
+    print('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
 
-    print '\t###LOADING GFF3 FILE INTO DATABASE###\n'
+    print('\t###LOADING GFF3 FILE INTO DATABASE###\n')
     processID = load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file)
-    print '\t###UPDATING GFF3 FILE###\n'
+    print('\t###UPDATING GFF3 FILE###\n')
     annot_comparison(processID, pasa_dir, pasa_db, annot_conf_file, reference,
                      transcripts_file, n_cpu, valueS)
-    print '\t###PARSING OUTPUT###\n'
+    print('\t###PARSING OUTPUT###\n')
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
     
     

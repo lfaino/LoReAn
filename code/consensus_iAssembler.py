@@ -6,7 +6,7 @@
 #######################################
 
 
-from __future__ import division
+
 from multiprocessing import Pool
 import sys
 import subprocess
@@ -16,7 +16,7 @@ import re
 import shutil
 from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock
 import itertools
 
@@ -46,10 +46,10 @@ def gffread(gff3File, reference, working_dir):
         '-split']
 
     if os.path.isfile(out_name):
-        print (
+        print((
             'gff3read file existed already: ' +
             out_name +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_name
 
     try:
@@ -81,7 +81,7 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
             '-o',
             'count,distinct']
 
-        print "\t###CLUSTERING IN STRANDED MODE###\n"
+        print("\t###CLUSTERING IN STRANDED MODE###\n")
     else:
         BTmerge1 = [
             'bedtools',
@@ -95,7 +95,7 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
             '4,4',
             '-o',
             'count,distinct']
-        print "\t###CLUSTERING IN NON-STRANDED MODE###\n"
+        print("\t###CLUSTERING IN NON-STRANDED MODE###\n")
     BTsort2 = ['bedtools', 'sort', '-i', gff3File + '.sorted.merged.bed']
 
     # Sort the GFF3 file
@@ -121,7 +121,7 @@ def fasta2Dict(fastaFilename):
     fastaFile = open(fastaFilename, 'r')
     fastaDict2 = SeqIO.to_dict(SeqIO.parse(fastaFile, 'fasta'))
     fastaDict = {}
-    for key, seq2 in fastaDict2.items():
+    for key, seq2 in list(fastaDict2.items()):
         seq = str(seq2.seq).replace("N", "")
         fastaDict[key] = seq
         del fastaDict2[key]
@@ -294,7 +294,7 @@ def main():
 #    mergedFastaFilename = wd+'assembly.wEVM.fasta'
 #    addEVM(fastaFilename, outputFilename, unitigs ,mergedFastaFilename)
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':

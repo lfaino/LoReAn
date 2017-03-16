@@ -34,10 +34,10 @@ def trinity(bam_file, wd, max_intron_length, threads):
 
         
     if os.path.isfile(out_name):
-        print (
+        print((
             'Trinity-GG file existed already: ' +
             out_name +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_name
     log_name_err = wd + 'trinity.err.log'
     log_err = open(log_name_err, 'w')
@@ -46,7 +46,7 @@ def trinity(bam_file, wd, max_intron_length, threads):
     try:
         subprocess.check_call(args, stdout=log, stderr=log_err)
     except:
-        print 'Trinity did not work properly\n'
+        print('Trinity did not work properly\n')
         raise NameError('')
     log_err.close()
     log.close()
@@ -60,17 +60,17 @@ def seqclean(trinity_file, wd):
             '-o', out_dir + t_name + '.clean']
     out_name = trinity_file + '.clean'
     if os.path.isfile(out_name):
-        print (
+        print((
             'Cleaned transcript file existed already: ' +
             out_name +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_name
     log_name = wd + 'seqclean.log'
     log = open(log_name, 'w')
     try:
         subprocess.check_call(args, stderr=log, cwd=out_dir)
     except:
-        print 'Seqclean did not work properly\n'
+        print('Seqclean did not work properly\n')
         raise NameError('')
     log.close()
     return out_name
@@ -79,10 +79,10 @@ def pasa_configuration(pasa_dir, pasa_db):
     '''Creates a PASA configuration file. Database name will be the reference name'''
     conf_file = pasa_dir + 'alignAssembly.config'
     if os.path.isfile(conf_file):
-        print (
+        print((
             'PASA configuration file existed already: ' +
             conf_file +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return conf_file
     conf = open(conf_file, 'w')
     lines = [
@@ -119,7 +119,7 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     # print out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file):
-        print ('PASA output existed already: ' + out_file + ' --- skipping\n')
+        print(('PASA output existed already: ' + out_file + ' --- skipping\n'))
         return out_file
     log_name = pasa_dir + 'pasa.err.log'
     log_out_name = pasa_dir + 'pasa.out.log'
@@ -128,7 +128,7 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     try:
         subprocess.check_call(args, stdout=out_log, stderr=log, cwd=pasa_dir)
     except:
-        print 'PASA failed'
+        print('PASA failed')
         raise NameError('')
     log.close()
     out_log.close()
@@ -166,10 +166,10 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus):
             '--bam=' + bam_file]
     out_dir = wd + 'braker/'
     if os.path.isdir(out_dir):
-        print (
+        print((
             'BRAKER1 output existed already: ' +
             out_dir +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_dir
     log_name = wd + 'braker.log'
     log = open(log_name, 'w')
@@ -190,7 +190,7 @@ def augustus_call(wd, ref, species_name):
     wd_augu = wd + '/' + chromo + '.augustus.gff'
     wd_output = wd + '/' + 'augustus.gff3'
     if os.path.isfile(wd_output):
-        print ('Augustus  files exist: ' + wd_output + ' --- skipping\n')
+        print(('Augustus  files exist: ' + wd_output + ' --- skipping\n'))
         return wd
     else:
         log_name = wd_augu
@@ -209,7 +209,7 @@ def gmes_call(wd, ref, fungus, threads):
     wd_output = wd + '/genemark.gtf.gff3'
     # print wd_output
     if os.path.isfile(wd_output):
-        print ('GeneMarkES  files exist: ' + wd_output + ' --- skipping\n')
+        print(('GeneMarkES  files exist: ' + wd_output + ' --- skipping\n'))
         return wd
     else:
         if fungus:

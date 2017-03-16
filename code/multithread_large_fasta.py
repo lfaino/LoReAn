@@ -6,7 +6,7 @@
 #######################################
 
 
-from __future__ import division
+
 from multiprocessing import Pool
 import sys
 import subprocess
@@ -16,7 +16,7 @@ import re
 import shutil
 from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from Queue import Queue
+from queue import Queue
 from threading import Thread, Lock
 import itertools
 from Bio import SeqIO
@@ -153,7 +153,7 @@ def main():
 
     augustus_multi(ref, threads, species, single_fasta_list, wd)
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':

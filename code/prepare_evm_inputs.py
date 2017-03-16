@@ -16,17 +16,17 @@ def convert_augustus(aug_file, wd):
     '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
     script EVMUtils/misc/augustus_GTF_to_EVM_GFF3.pl which needs to be in PATH
     '''
-    print '\t###CONVERTING AUGUSTUS TO GFF3###\n'
+    print('\t###CONVERTING AUGUSTUS TO GFF3###\n')
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
 
     out_file = aug_file + '3'
 
     if os.path.isfile(out_file):
-        print (
+        print((
             'Augustus GFF3 file existed already: ' +
             out_file +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_file
 
     log_name = wd + '.augustus_GTF_to_EVM_GFF3.pl.log'
@@ -51,17 +51,17 @@ def convert_genemark(genemark_file, wd):
     '''Converts genemark.gtf to genemark.gff3 (from BRAKER1) using gtf2gff3.pl,
     which needs to be in PATH'''
 
-    print '\t###CONVERTING GENEMARK TO GFF3###\n'
+    print('\t###CONVERTING GENEMARK TO GFF3###\n')
     args = ['gtf2gff3.pl', genemark_file]
     #COMMANDS.append(' '.join(args))
 
     out_file = genemark_file + '.gff3'
 
     if os.path.isfile(out_file):
-        print (
+        print((
             'GeneMark GFF3 file existed already: ' +
             out_file +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return out_file
 
     log_name = wd + '.genemark_GTF_to_EVM_GFF3.pl.log'
@@ -90,7 +90,7 @@ def move_single_file(filename, key, evm_dir, new_file_d):
     true_filename = filename.split('/')[-1]
     out_file = evm_dir + true_filename
     if os.path.isfile(out_file):
-        print ('File in EVM_dir already: ' + out_file + ' --- skipping\n')
+        print(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
         new_file_d[key] = out_file
         return new_file_d
 
@@ -111,7 +111,7 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
 
     out_file = evm_dir + key + '.gff3'
     if os.path.isfile(out_file):
-        print ('File in EVM_dir already: ' + out_file + ' --- skipping\n')
+        print(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
         new_file_d[key] = out_file
         return new_file_d
 
@@ -122,16 +122,16 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
         file_.close()
         return new_file_d
     except:
-        print 'Could not move ' + filename
+        print('Could not move ' + filename)
         raise NameError('')
 
 
 def move_EVM_inputs(evm_dir, inputs):
     '''Takes a dictionary with files that are inputs for EVM and groups them in
     the same directory'''
-    print '\t###MOVING IMPORTANT FILES###\n'
+    print('\t###MOVING IMPORTANT FILES###\n')
     new_files = {}
-    for key, filename in inputs.items():
+    for key, filename in list(inputs.items()):
         if isinstance(
                 filename,
                 list):  # FOR THE GFF3 alignment files in case of short & long reads
@@ -150,7 +150,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     alignments go into transcripts.gff3'''
     # GENE PREDICTIONS
 
-    print '\t###CONCATENATING FILES###\n'
+    print('\t###CONCATENATING FILES###\n')
 
     # GENE PREDICTION
     file_list = []
@@ -185,8 +185,8 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     pred_filename = evm_dir + 'gene_predictions.gff3'
 
     if os.path.isfile(pred_filename):
-        print ('Gene predictions GFF3 file existed already: ' +
-               pred_filename + ' --- skipping\n')
+        print(('Gene predictions GFF3 file existed already: ' +
+               pred_filename + ' --- skipping\n'))
     else:
 
         # print '\nCMD: ' + ' '.join(ab_initio_list) + '\n'

@@ -17,7 +17,7 @@ def AAT(proteinFastaFile, ref, wd):
     assembled transcripts'''
     wd_output = wd + '/protein_evidence.gff3'
     if os.path.isfile(wd_output):
-        print ('AAT files exist: ' + wd_output + ' --- skipping\n')
+        print(('AAT files exist: ' + wd_output + ' --- skipping\n'))
         return True
     else:
 

@@ -18,8 +18,8 @@ def star_build(reference, genome_dir, threads, wd):
     '''Builds star reference index'''
     check_file = genome_dir + 'SAindex'
     if os.path.isfile(check_file):  # If the ref is there do not build it again
-        print ('STAR index existed already: ' +
-               check_file + ' --- skipping')
+        print(('STAR index existed already: ' +
+               check_file + ' --- skipping'))
         return None
     else:
         # CHECK IF THE INDEX IS TOO BIG
@@ -74,7 +74,7 @@ def star_build(reference, genome_dir, threads, wd):
             subprocess.check_call(args, stdout=log, stderr=log_err, cwd=wd)
 
         except:
-            print 'STAR build failed'
+            print('STAR build failed')
             raise NameError('')
 
         log.close()
@@ -148,10 +148,10 @@ def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     filename = wd + prefix + 'Aligned.out.bam'
 
     if os.path.isfile(filename):
-        print (
+        print((
             'STAR alignment file existed already: ' +
             filename +
-            ' --- skipping\n')
+            ' --- skipping\n'))
         return filename
 
     log_name_err = wd + 'star.err.log'
@@ -180,11 +180,11 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
     genome_dir = wd + refer + '_STARindex/'
     logistic.check_create_dir(genome_dir)
     # Build the reference
-    print '\t###BUILD INDEX###\n'
+    print('\t###BUILD INDEX###\n')
     star_build(reference, genome_dir, threads, wd)
 
     # Mapping
-    print '\t###MAP###\n'
+    print('\t###MAP###\n')
     out_file = star_map(
         reference,
         fastq_reads,
@@ -205,8 +205,8 @@ def gmap_build(reference, working_dir):
     refer_path = working_dir + refer
 
     if os.path.isdir(refer_path):
-        print ('GMAP database existed already: ' +
-               refer_path + ' --- skipping')
+        print(('GMAP database existed already: ' +
+               refer_path + ' --- skipping'))
         return refer
 
     log_name = working_dir + 'gmap_build.log'
@@ -216,7 +216,7 @@ def gmap_build(reference, working_dir):
     try:
         subprocess.check_call(args, stdout=log, stderr=log)
     except:
-        print 'GMAP build failed'
+        print('GMAP build failed')
         raise NameError('')
 
     log.close()
@@ -239,11 +239,11 @@ def gmap(
     then uses gmap_map() to map'''
 
     # Build the reference
-    print '\t###BUILD INDEX###\n'
+    print('\t###BUILD INDEX###\n')
     reference_db = gmap_build(reference, wd)
 
     # Mapping
-    print '\t###MAP###\n'
+    print('\t###MAP###\n')
     out_file = gmap_map(
         reference_db,
         fastq_reads,
@@ -285,8 +285,8 @@ def gmap_map(
             'for GMAP. Accepted are samse or 2 (gff3_gene)')
     if os.path.isfile(filename) and os.path.getsize(
             filename) > 1:  # If the ref is there do not build it again
-        print ('STAR index existed already: ' +
-               filename + ' --- skipping')
+        print(('STAR index existed already: ' +
+               filename + ' --- skipping'))
     else:
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
@@ -369,7 +369,7 @@ def samtools_view(sam_file, wd):
     bam_filename = sam_file + '.bam'
     args = ['samtools', 'view', '-bS', '-o', bam_filename, sam_file]
     if os.path.isfile(bam_filename):
-        print ('BAM file existed already: ' + bam_filename + ' --- skipping\n')
+        print(('BAM file existed already: ' + bam_filename + ' --- skipping\n'))
         return bam_filename
     log_name = wd + 'samtools_view.log'
     log = open(log_name, 'w')
@@ -398,8 +398,8 @@ def samtools_sort(bam_file, threads, wd):
             s_bam_filename]
         s_bam_filename = s_bam_filename
         if os.path.isfile(s_bam_filename):
-            print ('Sorted BAM file existed already: ' + s_bam_filename +
-                   '.bam --- skipping\n')
+            print(('Sorted BAM file existed already: ' + s_bam_filename +
+                   '.bam --- skipping\n'))
             return s_bam_filename
         log_name = wd + 'samtools_sort.log'
         log = open(log_name, 'w')
@@ -416,9 +416,9 @@ def samtools_sort(bam_file, threads, wd):
 
 
 def sam_to_sorted_bam(sam_file, threads, wd):
-    print '\t###SAM to BAM###\n'
+    print('\t###SAM to BAM###\n')
     bam_filename = samtools_view(sam_file, wd)
 
-    print'\t###SORTING BAM###\n'
+    print('\t###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd)
     return s_bam_filename

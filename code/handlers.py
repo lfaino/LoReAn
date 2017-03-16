@@ -116,7 +116,7 @@ def main():
     wd = os.path.abspath(sys.argv[4])
     AugustGmes(ref, threads, species, wd)
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':

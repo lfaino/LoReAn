@@ -25,8 +25,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, a):
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fastq')
         if os.path.isfile(outFilename):
-            print ('Filtered FASTQ existed already: ' +
-                outFilename + ' --- skipping\n')
+            print(('Filtered FASTQ existed already: ' +
+                outFilename + ' --- skipping\n'))
             return outFilename, 0
         outFile = open(outFilename, 'w')
         filter_count = 0
@@ -40,8 +40,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, a):
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fasta')
         if os.path.isfile(outFilename):
-            print ('Filtered FASTA existed already: ' +
-                outFilename + ' --- skipping\n')
+            print(('Filtered FASTA existed already: ' +
+                outFilename + ' --- skipping\n'))
             return outFilename, 0
         outFile = open(outFilename, 'w')
         filter_count = 0
@@ -77,8 +77,8 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fasta')
         if os.path.isfile(outFilename):
-            print ('Filtered FASTA existed already: ' +
-                outFilename + ' --- skipping\n')
+            print(('Filtered FASTA existed already: ' +
+                outFilename + ' --- skipping\n'))
             return outFilename, 0
         outFile = open(outFilename, 'w')
         filter_count = 0
@@ -88,10 +88,10 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
                 filter_count += 1
                 listSeqGood.append(record)
         for adapter in listSeqAdap:
-            results = pool.map(func_star, itertools.izip(listSeqGood, itertools.repeat(adapter)))
+            results = pool.map(func_star, zip(listSeqGood, itertools.repeat(adapter)))
             finalDNA = finalDNA + results
         for record in finalDNA:
-            if seqDict.has_key(record[0].id):
+            if record[0].id in seqDict:
                 otherString = [record[0], record[1]]
                 seqDict[record[0].id] = seqDict[record[0].id] + otherString
                 scoreDict[record[0].id] = scoreDict[record[0].id] + [record[2]]
@@ -111,7 +111,7 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         revcom = 0
         same = 0
         lost = 0
-        for key, score in scoreDict.items():
+        for key, score in list(scoreDict.items()):
             if scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 lost += 1
                 next
@@ -130,8 +130,8 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         fastqFile = open(fastqFilename, 'r')
         fastq = SeqIO.parse(fastqFile, 'fasta')
         if os.path.isfile(outFilename):
-            print ('Filtered FASTA existed already: ' +
-                outFilename + ' --- skipping\n')
+            print(('Filtered FASTA existed already: ' +
+                outFilename + ' --- skipping\n'))
             return outFilename, 0
         outFile = open(outFilename, 'w')
         filter_count = 0
@@ -141,10 +141,10 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
                 filter_count += 1
                 listSeqGood.append(record)
         for adapter in listSeqAdap:
-            results = pool.map(func_star, itertools.izip(listSeqGood, itertools.repeat(adapter)))
+            results = pool.map(func_star, zip(listSeqGood, itertools.repeat(adapter)))
             finalDNA = finalDNA + results
         for record in finalDNA:
-            if seqDict.has_key(record[0].id):
+            if record[0].id in seqDict:
                 otherString = [record[0], record[1]]
                 seqDict[record[0].id] = seqDict[record[0].id] + otherString
                 scoreDict[record[0].id] = scoreDict[record[0].id] + [record[2]]
@@ -164,7 +164,7 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
         revcom = 0
         same = 0
         lost = 0
-        for key, score in scoreDict.items():
+        for key, score in list(scoreDict.items()):
             if scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 lost += 1
                 next
@@ -180,7 +180,7 @@ def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt, threa
                     filter_count += 1
                     revcom += 1
     else:
-        print "Can not recognize file type"
+        print("Can not recognize file type")
         
     outFile.close()
     SeqIO.write(finalSeq, outFilename, "fasta")

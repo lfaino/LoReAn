@@ -121,7 +121,7 @@ def main():
     outFilename = os.path.abspath(sys.argv[3])
     catTwoFiles(gmap, evm, outFilename)
 
-    print '\n\n\n###############\n###FINISHED###\n###############\n\n'
+    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
 
 
 if __name__ == '__main__':
