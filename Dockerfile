@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
-    python2.7 python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+    python3.5 python-pip3 debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -11,7 +11,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
-RUN pip install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils
+RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils
           
 RUN adduser --disabled-password --gecos '' lorean &&\
     adduser lorean sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
