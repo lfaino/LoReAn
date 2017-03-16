@@ -20,6 +20,7 @@ The software can be run after installing by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 ```
+Additional oprions can be found at [option instructions](OPTIONS.md)
 
 To see a full list of options type:
 ```bash
