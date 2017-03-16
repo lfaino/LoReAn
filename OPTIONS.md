@@ -6,15 +6,19 @@ lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
 ## The specie name used in LoReAn needs to be in the AUGUSTUS database. However, if RNA-seq is supplied,the tool will calculate the best AUGUSTUS sets using Braker1 software
 
 -d or --stranded: 
+    
     Run LoReAn on stranded mode [FALSE]
     
 -f or --fungus: 
+    
     Use this option for fungal species (used in Gene Mark-ES)  [FALSE]
     
 -u or --only_unitigs: 
+    
     Removes gene models that are not supported by long reads [FALSE]
     
 -k or --keep_tmp: 
+    
     Keep temporary files [FALSE]
     
 -s or --short_reads: 
