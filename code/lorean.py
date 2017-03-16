@@ -30,6 +30,7 @@ from Queue import Queue
 from threading import Thread
 import itertools
 import shutil
+import datetime
 
 # OTHER SCRIPTS
 import dirs_and_files as logistic
@@ -52,16 +53,13 @@ import manupulateSeq as mseq
 ### CHEKS BEFORE START LOREAN ######
 ####################################
 
-
 os.system('sudo usermod -d /var/lib/mysql/ mysql')
 os.system('sudo /etc/init.d/mysql start')
 os.system('mysql --user="root" --password="lorean" --execute="set global sql_mode=\'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\';"')
 
-
 ###############
 ###FUNCTIONS###
 ###############
-
 
 def arguments():
     '''Parses the arguments from the program invocation'''
@@ -165,12 +163,12 @@ def arguments():
                         nargs="?", default="9",
                         help="Minimal intron length for GMAP [9]",
                         metavar='N')
-    parser.add_argument("-n","--max_intron_length",
+    parser.add_argument("-q","--max_intron_length",
         nargs="?",
         default="1000",
         help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
         metavar='N')
-    parser.add_argument("-H", "-h", 
+    parser.add_argument("-ee", "--end_exon", 
                         nargs="?", default="20",
                         help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
@@ -212,10 +210,10 @@ def arguments():
 
     args = parser.parse_args()
     return args
+
 ###############
 ###MAIN###
 ###############
-
 
 def main():
     if os.path.isfile("/data/gm_key"):
@@ -243,8 +241,7 @@ def main():
         if not args.collect_only:
             list_fasta_names = multiple.single_fasta(ref, wd)
             if args.short_reads != '' or args.long_reads != '':
-
-                print '\n###STAR MAPPING###\n'
+                print '\n###STAR MAPPING\t'  + str(datetime.datetime.now()) + '\t###\n'
                 # SHORT READS
                 if 'fastq' in args.short_reads or 'fq' in args.short_reads:
                     star_out = wd + '/STAR/'
@@ -292,21 +289,19 @@ def main():
                     # filtering on length reduces the amount of sequencing
                     # artefacts
 
-                    print "\n###FILTERING OUT LONG READS###\n"
+                    print "\n###FILTERING OUT LONG READS\t"  + str(datetime.datetime.now())  + "\t###\n"
                     if args.adapter == "":
                         long_fasta, filter_count = mseq.filterLongReads(
                         args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd , a = True)
                     elif args.adapter != "":
-                        long_fasta, filter_count = mseq.findOrientation(
-                        args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter)
-                        
+                        long_fasta, filter_count = mseq.findOrientation(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter, args.threads)
                         
                     if filter_count != 0:
-                        print "LOREAN KEPT " + str(filter_count) + " READS AFTER LENGTH FILTERING\n"
+                        print "LOREAN KEPT\t" + str(filter_count) + "\tREADS AFTER LENGTH FILTERING\n"
                     if not short_sorted_bam:
                         # If short reads have been mapped dont do it
 
-                        print '\n###GMAP###\n'
+                        print '\n###GMAP\t'  + str(datetime.datetime.now())  + 't###\n'
 
                         long_sam = mapping.gmap(
                             'sam',
@@ -316,7 +311,7 @@ def main():
                             'samse',
                             args.min_intron_length,
                             args.max_intron_length,
-                            args.H,
+                            args.end_exon,
                             gmap_wd,
                             Fflag=False)
                         
@@ -332,7 +327,7 @@ def main():
 
                 else:
 
-                    print '\n###NO LONG READS FILE###\n'
+                    print '\n###NO LONG READS FILE\t'  + str(datetime.datetime.now())  + '\t###\n'
                     long_sorted_bam = False
 
                 if short_sorted_bam:  # If there are short reads, these will serve to the transcript assembly pipeline
@@ -344,17 +339,17 @@ def main():
 
                 # TRINITY
 
-                print '\n###TRINITY###\n'
+                print '\n###TRINITY'  + str(datetime.datetime.now())  + '\t###\n'
 
                 trin_dir = wd + 'Trinity/'
                 logistic.check_create_dir(trin_dir)
-
+                trinity_cpu = str(int(args.threads)/2)
                 trinity_out = transcripts.trinity(
-                    default_bam, trin_dir, args.max_intron_length, args.threads)
+                    default_bam, trin_dir, args.max_intron_length, trinity_cpu)
 
                 # PASA Pipeline
 
-                print '\n###PASA###\n'
+                print '\n###PASA'  + str(datetime.datetime.now())  + '\t###\n'
 
                 # Create PASA folder and configuration file
                 pasa_dir = wd + 'PASA/'
@@ -380,7 +375,7 @@ def main():
                     protein_loc = os.path.abspath(args.protein_evidence)
                     if args.species in err:
 
-                        print '\n###RUNNING AUGUSTUS, GENEMARK-ES AND AAT###\n'
+                        print '\n###RUNNING AUGUSTUS, GENEMARK-ES AND AAT'  + str(datetime.datetime.now())  + '\t###\n'
 
                         queue = Queue()
                         for i in range(3):
@@ -406,7 +401,7 @@ def main():
                     elif args.short_reads:  # USING PROTEINS AND SHORT READS
                         queue = Queue()
 
-                        print '\n###RUNNING BRAKER1 AND AAT###\n'
+                        print '\n###RUNNING BRAKER1 AND AAT'  + str(datetime.datetime.now())  + '\t###\n'
 
                         for i in range(2):
                             queue.put(i)  # QUEUE WITH A ZERO AND A ONE
@@ -430,7 +425,7 @@ def main():
                     elif args.long_reads:  # USING PROTEINS AND LONG READS
                         queue = Queue()
 
-                        print '\n###RUNNING BRAKER1 AND AAT###\n'
+                        print '\n###RUNNING BRAKER1 AND AAT'  + str(datetime.datetime.now())  + '\t###\n'
 
                         for i in range(2):
                             queue.put(i)  # QUEUE WITH A ZERO AND A ONE
@@ -451,7 +446,7 @@ def main():
                             t.start()
                         queue.join()
 
-                print '\n###GMAP###\n'
+                print '\n###GMAP'  + str(datetime.datetime.now())  + '\t###\n'
 
                 trinityGFF3 = mapping.gmap(
                     'trin',
@@ -461,7 +456,7 @@ def main():
                     'gff3_gene',
                     args.min_intron_length,
                     args.max_intron_length,
-                    args.H,
+                    args.end_exon,
                     gmap_wd,
                     Fflag=True)
 
@@ -477,7 +472,7 @@ def main():
                 protein_loc = os.path.abspath(args.protein_evidence)
                 if args.species in err:
 
-                    print '\n###RUNNING AUGUSTUS, GENEMARK-ES AND AAT###\n'
+                    print '\n###RUNNING AUGUSTUS, GENEMARK-ES AND AAT'  + str(datetime.datetime.now())  + '\t###\n'
 
                     queue = Queue()
                     for i in range(3):
@@ -502,11 +497,11 @@ def main():
                     queue.join()
                 else:
 
-                    sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS#####\n")
+                    sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS'  + str(datetime.datetime.now())  + '\t#####\n")
 
             # Prepare EVM input files
 
-            print '\n###RUNNING EVM###\n'
+            print '\n###RUNNING EVM'  + str(datetime.datetime.now())  + '\t###\n'
 
             # HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
             gmap_name = args.ref + '_GMAPindex'
@@ -606,10 +601,10 @@ def main():
                 FinalFiles.append(evm_gff3)
 
                 if args.short_reads == '' and args.long_reads == '':
-                    sys.exit("##### EVM IS FINISHED #####\n")
+                    sys.exit("##### EVM IS FINISHED"  + str(datetime.datetime.now())  + "\t#####\n")
 
             else:
-                print "\n###NOT RUNNING EVM PIPELINE###\n"
+                print "\n###NOT RUNNING EVM PIPELINE"  + str(datetime.datetime.now())  + "\t###\n"
                 evm_gff3 = wd + '/evm_output/evm.out.combined.gff3'
 
                 # RE-RUN PASA PIPELINE
@@ -618,7 +613,7 @@ def main():
             # AFTER EVM; #We only want to update if it ran with short reads
             round_n = 0
             if (args.short_reads != "" and not args.no_update) and (args.long_reads == "" and not args.no_update):
-                print'\n###UPDATE WITH PASA DATABASE###\n'
+                print'\n###UPDATE WITH PASA DATABASE'  + str(datetime.datetime.now())  + '\t###\n'
 
                 # for round_n in range(1,3): #Two rounds, 1 & 2
                 
@@ -630,7 +625,7 @@ def main():
                     round_n = 1
                 else:
                     round_n += 1
-                    print '\n##UPDATE ROUND ###\n'
+                    print '\n##UPDATE ROUND '  + str(datetime.datetime.now())  + '\t###\n'
                     if args.long_reads == "":
                         finalOutput = evm_pipeline.update_database(
                             args.threads,
@@ -661,12 +656,12 @@ def main():
                 os.system(cmdstring)
 
                 sys.exit(
-                    "#####ANNOTATION FINISHED WITHOUT USING LONG READS#####\n")
+                    "#####ANNOTATION FINISHED WITHOUT USING LONG READS"  + str(datetime.datetime.now())  + "\t#####\n")
 
             # HERE WE START WITH LONG READS
             else:
 
-                print '\n###RUNNING iASSEMBLER###\n'
+                print '\n###RUNNING iASSEMBLER'  + str(datetime.datetime.now())  + '\t###\n'
 
                 if args.long_reads and not args.no_consensus:
                     # Means there are long reads to map and user wants to run
@@ -685,7 +680,7 @@ def main():
                             'samse',
                             args.min_intron_length,
                             args.max_intron_length,
-                            args.H,
+                            args.end_exon,
                             gmap_wd,
                             Fflag=False)  # change in 1 and 2
                         long_sorted_bam = mapping.sam_to_sorted_bam(
@@ -704,7 +699,7 @@ def main():
                         mergedmapGFF3 = logistic.catTwoBeds(
                             long_sorted_bam, evm_gff3, fileName)
 
-                    print "\n\t#GFFREAD\n"
+                    print "\n\t###GFFREAD"  + str(datetime.datetime.now())  + "\t###\n"
 
                     # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
                     # REFERENCE
@@ -717,14 +712,14 @@ def main():
 
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
 
-                    print "\n\t#CLUSTERING\n"
+                    print "\n\t#CLUSTERING"  + str(datetime.datetime.now())  + "\t###\n"
 
                     # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME
                     # POSITION
                     cluster_list = consensus.cluster_pipeline(
                         mergedmapGFF3, args.assembly_overlapLength, args.stranded, consensus_wd)
 
-                    print "\n\t#CONSENSUS FOR EACH CLUSTER\n"
+                    print "\n\t#CONSENSUS FOR EACH CLUSTER"  + str(datetime.datetime.now())  + "\t###\n"
 
                     # HERE WE MAKE CONSENSUS FOR EACH CLUSTER
                     tmp_wd = consensus_wd + 'tmp/'
@@ -750,7 +745,7 @@ def main():
         # THE FULL PIPELINE
         else:
 
-            print "\n###COLLECT ONLY SEQUENCES###\n"
+            print "\n###COLLECT ONLY SEQUENCES"  + str(datetime.datetime.now())  + "\t###\n"
 
             # PLACE WHERE THE EVM ANNOTATION IS LOCATED
             updatedGff3 = wd + 'PASA/annotation.PASAupdated.round1.gff3'
@@ -778,7 +773,7 @@ def main():
 
         # shutil.rmtree(tmp_wd)
 
-        print "\n###MAPPING CONSENSUS ASSEMBLIES###\n"
+        print "\n###MAPPING CONSENSUS ASSEMBLIES"  + str(datetime.datetime.now())  + "\t###\n"
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
         consensusMappedGFF3 = mapping.gmap(
@@ -789,11 +784,11 @@ def main():
             'gff3_gene',
             args.min_intron_length,
             args.max_intron_length,
-            args.H,
+            args.end_exon,
             gmap_wd,
             Fflag=True)
 
-        print "\n###GETTING THE STRAND RIGHT###\n"
+        print "\n###GETTING THE STRAND RIGHT"  + str(datetime.datetime.now())  + "\t###\n"
 
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
@@ -869,12 +864,12 @@ def main():
         FinalFiles.append(finalupdate3)
 
 
-        print'\n###CREATING OUTPUT DIRECTORY###\n'
+        print'\n###CREATING OUTPUT DIRECTORY'  + str(datetime.datetime.now())  + '\t###\n'
 
         final_output_dir = wd_base + 'output/'
         logistic.check_create_dir(final_output_dir)
 
-        print "\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY"
+        print "\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY"  + str(datetime.datetime.now())  + "\t###\n"
 
         for filename in FinalFiles:
             if filename != '':

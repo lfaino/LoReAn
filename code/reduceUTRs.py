@@ -16,10 +16,8 @@ import itertools
 def lengthSupport(tmp_wd):
     '''with this function, we try to reduce the UTRs if they have low support (at least 10% of the total reads)
     we do this by using the information from the iAssembly outputs'''
-
     wd = tmp_wd  # +'consensus/tmp/'
     print '\n\t###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n'
-
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
             if 'output' in direc:
@@ -43,7 +41,6 @@ def lengthSupport(tmp_wd):
                         else:
                             origDict[line[0]] = len(line) - 1
                     contigs.close()
-
                     genome = open(outputDir + 'genome.txt', 'w')
                     contig = open(outputDir + 'unigene.sam', 'r')
                     for line in contig:
@@ -87,7 +84,6 @@ def lengthSupport(tmp_wd):
                         if info[0] in unitigDict and int(info[3]) > int(
                                 int(unitigDict[info[0]]) / 20) and info[0] in rangeDict:
                             rangeDict[info[0]].append(info[2])
-
                         elif info[0] in unitigDict and int(info[3]) > int(int(unitigDict[info[0]]) / 20):
                             listStartEnd.append(info[1])
                             listStartEnd.append(info[2])

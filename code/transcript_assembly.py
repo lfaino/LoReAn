@@ -10,11 +10,10 @@ Assembling and preparing transcripts
 import os
 import subprocess
 
-
 def trinity(bam_file, wd, max_intron_length, threads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
-    real_threads = (int(threads))
+    real_threads = abs(float(threads)/2)
     out_dir = wd + 'trinity_out_dir/'
     
     args = [
@@ -53,7 +52,6 @@ def trinity(bam_file, wd, max_intron_length, threads):
     log.close()
     return out_name
 
-
 def seqclean(trinity_file, wd):
     '''the function prepare the Trinity fasta file for PASA '''
     out_dir = '/'.join(trinity_file.split('/')[:-1]) + '/'
@@ -77,7 +75,6 @@ def seqclean(trinity_file, wd):
     log.close()
     return out_name
 
-
 def pasa_configuration(pasa_dir, pasa_db):
     '''Creates a PASA configuration file. Database name will be the reference name'''
     conf_file = pasa_dir + 'alignAssembly.config'
@@ -98,15 +95,7 @@ def pasa_configuration(pasa_dir, pasa_db):
     conf.close()
     return conf_file
 
-
-def pasa_call(
-        pasa_dir,
-        conf_file,
-        pasa_db,
-        reference,
-        transcripts,
-        max_intron_length,
-        threads):
+def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length, threads):
     '''PASA to construct a database of transcripts. It will overwrite any
     database with the same name -the one of the reference-.'''
     args = [
@@ -144,7 +133,6 @@ def pasa_call(
     log.close()
     out_log.close()
     return out_file
-
 
 def braker_call(wd, reference, bam_file, species_name, threads, fungus):
     '''Calls braker, may take a while'''
@@ -196,7 +184,6 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus):
     log_err.close()
     return out_dir
 
-
 def augustus_call(wd, ref, species_name):
     args = ['augustus', '--species=' + species_name, ref]
     chromo = ref.split('/')[-1]
@@ -217,7 +204,6 @@ def augustus_call(wd, ref, species_name):
         log.close()
         log_e.close()
     return wd
-
 
 def gmes_call(wd, ref, fungus, threads):
     wd_output = wd + '/genemark.gtf.gff3'
