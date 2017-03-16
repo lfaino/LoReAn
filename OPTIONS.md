@@ -4,15 +4,21 @@
 
 -d or --stranded: 
     Run LoReAn on stranded mode [FALSE]
+    
 -f or --fungus: 
     Use this option for fungal species (used in Gene Mark-ES)  [FALSE]
+    
 -u or --only_unitigs: 
     Removes gene models that are not supported by long reads [FALSE]
+    
 -k or --keep_tmp: 
     Keep temporary files [FALSE]
+    
 -s or --short_reads: 
     Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []
--a or --adapter: 
+    
+-a or --adapter:
+    
     FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []
 -l or --long_reads: 
     Path to long reads FASTQ []
