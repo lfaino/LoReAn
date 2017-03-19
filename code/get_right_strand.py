@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 ###############
 ###IMPORTS###
@@ -15,7 +15,7 @@ def removeDiscrepancy(gff, evmFile):
     badName = []
     gffVal_call = subprocess.Popen(['pasa_gff3_validator.pl', gff], stdout=subprocess.PIPE)
     for ln in gffVal_call.stdout.readlines():
-        name = re.split(' |\.CDS', ln)
+        name = re.split(' |\.CDS', (ln.decode("utf-8")))
         if len(name) > 3 and "ERROR" in name[0]:
             #if "mRNA" in name[2]:
             badName.append(name[2])
@@ -45,6 +45,8 @@ def removeDiscrepancy(gff, evmFile):
     bedtools_call = subprocess.Popen(['bedtools', 'intersect', '-v', '-a', evmFile, '-b', gff], stdout=subprocess.PIPE)
     evm_mRNA = []
     for ln in bedtools_call.stdout.readlines():
+        lne = ln.decode("utf-8")
+        ln = lne
         if "mRNA" in ln.split('\t')[2]:
             attribute = ln.split('\t')[8].split(';')
             for el in attribute:
@@ -111,11 +113,13 @@ def removeOverlap(gff):
     o.close()
     i.close()
     bedout = outFile + '.bedtools.bed'
+    bedouffile = open(bedout, "w")
     errorFile = outFile + ".bedtools_err.log"
+    errorFilefile = open(errorFile, "w")
     bedsort = ['bedtools', 'sort', '-i', outFile]
     bedmerge = ['bedtools', 'merge', '-d', '-100', '-s', '-o', 'count,distinct','-c','9,9' ]
-    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=file(errorFile, 'w'))
-    bedmerge_call = subprocess.Popen(bedmerge, stdin = bedsort_call.stdout, stdout=file(bedout , 'w'), stderr=file(errorFile, 'w'))
+    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr= errorFilefile)
+    bedmerge_call = subprocess.Popen(bedmerge, stdin = bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile)
     bedmerge_call.communicate()
     listMultiple = []
     listUniq= []
@@ -180,7 +184,11 @@ def removeOverlap(gff):
     return outputFilename
 
 def genename(gff_filename, prefix):
-    gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy', gff_filename], stdout=subprocess.PIPE, stderr = file(gff_filename + '.gt.log', "w"))
+    errorFile = gff_filename + "error.log"
+    errorFilefile = open(errorFile, "w") 
+    gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy', gff_filename], stdout=subprocess.PIPE, stderr = errorFilefile)
+    errorFilefile.close()
+    
     fields = []
     featureann = []
     chrold = ''
@@ -189,11 +197,10 @@ def genename(gff_filename, prefix):
     path = gff_filename.split('/')
     path[-1] = prefix + '_LoReAn.annotation.gff3'
     newpath = '/'.join(path)
-
     o = open(newpath, 'w+')
     o.write ('##version-gff 3\n')
     for ln in gt_call.stdout.readlines():
-        lnn = ln.rstrip('\n')
+        lnn = (ln.decode("utf-8")).rstrip('\n')
         fields = lnn.split('\t')
         if len(fields) == 9:
             typef = fields[2]
@@ -235,13 +242,13 @@ def genename(gff_filename, prefix):
 def newNames(oldname):
     finalout = oldname + ".sorted.gff"
     errorFile = oldname + ".gt_err.log"
+    finaloutfile = open(finalout, "w")
+    errorFilefile = open (errorFile, "w")
     gt_com = ['gt', 'gff3', '-retainids', '-sort', '-tidy', oldname]
-    gt_call = subprocess.Popen(
-        gt_com, stdout=file(
-            finalout, 'w'), stderr=file(
-            errorFile, 'w'))
+    gt_call = subprocess.Popen(gt_com, stdout= finaloutfile, stderr=errorFilefile)
     gt_call.communicate()
-
+    finaloutfile.close()
+    errorFilefile.close()
     return finalout
 
 def strand(gff_file1, gff_file2, wd):
@@ -249,20 +256,28 @@ def strand(gff_file1, gff_file2, wd):
     gff_out = gffwriter.GFFWriter(outputFilename)
     gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
     errorFile = gff_file1 + ".gt_err.log"
+    
     gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file1]
-    gt_call = subprocess.Popen(
-        gt_com, stdout=file(
-            gff_file1_out, 'w'), stderr=file(
-            errorFile, 'w'))
+    gff_file1_outfile = open(gff_file1_out, "w")
+    errorFilefile = open(errorFile, "w")
+    gt_call = subprocess.Popen( gt_com, stdout= gff_file1_outfile , stderr=errorFilefile)
     gt_call.communicate()
+    gff_file1_outfile.close()
+    errorFilefile.close()
     gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
     errorFile = gff_file2 + ".gt_err.log"
+
     gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file2]
-    gt_call = subprocess.Popen(
-        gt_com, stdout=file(
-            gff_file2_out, 'w'), stderr=file(
-            errorFile, 'w'))
+    gff_file2_outfile = open(gff_file2_out, "w")
+    errorFilefile = open(errorFile, "w")
+    gt_call = subprocess.Popen( gt_com, stdout= gff_file2_outfile , stderr=errorFilefile)
     gt_call.communicate()
+    gff_file2_outfile.close()
+    errorFilefile.close()
+
+
+
+   
     db1 = gffutils.create_db(gff_file1_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
     db2 = gffutils.create_db(gff_file2_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
     listgene1 = []
@@ -286,7 +301,6 @@ def strand(gff_file1, gff_file2, wd):
         g = ' '.join (i.attributes['Parent'])
         listgenetotal.append(g)
     listgene2 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
-    
     geneDict = {}
     for a in listgene2:   
         b =  re.split('_|\.', a)

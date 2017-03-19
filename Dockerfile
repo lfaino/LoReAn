@@ -28,7 +28,10 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
-RUN git clone https://github.com/lfaino/LoReAn.git  
+RUN git clone https://github.com/lfaino/LoReAn.git 
+
+RUN git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && \
+cp ssw_lib.py  /home/lorean/bin/LoReAn/code/ && cp libssw.so  /home/lorean/bin/LoReAn/code/ 
 
 WORKDIR /home/lorean/bin/LoReAn/third_party/software/
 

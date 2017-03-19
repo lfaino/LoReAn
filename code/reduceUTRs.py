@@ -1,4 +1,4 @@
-
+#!/usr/bin/env python3
 from multiprocessing import Pool
 import sys
 import subprocess
@@ -73,7 +73,7 @@ def lengthSupport(tmp_wd):
                     bedFile = BTcov_call.splitlines()
                     bed = open(outputDir + 'assembly.cov', 'w')
                     for el in bedFile:
-                        bed.write(el + '\n')
+                        bed.write((el.decode("utf-8")) + '\n')
                     bed.close()
                     bed = open(outputDir + 'assembly.cov', 'r')
                     rangeDict = {}

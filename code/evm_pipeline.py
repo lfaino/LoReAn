@@ -1,13 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-EVM pipeline including PASA database update
-
-'''
 import os
 import subprocess
 from dirs_and_files import check_create_dir
@@ -92,11 +84,8 @@ def evm_partitions(
     stdout_f = open(stdout_file, 'w')
 
     try:
-        subprocess.check_call(
-            args,
-            stdout=stdout_f,
-            stderr=log,
-            cwd=evm_output)
+        evm_call = subprocess.Popen(args,  stdout=stdout_f,  stderr=log, cwd = evm_output)
+        evm_call.communicate()
         # print '> Partitions created\n'
     except:
         # print 'Partitions could not be created\n'
@@ -143,8 +132,11 @@ def evm_write_commands(
     log = open(log_name, 'w')
 
     try:
-        subprocess.check_call(args, stdout=command, stderr=log, cwd=evm_output)
-        # print '> Command list created. Output is: ' + command_file +'\n'
+        evm_call = subprocess.Popen(args,  stdout=command,  stderr=log, cwd = evm_output)
+        evm_call.communicate()
+
+        #subprocess.check_call(args, stdout=command, stderr=log, cwd=evm_output)
+        ## print '> Command list created. Output is: ' + command_file +'\n'
     except:
         # print 'Command file could not be created\n'
         raise NameError('')
@@ -172,8 +164,10 @@ def evm_run(evm_output, command_list, threads):
 
     try:
         cat = subprocess.Popen(args1, stdout=subprocess.PIPE, cwd=evm_output)
-        parallel = subprocess.check_call(
-            args2, stdin=cat.stdout, cwd=evm_output, stderr=log)
+        #evm_call = subprocess.Popen(args,  stdout=command,  stderr=log)
+        #evm_call.communicate()
+        parallel = subprocess.Popen(args2, stdin=cat.stdout, cwd=evm_output, stderr=log)
+        parallel.communicate()
 
         # print '> EVM finished.\n'
     except:
@@ -202,7 +196,10 @@ def evm_combine(evm_output, partitions):
     log = open(log_name, 'w')
 
     try:
-        subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
+        evm_call = subprocess.Popen(args,  stdout=st_out,  stderr=log, cwd = evm_output)
+        evm_call.communicate()
+
+        #subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
         # print '> Partitions combined\n'
     except:
         # print 'Partitions could not be combined\n'
@@ -232,7 +229,10 @@ def evm_to_gff3(evm_output, partitions, reference):
     log = open(log_name, 'w')
 
     try:
-        subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
+        evm_call = subprocess.Popen(args,  stdout=st_out,  stderr=log, cwd = evm_output)
+        evm_call.communicate()
+
+        #subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
         # print '> Converted to GFF3 \n'
     except:
         # print 'Could not convert to GFF3\n'
@@ -425,8 +425,10 @@ def annot_comparison(
     out_log = open(log_out_name, 'w')
 
     try:
-        update_process = subprocess.check_call(
-            args, stdout=out_log, stderr=log, cwd=pasa_dir)
+        pasa_call = subprocess.Popen(args,  stdout=out_log,  stderr=log, cwd=pasa_dir)
+        pasa_call.communicate()
+        #update_process = subprocess.check_call(
+            #args, stdout=out_log, stderr=log, cwd=pasa_dir)
     except:
         raise NameError('')
 

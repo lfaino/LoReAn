@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 MASTER THESIS PROJECT
@@ -237,11 +237,9 @@ def gmap(
     '''Calls the mapper GMAP to map fastq_reads to reference.
     First builds the gmap database index with gmap_build(),
     then uses gmap_map() to map'''
-
     # Build the reference
     print('\t###BUILD INDEX###\n')
     reference_db = gmap_build(reference, wd)
-
     # Mapping
     print('\t###MAP###\n')
     out_file = gmap_map(
@@ -291,70 +289,22 @@ def gmap_map(
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
+        args = [ 'gmap',  '-D', str(working_dir),  '-d', str(reference_database), '-H',  str(exon_length),  '--cross-species',  '--expand-offsets', '1',  '-B',  '5',   '--min-intronlength',  
+str(min_intron_length),  '-n',  '3',  '--microexon-spliceprob', '1', '-K',  str(max_intron_length), '-f', str(out_format),  '-t', str(threads),  reads]
         if not Fflag:
-            args = [
-                'gmap',
-                '-D',
-                str(working_dir),
-                '-d',
-                str(reference_database),
-                '-H',
-                str(exon_length),
-                '--cross-species',
-                '--expand-offsets',
-                '1',
-                '-B',
-                '5',
-                '--min-intronlength',
-                str(min_intron_length),
-                '-n',
-                '3',
-                '--microexon-spliceprob',
-                '1',
-                '-K',
-                str(max_intron_length),
-                '-f',
-                str(out_format),
-                '-t',
-                str(threads),
-                reads]
+            argsready = args + [reads]
             try:
-                subprocess.check_call(args, stdout=out_f, stderr=log)
+                gmapmap = subprocess.Popen(argsready, stdout=out_f, stderr=log)
+                gmapmap.communicate()
                 # print '>GMAP worked. Output is: ' + filename +'\n'
             except:
                 # print 'GMAP did not work properly\n'
                 raise NameError('')
         else:
-            args = [
-                'gmap',
-                '-D',
-                str(working_dir),
-                '-d',
-                str(reference_database),
-                '-H',
-                str(exon_length),
-                '--cross-species',
-                '--expand-offsets',
-                '1',
-                '-B',
-                '5',
-                '--min-intronlength',
-                str(min_intron_length),
-                '-F',
-                '-Y',
-                '--microexon-spliceprob',
-                '1',
-                '-n',
-                '3',
-                '-K',
-                str(max_intron_length),
-                '-f',
-                str(out_format),
-                '-t',
-                str(threads),
-                reads]
+            argsready = args + ['F', reads]
             try:
-                subprocess.check_call(args, stdout=out_f, stderr=log)
+                gmapmap = subprocess.Popen(argsready, stdout=out_f, stderr=log)
+                gmapmap.communicate()
                 # print '>GMAP worked. Output is: ' + filename +'\n'
             except:
                 # print 'GMAP did not work properly\n'

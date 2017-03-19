@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 '''
 MASTER THESIS PROJECT
@@ -29,7 +29,7 @@ def BrakerAAT(
         wd):
     '''Handles Braker and AAT so that we can run them in parallel'''
     # DIVIDE THREADS BY 2
-    use = (int(threads) / 2)
+    use = (round(int(threads) / 2) - 1)
     while True:
         dummy = queue.get()
         if dummy == 0:
@@ -56,9 +56,7 @@ def AugustGmesAAT(
         fungus,
         list_fasta_names,
         wd):
-    '''Handles Braker and AAT so that we can run them in parallel'''
-    # DIVIDE THREADS BY 3
-    use = (int(threads) / 3)
+    use = (round(int(threads) / 3)-1)
     use_gmes = str(use)
     augustus_wd = wd + 'augustus/'
     logistic.check_create_dir(augustus_wd)
@@ -66,19 +64,12 @@ def AugustGmesAAT(
     logistic.check_create_dir(gmes_wd)
     aat_wd = wd + 'AAT/'
     logistic.check_create_dir(aat_wd)
-
     while True:
         dummy = queue.get()
         if dummy == 0:
-            multiple.augustus_multi(
-                ref, use, species, list_fasta_names, augustus_wd)
+            multiple.augustus_multi(ref, use, species, list_fasta_names, augustus_wd)
         if dummy == 1:
-            multiple.aat_multi(
-                ref,
-                use,
-                protein_evidence,
-                list_fasta_names,
-                aat_wd)
+            multiple.aat_multi(ref, use, protein_evidence, list_fasta_names, aat_wd)
         if dummy == 2:
             transcripts.gmes_call(gmes_wd, ref, fungus, use_gmes)
         queue.task_done()
@@ -87,7 +78,7 @@ def AugustGmesAAT(
 
 def AugustGmes(queue, ref, species, fungus, threads, list_fasta_names, wd):
     '''Handles Braker and AAT so that we can run them in parallel'''
-    use = (int(threads) / 2)
+    use = (round(int(threads) / 2)-1)
     use_gmes = str(use)
     # DIVIDE THREADS BY 2
 

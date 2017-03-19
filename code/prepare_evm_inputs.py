@@ -1,16 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-Preparing all the inputs for EVM
-'''
 import os
 import subprocess
 from dirs_and_files import check_create_dir
-
 
 def convert_augustus(aug_file, wd):
     '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
@@ -19,16 +11,13 @@ def convert_augustus(aug_file, wd):
     print('\t###CONVERTING AUGUSTUS TO GFF3###\n')
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
-
     out_file = aug_file + '3'
-
     if os.path.isfile(out_file):
         print((
             'Augustus GFF3 file existed already: ' +
             out_file +
             ' --- skipping\n'))
         return out_file
-
     log_name = wd + '.augustus_GTF_to_EVM_GFF3.pl.log'
     log = open(log_name, 'w')
     out_f = open(out_file, 'w')

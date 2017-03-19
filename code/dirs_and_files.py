@@ -1,17 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-Directory and file handling
-'''
 import os
 import sys
 import errno
 import subprocess
-from subprocess import Popen, PIPE
+#from subprocess import Popen, PIPE
 from pybedtools import BedTool
 
 
@@ -30,21 +23,17 @@ def check_file(path_file):
 def check_create_dir(path):
     '''Checks a directory and creates it if it does not exist'''
     try:
-
         os.makedirs(path)  # Try to make it, otherwise don't do anything
     except OSError as exception:
         if exception.errno != errno.EEXIST:
             raise
 
-
 def copy_file(in_file, directory):
     '''Copies a file into a directory'''
     args = ['cp', '-f', in_file, directory]
-
     try:
         subprocess.check_call(args)
     except:
-
         raise NameError('')
 
 
@@ -52,15 +41,18 @@ def catTwoBeds(gmap, evm, outFilename):
     '''convert in to bed12 and concatenates the two bed12 files'''
     gtf = evm + ".gtf"
     bed12_evm = evm + ".bed12"
+    bed12file = open(bed12_evm, "w")
+    gtffile = open(gtf, "w")
     gffread_con = ['gffread', '-o-', '-T', evm]
-    gffread_call = subprocess.Popen(gffread_con, stdout=file(gtf, "w"))
+    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile)
     gffread_call.communicate()
     gft2bed = ['gtf2bed.py', 'transcript', gtf]
-    evm_call = subprocess.Popen(gft2bed, stdout=file(bed12_evm, "w"))
+    evm_call = subprocess.Popen(gft2bed, stdout=bed12file)
     evm_call.communicate()
     bed12_gmap = gmap + ".bed12"
+    bed12gmapfile = open(bed12_gmap, "w")
     gmap_con = ['bedtools', 'bamtobed', '-split', '-bed12', '-i', gmap]
-    gmap_call = subprocess.Popen(gmap_con, stdout=file(bed12_gmap, "w"))
+    gmap_call = subprocess.Popen(gmap_con, stdout=bed12gmapfile)
     gmap_call.communicate()
     '''Concatenates the two inFiles into the outFile'''
     inFile1 = open(bed12_gmap, 'r')
@@ -72,7 +64,6 @@ def catTwoBeds(gmap, evm, outFilename):
     inFile1.close()
     inFile2.close()
     outFile.close()
-
     outNameNew = outFilename + 'new.bed'
     lastFile = open(outFilename, 'r')
     o = open(outNameNew, 'w')
@@ -90,6 +81,9 @@ def catTwoBeds(gmap, evm, outFilename):
             aline = '\t'.join(linenew)
             o.write(aline)
     o.close()
+    bed12gmapfile.close()
+    bed12file.close()
+    gtffile.close()
     return outNameNew
 
 
@@ -97,15 +91,23 @@ def catTwoFasta(trinity, consens, allSeq, wd):
     '''Concatenates the two fasta file into one output'''
     outFileFasta = wd + "/allFasta.fasta.clean"
     if os.path.isfile(outFileFasta):
+
         allOutFasta = outFileFasta + ".long.clean"
         cat_con = ['cat', trinity, allSeq, consens]
-        cat_call = subprocess.Popen(cat_con, stdout=file(allOutFasta, "w"))
+        allOutFastafile = open(allOutFasta, "w")
+        #print (cat_con)
+        cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
         outFileFasta = allOutFasta
+        allOutFastafile.close()
     else:
+        allOutFastafile = open(outFileFasta, "w")
         cat_con = ['cat', trinity, allSeq, consens]
-        cat_call = subprocess.Popen(cat_con, stdout=file(outFileFasta, "w"))
+        #print (cat_con)
+        #print ("in")
+        cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
+        allOutFastafile.close()
 
     return outFileFasta
 

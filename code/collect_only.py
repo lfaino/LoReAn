@@ -1,34 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
-
-#######################################
-######DOCUMENT THIS FILE################
-#######################################
-
-
-
-from multiprocessing import Pool
-import sys
-import subprocess
-import argparse
 import os
-import re
-import shutil
-from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from queue import Queue
-from threading import Thread, Lock
-import itertools
-
 
 count_sequences = 0
 length_cluster = 0
-
-###############
-###FUNCTIONS###
-###############
-
-
 def parseOnly(threshold_float, unitigs, tmp_wd):
     '''to join the assembly and the parsing process'''
     evm_list = []
@@ -180,7 +156,6 @@ def addEVM(
         dictOut = {}
         outFasta = SeqIO.parse(outFastaFile, 'fasta')
         for record in outFasta:
-            #            count = 0
             if record.id in dictOut:
                 dictOut[str(record.id) + '_' + str(count)] = str(record.seq)
                 count += 1
@@ -243,37 +218,3 @@ def getEVMnoUnitig(target_wd):
             except IOError:
                 continue
     return evm_list
-
-
-###############
-###MAIN###
-###############
-
-def main():
-    '''Main body of the function'''
-#    wd = 'consensus/tmp/'
-#    check_create_dir(wd)
-#    wd = os.path.abspath(wd) + '/'
-#    print wd
-
-#    gff3FileName = os.path.abspath(sys.argv[1])
-#    reference = os.path.abspath(sys.argv[1])
-#    fastaFilename = wd + 'gffread.fasta'
-#    threshold_float = 0.3
-#    unitigs = False
-
-    evm_list = parseOnly(threshold_float, unitigs, wd)
-    outputFilename = catAssembled(wd)
-    mergedFastaFilename = wd + 'assembly.wEVM.fasta'
-    addEVM(
-        fastaFilename,
-        outputFilename,
-        unitigs,
-        evm_list,
-        mergedFastaFilename)
-
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()

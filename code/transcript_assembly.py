@@ -1,19 +1,14 @@
-#!/usr/bin/env python
-
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-Assembling and preparing transcripts
-'''
+#!/usr/bin/env python3
 import os
 import subprocess
+import math
 
 def trinity(bam_file, wd, max_intron_length, threads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
-    real_threads = abs(float(threads)/2)
+    #real_threads =  int(int(threads)/int(2))
+    #print (real_threads)
+    #number_threads = real_threads.split('.')
     out_dir = wd + 'trinity_out_dir/'
     
     args = [
@@ -27,7 +22,7 @@ def trinity(bam_file, wd, max_intron_length, threads):
                 '--output',
                 out_dir,
                 '--CPU',
-                str(real_threads),
+                str(threads),
                 '--full_cleanup']
     
     out_name = out_dir + 'Trinity-GG.fasta'
@@ -44,7 +39,8 @@ def trinity(bam_file, wd, max_intron_length, threads):
     log_name = wd + 'trinity.log'
     log = open(log_name, 'w')
     try:
-        subprocess.check_call(args, stdout=log, stderr=log_err)
+        trinity_call = subprocess.Popen(args, stdout=log, stderr=log_err)
+        trinity_call.communicate()
     except:
         print('Trinity did not work properly\n')
         raise NameError('')
@@ -189,7 +185,7 @@ def augustus_call(wd, ref, species_name):
     chromo = ref.split('/')[-1]
     wd_augu = wd + '/' + chromo + '.augustus.gff'
     wd_output = wd + '/' + 'augustus.gff3'
-    if os.path.isfile(wd_output):
+    if os.path.isfile(wd_augu):
         print(('Augustus  files exist: ' + wd_output + ' --- skipping\n'))
         return wd
     else:

@@ -1,32 +1,18 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-
-#######################################
-######DOCUMENT THIS FILE################
-#######################################
-
-
-
-from multiprocessing import Pool
 import sys
 import subprocess
 import argparse
 import os
 import re
-import shutil
 from dirs_and_files import check_create_dir
 from Bio import SeqIO
 from queue import Queue
-from threading import Thread, Lock
-import itertools
+from threading import Thread
 
 
 count_sequences = 0
 length_cluster = 0
-
-###############
-###FUNCTIONS###
-###############
 
 
 def gffread(gff3File, reference, working_dir):
@@ -71,9 +57,6 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
             'bedtools',
             'merge',
             '-s',
-            '-i',
-            gff3File +
-            '.sorted.bed',
             '-d',
             str(dist),
             '-c',
@@ -86,9 +69,6 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
         BTmerge1 = [
             'bedtools',
             'merge',
-            '-i',
-            gff3File +
-            '.sorted.bed',
             '-d',
             str(dist),
             '-c',
@@ -96,22 +76,23 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
             '-o',
             'count,distinct']
         print("\t###CLUSTERING IN NON-STRANDED MODE###\n")
-    BTsort2 = ['bedtools', 'sort', '-i', gff3File + '.sorted.merged.bed']
+    BTsort2 = ['bedtools', 'sort']
 
     # Sort the GFF3 file
-    BTsort1_call = subprocess.Popen(
-        BTsort1, stdout=file(
-            gff3File + ".sorted.bed", "w"))
-    BTsort1_call.communicate()
-
+    #BTsortfile = open( gff3File + ".sorted.bed", "w")
+    BTsort1_call = subprocess.Popen( BTsort1, stdout=subprocess.PIPE)
+    #BTsort1_call.communicate()
+    #BTmergefileout = gff3File + ".sorted.merged.bed"
+    #BTmergefile = open(gff3File + ".sorted.merged.bed", "w")
     # Merge the BED entries, count number of reads on each merged entry
-    BTmerge1_call = subprocess.Popen(
-        BTmerge1, stdout=file(
-            gff3File + ".sorted.merged.bed", "w"))
-    BTmerge1_call.communicate()
+    BTmerge1_call = subprocess.Popen(BTmerge1, stdin = BTsort1_call.stdout, stdout = subprocess.PIPE)
+    #BTmerge1_call.communicate()
     # NSort it again and returns
-    BTsort2_call = subprocess.check_output(BTsort2)
-    final_output = BTsort2_call.splitlines()
+    BTsort2_call = subprocess.Popen(BTsort2, stdin   =  BTmerge1_call.stdout, stdout = subprocess.PIPE)
+    outputBT = BTsort2_call.communicate()[0]
+    final_output = outputBT.splitlines()
+    #final_outn = list(final_output.decode("utf-8"))
+    #print (final_output)
     return final_output
 
 
@@ -129,18 +110,10 @@ def fasta2Dict(fastaFilename):
     return fastaDict
 
 
-def write_fastas(
-        count,
-        bedline,
-        fastaDict,
-        min_length,
-        min_evidence,
-        max_evidence,
-        wd):
+def write_fastas( count, bedline, fastaDict, min_length, min_evidence,max_evidence,wd):
     '''From the output list of the pipeline, recovers the ID and goes back to the
     fasta file to retrieve the sequence'''
-
-    line = bedline.split('\t')
+    line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
         chrm, start, end, strand, number, idents = (
             line[0], line[1], line[2], line[3], line[4], line[5])
@@ -230,7 +203,6 @@ def assembleParse(queue, overlapLength, percent_identity, overhang, wd):
 
 
 def func_star(a_b):
-
     return assembleParse(*a_b)
 
 

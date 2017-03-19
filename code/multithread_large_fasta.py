@@ -1,11 +1,4 @@
-#!/usr/bin/env python
-
-
-#######################################
-######DOCUMENT THIS FILE################
-#######################################
-
-
+#!/usr/bin/env python3
 
 from multiprocessing import Pool
 import sys
@@ -23,10 +16,7 @@ from Bio import SeqIO
 import transcript_assembly as transcripts
 import dirs_and_files as logistic
 import protein_alignment
-
-###############
-###FUNCTIONS###
-###############
+#from future import unicode_literals
 
 
 count_sequences = 0
@@ -54,16 +44,17 @@ def parseAugustus(wd, single_fasta_list):
     '''From all the augustus output after the multithread generate a single gff file'''
     fileName = wd + '/augustus.gff'
     testGff = open(fileName, 'w')
+    wd_gff = ['cat']
     for root, dirs, files in os.walk(wd):
         for name in files:
             for ident in single_fasta_list:
                 change_id = (ident.split('/')[-1]) + '.augustus.gff'
                 if name == change_id:
-                    wd_gff = os.path.join(root, name)
-                    t_file = open(wd_gff, 'r')
-                    for line in t_file:
-                        testGff.write(line)
-                    t_file.close()
+                    wd_gff.append(os.path.join(root, name))
+    cat_call = subprocess.Popen(wd_gff, stdout=testGff)
+    cat_call.communicate()
+    #testGff.write(line.decode("utf-8"))
+                    #t_file.close()
     testGff.close()
     return fileName
 
@@ -138,7 +129,6 @@ def aat_multi(ref, threads, protein_evidence, single_fasta_list, wd):
         b = Thread(target=aatParse, args=(aat_queue, protein_evidence, wd))
         b.daemon = True
         b.start()
-
     aat_queue.join()
     protein_alignment.parseAAT(wd)
 

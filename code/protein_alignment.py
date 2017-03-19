@@ -1,12 +1,5 @@
-#!/usr/bin/env python
-
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-Assembling and preparing transcripts
-'''
+#!/usr/bin/env python3
+''
 import os
 import subprocess
 from sys import argv
@@ -20,7 +13,6 @@ def AAT(proteinFastaFile, ref, wd):
         print(('AAT files exist: ' + wd_output + ' --- skipping\n'))
         return True
     else:
-
         args = [
             'AAT.pl',
             '-P',
@@ -52,15 +44,14 @@ def AAT(proteinFastaFile, ref, wd):
 def parseAAT(wd):
     '''all the protein alignemnt files are concatenated in one file. this is becasue the AAT is paralelized'''
     outFilename = wd + '/protein_evidence.out'
+    wd_gff = ['cat']
     o_file = open(outFilename, 'w')
     for root, dirs, files in os.walk(wd):
         for name in files:
             if 'btab' in name:
-                file_name = os.path.join(root, name)
-                t_file = open(file_name, 'r')
-                for line in t_file:
-                    o_file.write(str(line))
-                t_file.close()
+                    wd_gff.append(os.path.join(root, name))
+    cat_call = subprocess.Popen(wd_gff, stdout=o_file)
+    cat_call.communicate()
     o_file.close()
 
     outFilenameGff = wd + '/protein_evidence.gff3'

@@ -1,35 +1,9 @@
-#!/usr/bin/env python
-
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-
-USAGE: intersect_EVM_consensus.py consensus.gff3 evm.gff3
-'''
-
-###############
-###IMPORTS###
-###############
-
-
+#!/usr/bin/env python3
 import sys
 import subprocess
-#import argparse
-#import os
-#import re
-#import shutil
-#from dirs_and_files import check_create_dir
-#from Bio import SeqIO
 from BCBio import GFF
 from operator import itemgetter
 import dirs_and_files as logistic
-
-
-###############
-###FUNCTIONS###
-###############
 
 def parseConsensus(consensusFilename):
     print("\t###PARSE THE CONSENSUS AFTER ASSEMBLY###\n")
