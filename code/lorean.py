@@ -66,7 +66,7 @@ def arguments():
     parser.add_argument("ref",
                         help="Path to reference file")
     parser.add_argument("species",
-        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
+                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
     parser.add_argument("-d","--stranded",
                         help="Run LoReAn on stranded mode [FALSE]",
                         action='store_true')
@@ -74,75 +74,80 @@ def arguments():
                         help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
                         action='store_true')
     parser.add_argument("-u","--only_unitigs",
-        help="Removes gene models that are not supported by long reads [FALSE]",
-        action='store_true')
+                        help="Removes gene models that are not supported by long reads [FALSE]",
+                        action='store_true')
     parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
                         action='store_true')
     parser.add_argument("-s","--short_reads",
-        nargs="?",
-        default="",
-        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
-        metavar='FASTQ_file')
-    parser.add_argument("-a","--adapter",
-        nargs="?",
-        default="",
-        help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
-        metavar='FASTA_file')
+                        nargs="?",
+                        default="",
+                        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
+                        metavar='FASTQ_file')
     parser.add_argument("-l","--long_reads", 
                         nargs="?", default="",
                         help="Path to long reads FASTQ []",
                         metavar='FASTQ_file')
+    parser.add_argument("-a","--adapter",
+                        nargs="?",
+                        default="",
+                        help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
+                        metavar='FASTA_file')
+    parser.add_argument("-r","--repeat_masked",
+                        nargs="?",
+                        default="",
+                        help="GFF or GFF3 or GTF or BED file containing repeats coordinates []",
+                        metavar='GFF_file')
     parser.add_argument("-m","--max_long_read",
-        nargs="?",
-        default=20000,
-        help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
-        type=int)
+                        nargs="?",
+                        default=20000,
+                        help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
+                        type=int)
     parser.add_argument("-p","--pasa_db", 
                         nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene",
-        nargs="?",
-        default="species",
-        help="Prefix to add to the final Gff3 gene name [specie]")
+                        nargs="?",
+                        default="species",
+                        help="Prefix to add to the final Gff3 gene name [specie]")
     parser.add_argument("-w","--working_dir",
-        "--working_dir",
-        nargs="?",
-        default="annotation",
-        help="Working directory (will create if not present) [./]")
+                        "--working_dir",
+                        nargs="?",
+                        default="annotation",
+                        help="Working directory (will create if not present) [./]")
     parser.add_argument("-t","--threads", 
                         nargs="?", default="1",
                         help="Number of threads [1]",
                         metavar='N')
     parser.add_argument("-b", "--overhang",
-        nargs="?",
-        default="20",
-        help="CAP3 max overhang percent length; this value should be > 3 [20]",
-        metavar='N')
+                        nargs="?",
+                        default="20",
+                        help="CAP3 max overhang percent length; this value should be > 3 [20]",
+                        metavar='N')
     parser.add_argument("-cw","--augustus",
-        nargs="?",
-        default="1",
-        help="Weight assigned to AUGUSTUS evidence for EVM [1]",
-        metavar='N')
+                        nargs="?",
+                        default="1",
+                        help="Weight assigned to AUGUSTUS evidence for EVM [1]",
+                        metavar='N')
     parser.add_argument("-gw","--genemark",
-        nargs="?",
-        default="1",
-        help="Weight assigned to GENEMARK evidence for EVM [1]",
-        metavar='N')
+                        nargs="?",
+                        default="1",
+                        help="Weight assigned to GENEMARK evidence for EVM [1]",
+                        metavar='N')
     parser.add_argument("-tw","--trinity",
-        nargs="?",
-        default="1",
-        help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
-        metavar='N')
+                        nargs="?",
+                        default="1",
+                        help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
+                        metavar='N')
     parser.add_argument("-pw","--pasa", 
                         nargs="?", default="5",
                         help="Weight assigned to PASA evidence for EVM [5]",
                         metavar='N')
     parser.add_argument("-aw","--AAT",
-        nargs="?",
-        default="1",
-        help="Weight assigned to AAT protein evidence for EVM [1]",
-        metavar='N')
+                        nargs="?",
+                        default="1",
+                        help="Weight assigned to AAT protein evidence for EVM [1]",
+                        metavar='N')
     parser.add_argument("-c","--segmentSize", 
                         nargs="?", default="100000",
                         help="Segment size for EVM partitions [100000]",
@@ -156,10 +161,10 @@ def arguments():
                         help="Minimal intron length for GMAP [9]",
                         metavar='N')
     parser.add_argument("-q","--max_intron_length",
-        nargs="?",
-        default="1000",
-        help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
-        metavar='N')
+                        nargs="?",
+                        default="1000",
+                        help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
+                        metavar='N')
     parser.add_argument("-ee", "--end_exon", 
                         nargs="?", default="20",
                         help="Minimal length for end exon with GMAP [20]",
@@ -169,30 +174,30 @@ def arguments():
                         help="Minimal evidence needed to form a cluster [5]",
                         metavar='N')
     parser.add_argument("-cMe","--cluster_max_evidence",
-        nargs="?",
-        default="5000",
-        help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
-        metavar='N')
+                        nargs="?",
+                        default="5000",
+                        help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
+                        metavar='N')
     parser.add_argument("-aol","--assembly_overlapLength",
-        nargs="?",
-        default="200",
-        help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
-        metavar='N')
+                        nargs="?",
+                        default="200",
+                        help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
+                        metavar='N')
     parser.add_argument("-api","--assembly_percentIdentity", 
                         nargs="?", default="97",
                         help="Minimal identity for the ASSEMBLY (95-100) [97]",
                         metavar='N')
     parser.add_argument("-art","--assembly_readThreshold",
-        nargs="?",
-        default="0.3",
-        help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
-        metavar='F')
+                        nargs="?",
+                        default="0.3",
+                        help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
+                        metavar='F')
     parser.add_argument("-ne","--no_EVM",
                         help="Run until the preparation of EVM inputs [FALSE]",
                         action='store_true')
     parser.add_argument("-nc","--no_consensus",
-        help="Do not run the long reads consensus pipeline [FALSE]",
-        action='store_true')
+                        help="Do not run the long reads consensus pipeline [FALSE]",
+                        action='store_true')
     parser.add_argument("-nu","--no_update",
                         help="Do not run the PASA update[FALSE]",
                         action='store_true')
@@ -229,6 +234,11 @@ def main():
         logistic.check_file(ref)
         gmap_wd = wd + '/gmap_output/'
         logistic.check_create_dir(gmap_wd)
+        if args.repeat_masked:
+            gmap_ref = gmap_wd +  "/" + args.ref
+            genome_gmap = mseq.maskedgenome(gmap_ref, args.repeat_masked)
+        else:
+            genome_gmap = ref
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         if not args.collect_only:
@@ -281,11 +291,7 @@ def main():
                     # artefacts
                     now = datetime.datetime.now().strftime(fmtdate)
                     print(("\n###FILTERING OUT LONG READS STARTED AT:\t"  +  now   + "\t###\n"))
-                    if args.adapter == "":
-                        long_fasta, filter_count = mseq.filterLongReads(
-                        args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd , a = True)
-                    elif args.adapter != "":
-                        long_fasta, filter_count = mseq.findOrientation(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter, args.threads)
+                    long_fasta, filter_count, lost = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter ,a = True)
                     if filter_count != 0:
                         now = datetime.datetime.now().strftime(fmtdate)
                         print(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t" + str(filter_count) + "\tREADS AFTER LENGTH FILTERING###\n"))
@@ -296,7 +302,7 @@ def main():
 
                         long_sam = mapping.gmap(
                             'sam',
-                            ref,
+                            genome_gmap,
                             long_fasta,
                             args.threads,
                             'samse',
@@ -429,7 +435,7 @@ def main():
                 print(('\n###GMAP STARTED AT:\t'  + now  + '\t###\n'))
                 trinityGFF3 = mapping.gmap(
                     'trin',
-                    ref,
+                    genome_gmap,
                     trinity_out,
                     args.threads,
                     'gff3_gene',
@@ -635,7 +641,7 @@ def main():
                     if not long_sorted_bam:
                         long_sam = mapping.gmap(
                             'sam',
-                            ref,
+                            genome_gmap,
                             long_fasta,
                             args.threads,
                             'samse',
@@ -667,9 +673,9 @@ def main():
                     gffreadFastaFile = consensus.gffread(
                         mergedmapGFF3, ref, consensus_wd)
                     # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-                    
+
                     long_fasta, filter_count = mseq.filterLongReads(
-                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, a = False)
+                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, args.adapter, a = False)
 
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
                     now = datetime.datetime.now().strftime(fmtdate)
@@ -740,7 +746,7 @@ def main():
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
         consensusMappedGFF3 = mapping.gmap(
             'cons',
-            ref,
+            genome_gmap,
             mergedFastaFilename,
             args.threads,
             'gff3_gene',

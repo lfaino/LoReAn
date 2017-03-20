@@ -290,7 +290,7 @@ def gmap_map(
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
         args = [ 'gmap',  '-D', str(working_dir),  '-d', str(reference_database), '-H',  str(exon_length),  '--cross-species',  '--expand-offsets', '1',  '-B',  '5',   '--min-intronlength',  
-str(min_intron_length),  '-n',  '3',  '--microexon-spliceprob', '1', '-K',  str(max_intron_length), '-f', str(out_format),  '-t', str(threads),  reads]
+str(min_intron_length),  '-n',  '1',  '--microexon-spliceprob', '1', '-K',  str(max_intron_length), '-f', str(out_format),  '-t', str(threads),  reads]
         if not Fflag:
             argsready = args + [reads]
             try:

@@ -6,7 +6,7 @@ from sys import argv
 import numpy as np
 import os
 from Bio.Seq import reverse_complement
-from multiprocessing import Pool
+import subprocess
 import itertools
 from Bio.SeqUtils import GC
 import os.path as op
@@ -16,15 +16,10 @@ import math
 from Bio import SeqIO
 import ssw_lib
 from Bio.Seq import reverse_complement
-
-
+import io
 
 
 def to_int(seq, lEle, dEle2Int):
-    """
-    translate a sequence into numbers
-    @param  seq   a sequence
-    """
     num_decl = len(seq) * ct.c_int8
     num = num_decl()
     for i,ele in enumerate(seq):
@@ -37,16 +32,7 @@ def to_int(seq, lEle, dEle2Int):
     return num
 
 def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
-    """
-    align one pair of sequences
-    @param  qProfile   query profile
-    @param  rNum   number array for reference
-    @param  nRLen   length of reference sequence
-    @param  nFlag   alignment flag
-    @param  nMaskLen   mask length
-    """
     res = ssw.ssw_align(qProfile, rNum, ct.c_int32(nRLen), nOpen, nExt, nFlag, 0, 0, int(nMaskLen))
-
     nScore = res.contents.nScore
     nScore2 = res.contents.nScore2
     nRefBeg = res.contents.nRefBeg
@@ -121,116 +107,147 @@ def align_call(record, adapter):
     ssw.init_destroy(qRcProfile)
     return outputAlign
 
-def filterLongReads(fastqFilename, min_length, max_length, wd, a):
+def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
     '''Filters out reads longer than length provided'''
     finalSeq= []
-    if a:
-        outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
-    else:
-        outFilename = fastqFilename + '.longreads.filtered.fasta'
-
-    if os.path.isfile(outFilename):
-            print(('Filtered FASTQ existed already: ' +
-                outFilename + ' --- skipping\n'))
-            return outFilename, 0
-
-    if fastqFilename.endswith('fastq') or fastqFilename.endswith('fq'):
-        record_dict = SeqIO.to_dict(SeqIO.parse(fastqFilename, "fastq"))
-    elif fastqFilename.endswith('fasta') or fastqFilename.endswith('fa'):
-        record_dict = SeqIO.to_dict(SeqIO.parse(fastqFilename, "fasta"))
-        #print (fastqFilename)
-    outFile = open(outFilename, 'w')
-    filter_count = 0
-    gcvalue = []
-    for key in record_dict:
-        #print (key)
-        gc = int(GC(record_dict[key].seq))
-        gcvalue.append(gc)
-    meanV = int(np.mean(gcvalue))
-    stdV = int(np.std(gcvalue))
-    for key in record_dict:
-        if int(GC(record_dict[key].seq)) < (meanV + 3*stdV) or int(GC(record_dict[key].seq)) > (meanV - 3*stdV):
-            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                record_dict[key].id = str(filter_count)
-                finalSeq.append(record_dict[key])
-                filter_count += 1    
-    SeqIO.write(finalSeq, outFilename, "fasta")
-    return (outFilename, filter_count)
-
-def findOrientation(fastqFilename, min_length, max_length, wd, fastaAdapt):
-    '''Filters out reads longer than length provided'''
-    outFilename = wd + fastqFilename + '.longreads.filtered.oriented.fasta'
     seqDict = {}
+    firstDictScore = {}
+    firstDictSeq = {}
     scoreDict = {}
     listScore=[]
     listSeqGood = []
     listAdapter = []
     finalSeq = []
     listSeqAdap = []
-    finalDNA = []
+    record_dict = {}
+    if a and not adapter:
+        outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
+    elif adapter:
+        outFilename = fastqFilename + '.longreads.filtered.oriented.fasta'
+    else:
+        outFilename = fastqFilename + '.longreads.filtered.fasta'
+    filter_count = 0
     if os.path.isfile(outFilename):
             print(('Filtered FASTQ existed already: ' +
                 outFilename + ' --- skipping\n'))
             return outFilename, 0
-    for adpt in SeqIO.parse(fastaAdapt, "fasta"):
-        listAdapter.append(adpt.id)
-        listSeqAdap.append(adpt)
     if fastqFilename.endswith('fastq') or fastqFilename.endswith('fq'):
-        record_dict = SeqIO.to_dict(SeqIO.parse(fastqFilename, "fastq"))
+        for record in SeqIO.parse(fastqFilename, "fastq"):
+            record.id = str(filter_count)
+            filter_count += 1
+            #print (type(record))
+            record_dict[record.id] = record
     elif fastqFilename.endswith('fasta') or fastqFilename.endswith('fa'):
-        record_dict = SeqIO.to_dict(SeqIO.parse(fastqFilename, "fasta"))
-    else:
-        print("can not recognize file type")
+        for record in SeqIO.parse(fastqFilename, "fasta"):
+            record.id = str(filter_count)
+            filter_count += 1
+            record_dict[record.id] = record
+    if adapter:
+        for adpt in SeqIO.parse(adapter, "fasta"):
+            #print ("in list adapter")
+            listAdapter.append(adpt.id)
+            listSeqAdap.append(adpt)
     outFile = open(outFilename, 'w')
-    filter_count = 0
-    gcvalue = []
+    aN = []
+    tN = []
+    gN = []
+    cN = []
     allData = len(record_dict)
     for key in record_dict:
-        gc = int(GC(record_dict[key].seq))
-        gcvalue.append(gc)
-    meanV = int(np.mean(gcvalue))
-    stdV = int(np.std(gcvalue))
-    for key in record_dict:
-        if int(GC(record_dict[key].seq)) < (meanV + stdV) or int(GC(record_dict[key].seq)) > (meanV - stdV):
-            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                record_dict[key].id = str(filter_count)
+        #print record_dict[key].seq
+        aN.append(((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100)
+        tN.append(((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100)
+        gN.append(((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100)
+        cN.append(((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100)
+    meanA = int(np.mean(aN))
+    meanT = int(np.mean(tN))
+    meanG = int(np.mean(gN))
+    meanC = int(np.mean(cN))
+    stdA = int(np.std(aN))
+    stdT = int(np.std(tN))
+    stdG = int(np.std(gN))
+    stdC = int(np.std(cN))
+    if len(listAdapter) == 1:
+        for key in record_dict:
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
+                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                    for adpter in listSeqAdap:
+                        alingRes = align_call(record_dict[key], adpter)
+                        if len(alingRes) == 0:
+                            next
+                        else:
+                            seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
+                            scoreDict[record_dict[key].id] =  alingRes[3]
+        for key in scoreDict:
+            listScore.append(float(scoreDict[key]))
+        a = np.array(listScore)
+        mean = np.mean(a)
+        stderrS = np.std(a)
+        valueOptimal = mean - stderrS
+        filter_count = 0
+        for key in scoreDict:
+            if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
                 filter_count += 1
-                for adpter in listSeqAdap:
-                    alingRes = align_call(record_dict[key], adpter)
-                    if len(alingRes) == 0:
-                        next
-                    else:
-                        seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
-                        scoreDict[record_dict[key].id] =  alingRes[3]
-    for key in scoreDict:
-        listScore.append(float(scoreDict[key]))
-    a = np.array(listScore)
-    mean = np.mean(a)
-    stderrS = np.std(a)
-    valueOptimal = mean - stderrS
-    filter_count = 0
-    for key in scoreDict:
-        if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
-            filter_count += 1
-            finalSeq.append(seqDict[key][0])
-        elif scoreDict[key]  > valueOptimal and seqDict[key][1] == 1:
-            filter_count += 1
-            sequenze = reverse_complement(seqDict[key][0].seq)
-            seqDict[key][0].seq = sequenze
-            finalSeq.append(seqDict[key][0])
-    outFile.close()
+                finalSeq.append(seqDict[key][0])
+            elif scoreDict[key]  > valueOptimal and seqDict[key][1] == 1:
+                filter_count += 1
+                sequenze = reverse_complement(seqDict[key][0].seq)
+                seqDict[key][0].seq = sequenze
+                finalSeq.append(seqDict[key][0])
+    elif len(listAdapter) == 2:
+        for key in record_dict:
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and \
+(((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) \
+and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
+                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                    for adpter in listSeqAdap:
+                        alingRes = align_call(record_dict[key], adpter)
+                        if len(alingRes) == 0:
+                            next
+                        elif key in firstDictSeq:
+                            seqDict[key] =  firstDictSeq[key]  +  [ alingRes[2]]
+                            scoreDict[key] = firstDictScore[key]  +  [alingRes[3]]
+                        else:
+                            firstDictSeq[key] = [record_dict[key], alingRes[2]]
+                            firstDictScore[key] =  [alingRes[3]]
+        for key in seqDict:
+            if seqDict[key][1] > seqDict[key][2]:
+                finalSeq.append(seqDict[key][0])
+            elif seqDict[key][1] < seqDict[key][2]:
+                sequenze = reverse_complement(seqDict[key][0].seq)
+                seqDict[key][0].seq = sequenze
+                finalSeq.append(seqDict[key][0])
+    else:
+        for key in record_dict:
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
+                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                    finalSeq.append(record_dict[key])
     SeqIO.write(finalSeq, outFilename, "fasta")
     lost = allData - filter_count 
     return (outFilename, filter_count, lost)
+
+def maskedgenome(fasta, gff3):
+    out_name = fasta + '.masked.fasta'
+    outmerged = gff3 + '.masked.gff3'
+    outputmerge = open(outmerged, 'w')
+    cat = subprocess.Popen(['cat', gff3], stdout = subprocess.PIPE)
+    bedsort = subprocess.Popen(['bedtools', 'sort'], stdin = cat.stdout, stdout = subprocess.PIPE)
+    bedmerge = subprocess.Popen(['bedtools', 'merge'], stdout = outputmerge, stdin = bedsort.stdout)
+    out = bedmerge.communicate()
+    outputmerge.close()
+    maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', fasta , '-bed', outmerged, '-fo', out_name])
+    maskfasta.communicate()
 
 if __name__ == '__main__':
     
     fastaSeq = argv[1]
     min_length = argv[2]
-    max_length = argv[3]
-    wd = argv[4]
-    fastaAdapt= argv[5]
+    #max_length = argv[3]
+    #wd = argv[4]
+    #fastaAdapt = argv[5]
+    #fastaF = ''
     #threads = argv[6]
     
-    #filterLongReads(fastaSeq, min_length, max_length, wd, a = True)
-    findOrientation(fastaSeq, min_length, max_length, wd, fastaAdapt)
+    #filterLongReads(fastaSeq, min_length, max_length, wd, fastaF , a = True)
+    #filterLongReads(fastaSeq, min_length, max_length, wd, fastaAdapt, a = True)
+    maskedgenome(fastaSeq, min_length )
