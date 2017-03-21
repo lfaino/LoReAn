@@ -224,7 +224,7 @@ and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100
                     finalSeq.append(record_dict[key])
     SeqIO.write(finalSeq, outFilename, "fasta")
     lost = allData - filter_count 
-    return (outFilename, filter_count, lost)
+    return (outFilename, filter_count)
 
 def maskedgenome(fasta, gff3):
     out_name = fasta + '.masked.fasta'

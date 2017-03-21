@@ -291,7 +291,7 @@ def main():
                     # artefacts
                     now = datetime.datetime.now().strftime(fmtdate)
                     print(("\n###FILTERING OUT LONG READS STARTED AT:\t"  +  now   + "\t###\n"))
-                    long_fasta, filter_count, lost = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter ,a = True)
+                    long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter ,a = True)
                     if filter_count != 0:
                         now = datetime.datetime.now().strftime(fmtdate)
                         print(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t" + str(filter_count) + "\tREADS AFTER LENGTH FILTERING###\n"))
