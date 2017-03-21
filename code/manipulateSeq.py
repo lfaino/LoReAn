@@ -226,17 +226,19 @@ and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100
     lost = allData - filter_count 
     return (outFilename, filter_count)
 
-def maskedgenome(fasta, gff3):
-    out_name = fasta + '.masked.fasta'
-    outmerged = gff3 + '.masked.gff3'
+def maskedgenome(ref , wd, gff3):
+    out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
+    #out_name = gmap_ref
+    outmerged = wd + "/" + gff3 + '.masked.gff3'
     outputmerge = open(outmerged, 'w')
     cat = subprocess.Popen(['cat', gff3], stdout = subprocess.PIPE)
     bedsort = subprocess.Popen(['bedtools', 'sort'], stdin = cat.stdout, stdout = subprocess.PIPE)
     bedmerge = subprocess.Popen(['bedtools', 'merge'], stdout = outputmerge, stdin = bedsort.stdout)
     out = bedmerge.communicate()
     outputmerge.close()
-    maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', fasta , '-bed', outmerged, '-fo', out_name])
+    maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', ref , '-bed', outmerged, '-fo', out_name])
     maskfasta.communicate()
+    return out_name
 
 if __name__ == '__main__':
     

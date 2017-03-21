@@ -235,8 +235,9 @@ def main():
         gmap_wd = wd + '/gmap_output/'
         logistic.check_create_dir(gmap_wd)
         if args.repeat_masked:
-            gmap_ref = gmap_wd +  "/" + args.ref
-            genome_gmap = mseq.maskedgenome(gmap_ref, args.repeat_masked)
+            #gmap_ref = gmap_wd +  "/" + args.ref + 'masked.fasta'
+            #print (gmap_ref)
+            genome_gmap = mseq.maskedgenome(ref , gmap_wd, args.repeat_masked)
         else:
             genome_gmap = ref
 
