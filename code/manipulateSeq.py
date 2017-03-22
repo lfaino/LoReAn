@@ -226,8 +226,11 @@ and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100
     lost = allData - filter_count 
     return (outFilename, filter_count)
 
-def maskedgenome(ref , wd, gff3):
-    out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
+def maskedgenome(wd, ref , gff3):
+    if '/' in ref:
+        out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
+    else:
+        out_name = wd + "/" +  ref + '.masked.fasta'
     #out_name = gmap_ref
     outmerged = wd + "/" + gff3 + '.masked.gff3'
     outputmerge = open(outmerged, 'w')

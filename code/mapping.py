@@ -197,9 +197,12 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
 def gmap_build(reference, working_dir):
     '''Build the GMAP indexed reference from the fasta reference file    '''
     #  gmap_build -d <genome> -D path/to/DB[-k <kmer size>] <fasta_files...>
-    refer = reference.split('/')[-1] + '_GMAPindex'
+    if '/' in reference:
+        refer = reference.split('/')[-1] + '_GMAPindex'
+    else:
+        refer = reference + '_GMAPindex'
 
-    args = ['gmap_build', '-d', refer, '-D',
+    args = ['gmap_build', '-k' , '13' , '-d', refer, '-D',
             working_dir, reference]
     # If the ref is there do not build it again
     refer_path = working_dir + refer

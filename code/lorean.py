@@ -235,9 +235,8 @@ def main():
         gmap_wd = wd + '/gmap_output/'
         logistic.check_create_dir(gmap_wd)
         if args.repeat_masked:
-            #gmap_ref = gmap_wd +  "/" + args.ref + 'masked.fasta'
-            #print (gmap_ref)
-            genome_gmap = mseq.maskedgenome(ref , gmap_wd, args.repeat_masked)
+            #gmap_ref = gmap_wd +  "/" + args.ref
+            genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
         else:
             genome_gmap = ref
 
@@ -674,9 +673,9 @@ def main():
                     gffreadFastaFile = consensus.gffread(
                         mergedmapGFF3, ref, consensus_wd)
                     # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-                    adapter = []
+
                     long_fasta, filter_count = mseq.filterLongReads(
-                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, adapter, a = False)
+                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, args.adapter, a = False)
 
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
                     now = datetime.datetime.now().strftime(fmtdate)
@@ -828,4 +827,5 @@ if __name__ == '__main__':
     realt = round(realend - realstart)
     m, s = divmod(realt, 60)
     h, m = divmod(m, 60)
-    print("###LOREAN FINISHED WITHOUT ERRORS IN: %d:%02d:%02d \t###\n") % (h, m, s)
+    d, h = divmod(h, 24)
+    print("###LOREAN FINISHED WITHOUT ERRORS IN:" + " " + str(d) + " days " + str(h)  + " hours " + str(m) + " min " + str(s) + " sec\t###\n")

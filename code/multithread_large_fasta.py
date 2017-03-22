@@ -108,7 +108,6 @@ def aatParse(aat_queue, protein_evidence, wd):
         global count_sequences_aat
         count_sequences_aat += 1
         global length_cluster_aat
-
     return
 
 
