@@ -122,8 +122,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
     record_dict = {}
     if a and not adapter:
         outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
-    elif adapter:
-        outFilename = fastqFilename + '.longreads.filtered.oriented.fasta'
+    elif a and adapter:
+        outFilename = wd + fastqFilename + '.longreads.filtered.oriented.fasta'
     else:
         outFilename = fastqFilename + '.longreads.filtered.fasta'
     filter_count = 0
@@ -195,6 +195,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 seqDict[key][0].seq = sequenze
                 finalSeq.append(seqDict[key][0])
     elif len(listAdapter) == 2:
+        print ("IN")
         for key in record_dict:
             if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and \
 (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) \

@@ -235,7 +235,6 @@ def main():
         gmap_wd = wd + '/gmap_output/'
         logistic.check_create_dir(gmap_wd)
         if args.repeat_masked:
-            #gmap_ref = gmap_wd +  "/" + args.ref
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
         else:
             genome_gmap = ref
@@ -311,7 +310,6 @@ def main():
                             args.end_exon,
                             gmap_wd,
                             Fflag=False)
-
                         # Convert to sorted BAM
                         long_sorted_bam = mapping.sam_to_sorted_bam(
                             long_sam, args.threads, wd)
