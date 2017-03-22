@@ -52,5 +52,5 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 ## AUTHORS:
 - Luigi Faino
-- David Cook 
-- Jose A. Espejo
+- David Cook
+- Jose Espejo
