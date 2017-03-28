@@ -4,6 +4,8 @@ The LoReAn software is an automated annotation pipeline designed for eukaryotic 
 
 We are working to improve LoReAn documentation and getting a paper into bioRxiv. For those familar with the annotation process and with docker, there should be enough infomation to run the program. Otherwise, check back soon ...
 
+This is how LoReAn works: [LoReAn schematic view](https://github.com/lfaino/LoReAn/wiki)
+
 ## HOW TO RUN
 
 LoReAn requires three mandatory files:
