@@ -47,7 +47,7 @@ def star_build(reference, genome_dir, threads, wd):
                 '=',
                 'min(',
                 str(fragmented_genome),
-                ')',
+                ')', '--genomeSAindexNbases', '6',
                 '--genomeDir',
                 genome_dir,
                 '--genomeFastaFiles',
@@ -60,7 +60,7 @@ def star_build(reference, genome_dir, threads, wd):
                 '--runMode',
                 'genomeGenerate',
                 '--genomeDir',
-                genome_dir,
+                genome_dir, '--genomeSAindexNbases', '6',
                 '--genomeFastaFiles',
                 reference]
 
