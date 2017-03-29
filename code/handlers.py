@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
 
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-handle programs that can run in parallel
-'''
-
-
 import os
 import subprocess
 import protein_alignment
@@ -99,16 +90,3 @@ def AugustGmes(queue, ref, species, fungus, threads, list_fasta_names, wd):
     return
 
 
-def main():
-    '''Main body of the function'''
-    ref = os.path.abspath(sys.argv[1])
-    threads = sys.argv[2]
-    species = sys.argv[3]
-    wd = os.path.abspath(sys.argv[4])
-    AugustGmes(ref, threads, species, wd)
-
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()

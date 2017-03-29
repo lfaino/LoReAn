@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
 
-###############
-###IMPORTS###
-###############
-
 import gffutils
 from sys import argv
 import re
@@ -363,18 +359,3 @@ def strand(gff_file1, gff_file2, wd):
             
     
     return outputFilename
-
-if __name__ == '__main__':
-    
-    
-    evmgff = argv[1]
-    gmapgff = argv[2]
-    wd = argv[3]
-    prefix = argv[4]
-    out1 = strand(evmgff, gmapgff, wd)
-    out2 = appendID(out1)
-    out3 = removeOverlap(out2)
-    out4 = removeDiscrepancy(out3, evmgff)
-    newNames(out4)
-    #removeOverlap(out2)
-    #genename(out2, prefix)

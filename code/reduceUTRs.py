@@ -114,15 +114,3 @@ def lengthSupport(tmp_wd):
         contigs.close()
     return
 
-
-################
-####MAIN###
-################
-
-def main():
-
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()

@@ -4,6 +4,7 @@ import os
 import subprocess
 from dirs_and_files import check_create_dir
 
+
 def convert_augustus(aug_file, wd):
     '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
     script EVMUtils/misc/augustus_GTF_to_EVM_GFF3.pl which needs to be in PATH

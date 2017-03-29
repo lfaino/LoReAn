@@ -16,7 +16,6 @@ from Bio import SeqIO
 import transcript_assembly as transcripts
 import dirs_and_files as logistic
 import protein_alignment
-#from future import unicode_literals
 
 
 count_sequences = 0
@@ -142,8 +141,3 @@ def main():
 
     augustus_multi(ref, threads, species, single_fasta_list, wd)
 
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()

@@ -1,12 +1,5 @@
 #!/usr/bin/env python3
 
-'''
-MASTER THESIS PROJECT
-Author: Jose A. Espejo
-Date: September 2015 - March 2016
-
-Handles all the mapping. Needs the mapper (STAR/GMAP) in the path.
-'''
 import os
 import math
 import subprocess

@@ -3,6 +3,8 @@ import os
 import subprocess
 import math
 
+
+
 def trinity(bam_file, wd, max_intron_length, threads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''

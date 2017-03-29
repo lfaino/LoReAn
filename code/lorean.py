@@ -23,6 +23,7 @@ import itertools
 import shutil
 import datetime
 
+
 # OTHER SCRIPTS
 import dirs_and_files as logistic
 import mapping
@@ -116,7 +117,7 @@ def arguments():
                         default="annotation",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument("-t","--threads", 
-                        nargs="?", default="1",
+                        nargs="?", default="2",
                         help="Number of threads [1]",
                         metavar='N')
     parser.add_argument("-b", "--overhang",
@@ -333,7 +334,10 @@ def main():
                 print(('\n###TRINITY STARTS AT:\t'  + now  + '\t###\n'))
                 trin_dir = wd + 'Trinity/'
                 logistic.check_create_dir(trin_dir)
-                trinity_cpu = int(int(args.threads)/int(2))
+                if int(args.threads) > 1:
+                    trinity_cpu = int(int(args.threads)/int(2))
+                else:
+                    trinity_cpu = int(args.threads)
                 trinity_out = transcripts.trinity(
                     default_bam, trin_dir, args.max_intron_length, trinity_cpu)
                 # PASA Pipeline
@@ -620,8 +624,7 @@ def main():
                 cmdstring = "chmod -R 775 %s" % (wd)
                 os.system(cmdstring)
                 now = datetime.datetime.now().strftime(fmtdate)
-                sys.exit(
-                    "#####ANNOTATION FINISHED WITHOUT USING LONG READS\t"  + now  + "\t#####\n")
+                sys.exit("#####ANNOTATION FINISHED WITHOUT USING LONG READS\t"  + now  + "\t#####\n")
 
             # HERE WE START WITH LONG READS
             else:

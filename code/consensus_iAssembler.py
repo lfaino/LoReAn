@@ -10,7 +10,6 @@ from Bio import SeqIO
 from queue import Queue
 from threading import Thread
 
-
 count_sequences = 0
 length_cluster = 0
 
@@ -241,33 +240,3 @@ def assembly(clusterList, fastaDict, min_evidence, max_evidence, overlapLength,
         t.daemon = True
         t.start()
     assembly_queue.join()
-
-
-###############
-###MAIN###
-###############
-
-def main():
-    '''Main body of the function'''
-    wd = './consensus/'
-    check_create_dir(wd)
-    #wd = os.path.abspath(wd) + '/'
-
-    gff3FileName = os.path.abspath(sys.argv[1])
-    reference = os.path.abspath(sys.argv[2])
-    fastaFilename = gffread(gff3FileName, reference, wd)
-    gffreadDict = fasta2Dict(fastaFilename)
-    # print gffreadDict
-    cluster_list = cluster_pipeline(gff3FileName, 200, False, wd)
-
-    assembly(cluster_list, gffreadDict, 3, 20, 200, 97, 2, 20, wd)
-#    outputFilename = catAssembled(wd)
-
-#    mergedFastaFilename = wd+'assembly.wEVM.fasta'
-#    addEVM(fastaFilename, outputFilename, unitigs ,mergedFastaFilename)
-
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()

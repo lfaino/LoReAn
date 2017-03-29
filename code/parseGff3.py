@@ -6,6 +6,7 @@ import sys
 import os.path
 
 
+
 def genename(gff_filename, prefix):
     gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy', gff_filename], stdout=subprocess.PIPE, stderr = file(gff_filename + '.gt.log', "w"))
     fields = []

@@ -5,6 +5,7 @@ from Bio import SeqIO
 
 count_sequences = 0
 length_cluster = 0
+
 def parseOnly(threshold_float, unitigs, tmp_wd):
     '''to join the assembly and the parsing process'''
     evm_list = []
@@ -123,8 +124,7 @@ def catAssembled(wd):
     return fileName
 
 
-def addEVM(
-        wholeFastaName,
+def addEVM(wholeFastaName,
         outputFilename,
         unitigs,
         evm_nosupport,

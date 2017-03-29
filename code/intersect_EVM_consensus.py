@@ -5,6 +5,7 @@ from BCBio import GFF
 from operator import itemgetter
 import dirs_and_files as logistic
 
+
 def parseConsensus(consensusFilename):
     print("\t###PARSE THE CONSENSUS AFTER ASSEMBLY###\n")
     '''Reads the consensus GFF3 file and returns 2 dictionaries,

@@ -111,20 +111,3 @@ def catTwoFasta(trinity, consens, allSeq, wd):
 
     return outFileFasta
 
-
-###############
-###MAIN###
-###############
-
-def main():
-    '''Main body of the function'''
-    gmap = os.path.abspath(sys.argv[1])
-    evm = os.path.abspath(sys.argv[2])
-    outFilename = os.path.abspath(sys.argv[3])
-    catTwoFiles(gmap, evm, outFilename)
-
-    print('\n\n\n###############\n###FINISHED###\n###############\n\n')
-
-
-if __name__ == '__main__':
-    main()
