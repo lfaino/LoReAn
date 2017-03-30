@@ -13,16 +13,16 @@ RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apa
 
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils
 
-RUN adduser --disabled-password --gecos '' lorean &&\
+#RUN adduser --disabled-password --gecos '' lorean &&\
     adduser lorean sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
-USER lorean
+#USER lorean
 
-WORKDIR /home/lorean
+#WORKDIR /home/lorean
 
-RUN mkdir bin
+#RUN mkdir bin
 
-WORKDIR /home/lorean/bin
+WORKDIR /opt/
 
 RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
@@ -33,7 +33,7 @@ RUN git clone https://github.com/lfaino/LoReAn.git
 RUN git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && \
 cp ssw_lib.py  /home/lorean/bin/LoReAn/code/ && cp libssw.so  /home/lorean/bin/LoReAn/code/ 
 
-WORKDIR /home/lorean/bin/LoReAn/third_party/software/
+WORKDIR /opt/LoReAn/third_party/software/
 
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && sudo make && sudo make install 
 
@@ -72,7 +72,7 @@ RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
      tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
      
-RUN cat ~/.bashrc ../conf_files/pathToExport.txt > ~/.bashrc_new && mv ~/.bashrc_new ~/.bashrc && source ~/.bashrc 
+RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
-    
+
 WORKDIR /data/
