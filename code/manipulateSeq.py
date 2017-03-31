@@ -211,11 +211,13 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                             firstDictScore[key] =  [alingRes[3]]
         for key in scoreDict:
             for score in scoreDict[key]:
-                listScore.append(float(score))
-        a = np.array(listScore)
-        mean = np.mean(a)
+                if score > maxScore:
+                    maxScore = score
+                #listScore.append(float(score))
+        #a = np.array(listScore)
+        #mean = np.mean(a)
         #stderrS = np.std(a)
-        valueOptimal = mean 
+        valueOptimal = score - (score/10)
         for key in seqDict:
             if seqDict[key][1] > seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 finalSeq.append(seqDict[key][0])
