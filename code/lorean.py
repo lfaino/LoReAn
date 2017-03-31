@@ -46,9 +46,9 @@ import time
 ### CHEKS BEFORE START LOREAN ######
 ####################################
 
-os.system('sudo usermod -d /var/lib/mysql/ mysql')
-os.system('sudo /etc/init.d/mysql start')
-os.system('mysql --user="root" --password="lorean" --execute="set global sql_mode=\'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\';"')
+#os.system('sudo usermod -d /var/lib/mysql/ mysql')
+#os.system('sudo /etc/init.d/mysql start')
+#os.system('mysql --user="root" --password="lorean" --execute="set global sql_mode=\'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\';"')
 
 ###############
 ###FUNCTIONS###
