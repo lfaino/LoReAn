@@ -198,7 +198,6 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 seqDict[key][0].seq = sequenze
                 finalSeq.append(seqDict[key][0])
     elif len(listAdapter) == 2:
-        print ("IN")
         for key in record_dict:
             if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and \
 (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) \
@@ -214,10 +213,17 @@ and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100
                         else:
                             firstDictSeq[key] = [record_dict[key], alingRes[2]]
                             firstDictScore[key] =  [alingRes[3]]
+        for key in scoreDict:
+            for score in scoreDict[key]:
+                listScore.append(float(score))
+        a = np.array(listScore)
+        mean = np.mean(a)
+        stderrS = np.std(a)
+        valueOptimal = mean - stderrS
         for key in seqDict:
-            if seqDict[key][1] > seqDict[key][2]:
+            if seqDict[key][1] > seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 finalSeq.append(seqDict[key][0])
-            elif seqDict[key][1] < seqDict[key][2]:
+            elif seqDict[key][1] < seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 sequenze = reverse_complement(seqDict[key][0].seq)
                 seqDict[key][0].seq = sequenze
                 finalSeq.append(seqDict[key][0])
