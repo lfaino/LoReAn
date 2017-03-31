@@ -31,7 +31,7 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
 RUN git clone https://github.com/lfaino/LoReAn.git 
 
 RUN git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && \
-cp ssw_lib.py  /home/lorean/bin/LoReAn/code/ && cp libssw.so  /home/lorean/bin/LoReAn/code/ 
+cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/ 
 
 WORKDIR /opt/LoReAn/third_party/software/
 
