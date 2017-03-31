@@ -9,6 +9,12 @@ the folder together with your data.
 The best way to use LoReAn is by installing and running the software by Docker
 We used Docker because the pipeline uses a lot of software which maybe difficult to install independently.
 
+Before installing Docker, please check your UID:
+```bash
+id user_name
+```
+where user_name is the name of the user that runs LoReAn on the host machine
+
 To install Docker, please refer to:
 https://docs.docker.com/engine/installation/
 
@@ -16,22 +22,18 @@ After Docker installation, you can download LoReAn by using:
 ```bash
 docker pull lfaino/lorean
 ```
-Next, create a folder in your preferred location (be sure that you have enogh storage space on your drive) and run: 
-
-```bash
-chmod -R 777 <folder>
-```
-Place all your files (short reads, long reads, protein sequence, genome sequences) in the folder and run:
-```bash
-chmod -R 777 < from inside the folder> 
-```
 
 Subsequently, from the folder where you input files are, LoReAn can be launched using:
 ```bash
 docker run -it --rm -v $PWD:/data lfaino/lorean bash
 ```
 
-Once inside the container, you can check if LoReAn works using:
+Once inside the container, you can create an user with the same credential of the host retrieved before using:
+```bash
+createUser.sh user_name uid_user
+```
+At this point, run
+
 ```bash
 lorean.py -help
 ```
