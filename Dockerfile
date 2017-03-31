@@ -56,7 +56,7 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2015-12-31.v10.tar.gz 
     mv gmap-2015-12-31// gmap && cd gmap/  && ./configure && make && sudo make install 
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
-    cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /home/lorean/bin/fasta
+    cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz
 
@@ -67,7 +67,7 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
      
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
-    git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /home/lorean/bin
+    git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
      tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
