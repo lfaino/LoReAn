@@ -17,6 +17,7 @@ export PATH=$PATH:/opt/LoReAn/third_party/software/STAR-2.5.2b/bin/Linux_x86_64
 export PATH=$PATH:/opt/LoReAn/third_party/software/PASApipeline-2.0.2/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/genometools-1.5.9/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/BRAKER_v1.9
+export PATH=$PATH:/opt/LoReAn/third_party/conf_files
 export PATH=$PATH:/opt/
 export BAMTOOLS_PATH=/opt/bamtools/bin/
 export GENEMARK_PATH=/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap/

@@ -214,8 +214,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 listScore.append(float(score))
         a = np.array(listScore)
         mean = np.mean(a)
-        stderrS = np.std(a)
-        valueOptimal = mean - stderrS
+        #stderrS = np.std(a)
+        valueOptimal = mean 
         for key in seqDict:
             if seqDict[key][1] > seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
                 finalSeq.append(seqDict[key][0])

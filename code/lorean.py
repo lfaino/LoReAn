@@ -215,7 +215,7 @@ def arguments():
 
 def main():
     if os.path.isfile("/data/gm_key"):
-        os.system('cp /data/gm_key /home/lorean/.gm_key')
+#        os.system('cp /data/gm_key /home/lorean/.gm_key')
         '''Core of the program'''
 
         # Parse the arguments
