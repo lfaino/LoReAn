@@ -14,7 +14,7 @@ RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apa
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils
 
 #RUN adduser --disabled-password --gecos '' lorean &&\
-    adduser lorean sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+#    adduser lorean sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
 
 #USER lorean
 
