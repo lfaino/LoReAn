@@ -170,9 +170,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
     stdC = int(np.std(cN))
     if len(listAdapter) == 1:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < 
-(meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) 
-< (meanC + 3*stdC): 
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
                 if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
                     for adpter in listSeqAdap:
                         alingRes = align_call(record_dict[key], adpter)
@@ -199,9 +197,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 finalSeq.append(seqDict[key][0])
     elif len(listAdapter) == 2:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and \
-(((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) \
-and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
                 if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
                     for adpter in listSeqAdap:
                         alingRes = align_call(record_dict[key], adpter)
@@ -229,9 +225,7 @@ and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100
                 finalSeq.append(seqDict[key][0])
     else:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < 
-(meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) 
-< (meanC + 3*stdC): 
+            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
                 if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
                     finalSeq.append(record_dict[key])
     SeqIO.write(finalSeq, outFilename, "fasta")
