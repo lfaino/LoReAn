@@ -121,6 +121,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
     finalSeq = []
     listSeqAdap = []
     record_dict = {}
+    maxScore = 0
     if a and not adapter:
         outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
     elif a and adapter:
@@ -250,3 +251,6 @@ def maskedgenome(wd, ref , gff3):
     maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', ref , '-bed', outmerged, '-fo', out_name])
     maskfasta.communicate()
     return out_name
+
+if __name__ == '__main__':
+    main()
