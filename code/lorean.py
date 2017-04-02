@@ -674,9 +674,9 @@ def main():
                     gffreadFastaFile = consensus.gffread(
                         mergedmapGFF3, ref, consensus_wd)
                     # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-
+                    fake = []
                     long_fasta, filter_count = mseq.filterLongReads(
-                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd, args.adapter, a = False)
+                        gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd,  fake, a = False)
 
                     gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
                     now = datetime.datetime.now().strftime(fmtdate)

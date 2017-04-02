@@ -137,7 +137,6 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
         for record in SeqIO.parse(fastqFilename, "fastq"):
             record.id = str(filter_count)
             filter_count += 1
-            #print (type(record))
             record_dict[record.id] = record
     elif fastqFilename.endswith('fasta') or fastqFilename.endswith('fa'):
         for record in SeqIO.parse(fastqFilename, "fasta"):
@@ -146,47 +145,24 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
             record_dict[record.id] = record
     if adapter:
         for adpt in SeqIO.parse(adapter, "fasta"):
-            #print ("in list adapter")
             listAdapter.append(adpt.id)
             listSeqAdap.append(adpt)
     outFile = open(outFilename, 'w')
-    aN = []
-    tN = []
-    gN = []
-    cN = []
-    allData = len(record_dict)
-    for key in record_dict:
-        #print record_dict[key].seq
-        aN.append(((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100)
-        tN.append(((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100)
-        gN.append(((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100)
-        cN.append(((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100)
-    meanA = int(np.mean(aN))
-    meanT = int(np.mean(tN))
-    meanG = int(np.mean(gN))
-    meanC = int(np.mean(cN))
-    stdA = int(np.std(aN))
-    stdT = int(np.std(tN))
-    stdG = int(np.std(gN))
-    stdC = int(np.std(cN))
     if len(listAdapter) == 1:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
-                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                    for adpter in listSeqAdap:
-                        alingRes = align_call(record_dict[key], adpter)
-                        if len(alingRes) == 0:
-                            next
-                        else:
-                            seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
-                            scoreDict[record_dict[key].id] =  alingRes[3]
+            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                for adpter in listSeqAdap:
+                    alingRes = align_call(record_dict[key], adpter)
+                    if len(alingRes) == 0:
+                        next
+                    else:
+                        seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
+                        scoreDict[record_dict[key].id] =  alingRes[3]
         for key in scoreDict:
-            listScore.append(float(scoreDict[key]))
-        a = np.array(listScore)
-        mean = np.mean(a)
-        stderrS = np.std(a)
-        valueOptimal = mean - stderrS
-        filter_count = 0
+            for score in scoreDict[key]:
+                if score > maxScore:
+                    maxScore = score
+        valueOptimal = score - (score/10)
         for key in scoreDict:
             if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
                 filter_count += 1
@@ -196,43 +172,47 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 sequenze = reverse_complement(seqDict[key][0].seq)
                 seqDict[key][0].seq = sequenze
                 finalSeq.append(seqDict[key][0])
+
+
     elif len(listAdapter) == 2:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
-                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                    for adpter in listSeqAdap:
-                        alingRes = align_call(record_dict[key], adpter)
-                        if len(alingRes) == 0:
-                            next
-                        elif key in firstDictSeq:
-                            seqDict[key] =  firstDictSeq[key]  +  [ alingRes[2]]
-                            scoreDict[key] = firstDictScore[key]  +  [alingRes[3]]
-                        else:
-                            firstDictSeq[key] = [record_dict[key], alingRes[2]]
-                            firstDictScore[key] =  [alingRes[3]]
+            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                for adpter in listSeqAdap:
+                    alingRes = align_call(record_dict[key], adpter)
+                    #print (alingRes)
+                    if len(alingRes) == 0:
+                        next
+                    elif key in firstDictSeq:
+                        seqDict[key] =  firstDictSeq[key]  +  [ alingRes[2], alingRes[0]]
+                        scoreDict[key] = firstDictScore[key]  +  [alingRes[3]]
+                    else:
+                        firstDictSeq[key] = [record_dict[key], alingRes[2], alingRes[0]]
+                        firstDictScore[key] =  [alingRes[3]]
         for key in scoreDict:
             for score in scoreDict[key]:
                 if score > maxScore:
                     maxScore = score
-                #listScore.append(float(score))
-        #a = np.array(listScore)
-        #mean = np.mean(a)
-        #stderrS = np.std(a)
         valueOptimal = score - (score/10)
         for key in seqDict:
-            if seqDict[key][1] > seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
-                finalSeq.append(seqDict[key][0])
-            elif seqDict[key][1] < seqDict[key][2] and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
-                sequenze = reverse_complement(seqDict[key][0].seq)
-                seqDict[key][0].seq = sequenze
-                finalSeq.append(seqDict[key][0])
-    else:
+            if seqDict[key][1] == 1 and seqDict[key][3] == 0 and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+                if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
+                    finalSeq.append(seqDict[key][0])
+                elif seqDict[key][2] in listAdapter[1] and seqDict[key][4] in listAdapter[0]:
+                    sequenze = reverse_complement(seqDict[key][0].seq)
+                    seqDict[key][0].seq = sequenze
+                    finalSeq.append(seqDict[key][0])
+            elif seqDict[key][1] == 0 and seqDict[key][3] == 1 and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+                if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
+                    sequenze = reverse_complement(seqDict[key][0].seq)
+                    seqDict[key][0].seq = sequenze
+                    finalSeq.append(seqDict[key][0])
+                elif seqDict[key][2] in listAdapter[1] and seqDict[key][4] in listAdapter[0]:
+                    finalSeq.append(seqDict[key][0])
+    elif len(listAdapter) == 0:
         for key in record_dict:
-            if (((str(record_dict[key].seq)).count('A'))/len(str(record_dict[key].seq))*100) < (meanA + 3*stdA) and (((str(record_dict[key].seq)).count('T'))/len(str(record_dict[key].seq))*100) < (meanT + 3*stdT) and (((str(record_dict[key].seq)).count('G'))/len(str(record_dict[key].seq))*100) < (meanG + 3*stdG) and (((str(record_dict[key].seq)).count('C'))/len(str(record_dict[key].seq))*100) < (meanC + 3*stdC): 
-                if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                    finalSeq.append(record_dict[key])
+            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
+                finalSeq.append(record_dict[key])
     SeqIO.write(finalSeq, outFilename, "fasta")
-    lost = allData - filter_count 
     return (outFilename, filter_count)
 
 def maskedgenome(wd, ref , gff3):
