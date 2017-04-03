@@ -44,7 +44,6 @@ def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
     lCigar = [res.contents.sCigar[idx] for idx in range(res.contents.nCigarLen)]
     nCigarLen = res.contents.nCigarLen
     ssw.align_destroy(res)
-
     return (nScore, nScore2, nRefBeg, nRefEnd, nQryBeg, nQryEnd, nRefEnd2, nCigarLen, lCigar)
 
 def align_call(record, adapter):
@@ -148,6 +147,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
             listAdapter.append(adpt.id)
             listSeqAdap.append(adpt)
     outFile = open(outFilename, 'w')
+    
     if len(listAdapter) == 1:
         for key in record_dict:
             if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
@@ -159,10 +159,10 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                         seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
                         scoreDict[record_dict[key].id] =  alingRes[3]
         for key in scoreDict:
-            for score in scoreDict[key]:
-                if score > maxScore:
-                    maxScore = score
-        valueOptimal = score - (score/10)
+            #for score in scoreDict[key]:
+            if scoreDict[key] > maxScore:
+                maxScore = scoreDict[key]
+        valueOptimal = maxScore - (maxScore/10)
         for key in scoreDict:
             if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
                 filter_count += 1
