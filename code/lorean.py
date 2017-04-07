@@ -551,7 +551,7 @@ def main():
                     evm_gff3 = evm_pipeline.evm_pipeline(
                         wd,
                         args.threads,
-                        ref,
+                        genome_gmap,
                         weight_file,
                         pred_file,
                         transcript_file,
@@ -563,7 +563,7 @@ def main():
                     evm_gff3 = evm_pipeline.evm_pipeline(
                         wd,
                         args.threads,
-                        ref,
+                        genome_gmap,
                         weight_file,
                         pred_file,
                         transcript_file,
