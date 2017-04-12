@@ -270,10 +270,6 @@ def strand(gff_file1, gff_file2, wd):
     gt_call.communicate()
     gff_file2_outfile.close()
     errorFilefile.close()
-
-
-
-   
     db1 = gffutils.create_db(gff_file1_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
     db2 = gffutils.create_db(gff_file2_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
     listgene1 = []
@@ -299,31 +295,26 @@ def strand(gff_file1, gff_file2, wd):
     listgene2 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
     geneDict = {}
     for a in listgene2:   
-        b =  re.split('_|\.', a)
-        #print b
+        bb =  a.split('_', 1)[1]
+        b = bb.split('.')
+#        print b
         del b[-1]
-        del b[0]
         evm = '.'.join(b)
         newlist.append(evm)
         geneDict[evm]=a
-
     commonlist = list(set(listgene1).intersection(newlist))
-    
+#    print(commonlist)
+    #print(newlist)
     for evm in commonlist:
         if geneDict[evm]:
-            #print geneDict[evm]
             del geneDict[evm]
-
     listuniq = [] 
     listUniqIntrons = []
     listgmap = []
-
     for a in geneDict:
         listuniq.append(geneDict[a])
-    
     listUniqIntrons = list(set(listgeneintrons))
     listgmap = list(set(listuniq))
-
     for evm in commonlist:
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
@@ -334,7 +325,6 @@ def strand(gff_file1, gff_file2, wd):
             #gff_out.write_rec(i)
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
-       
     for evm in listUniqIntrons:
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i) 
@@ -359,3 +349,12 @@ def strand(gff_file1, gff_file2, wd):
             
     
     return outputFilename
+
+if __name__ == '__main__':
+    
+    
+    evmgff = argv[1]
+    gmapgff = argv[2]
+    wd = argv[3]
+    strand(evmgff, gmapgff, wd)
+    

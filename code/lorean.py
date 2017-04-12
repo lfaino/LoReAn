@@ -117,7 +117,7 @@ def arguments():
                         default="annotation",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument("-t","--threads", 
-                        nargs="?", default="2",
+                        nargs="?", default="3",
                         help="Number of threads [1]",
                         metavar='N')
     parser.add_argument("-b", "--overhang",
@@ -707,7 +707,7 @@ def main():
                             args.overhang,
                             args.threads,
                             tmp_wd)
-                        utrs.lengthSupport(tmp_wd)
+                        utrs.lengthSupport(tmp_wd, args.threads)
 
         # WITH THE ELSE, WE ALLOW THE USER TO DECIDE TO CHANGE THE ASSEMBLY
         # PARAMETERS AND COLLECT DIFFERENT ASSEMBLED SEQUENCES WITHOT RUNNING
