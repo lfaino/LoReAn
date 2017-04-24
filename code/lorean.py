@@ -276,7 +276,7 @@ def main():
                     cmdstring = "mv %s %s" % (short_sorted_bam, star_out)
                     os.system(cmdstring)
                     bam_file = args.short_reads.split("/")
-                    short_bam = star_out + "/" + bam_file[2]
+                    short_bam = star_out + "/" + bam_file[-1]
                     short_sorted_bam = mapping.samtools_sort(
                         short_bam, args.threads, wd)
                     # print short_sorted_bam
@@ -761,7 +761,8 @@ def main():
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
-        finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
+        #finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
+        finalOutput = grs.strand(consensusMappedGFF3, ref, args.threads , gmap_wd)
         gffPasa = grs.appendID(finalOutput)
         noOverl = grs.removeOverlap(gffPasa)
         #simplified = grs.parseGff(finalOutput)

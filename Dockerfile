@@ -34,6 +34,7 @@ RUN tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
 
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.0.2.tar.gz && tar -zxvf v2.0.2.tar.gz && rm v2.0.2.tar.gz &&\
     cd PASApipeline-2.0.2 && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/ 
+    
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.3.tar.gz && \
     tar -zxvf augustus-3.2.3.tar.gz && rm augustus-3.2.3.tar.gz && mv augustus-3.2.3 augustus && cd augustus  && make clean && make 
     
@@ -42,6 +43,9 @@ RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.t
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
+
+RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
+    cd TransDecoder-3.0.1 && make  
 
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2015-12-31.v10.tar.gz && tar -zxvf gmap-gsnap-2015-12-31.v10.tar.gz && rm gmap-gsnap-2015-12-31.v10.tar.gz &&\
     mv gmap-2015-12-31// gmap && cd gmap/  && ./configure && make && sudo make install 
