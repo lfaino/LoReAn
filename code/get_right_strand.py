@@ -283,7 +283,7 @@ def strand(gff_file, fasta, proc, wd):
     errorFile = gff_file + ".gt_err.log"
     fasta_file_outfile = open(fasta_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
     call = subprocess.Popen(com, stdout= fasta_file_outfile , stderr=errorFilefile)
     call.communicate()
     fasta_file_outfile.close()
@@ -293,7 +293,7 @@ def strand(gff_file, fasta, proc, wd):
     errorFile = gtf_file_out + ".gt_err.log"
     gff_file_outfile = open(gff_file_out_u, "w")
     errorFilefile = open(errorFile, "w")    
-    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
     call = subprocess.Popen(com, stdout= gff_file_outfile , stderr=errorFilefile)
     call.communicate()
     gff_file_outfile.close()
@@ -314,7 +314,7 @@ def strand(gff_file, fasta, proc, wd):
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile = open(gff_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    wd_fasta = wd + fasta_file_out
+    wd_fasta =  fasta_file_out
     com = ['TransDecoder.Predict', '--single_best_orf','--cpu', str(proc), '--retain_long_orfs','10', '-t', wd_fasta]
     call = subprocess.Popen(com, stdout = gff_file_outfile, stderr=errorFilefile, cwd = wd)
     call.communicate()
@@ -325,8 +325,8 @@ def strand(gff_file, fasta, proc, wd):
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile = open(outputFilename, "w")
     errorFilefile = open(errorFile, "w")
-    wd_fasta = wd + fasta_file_out    
-    com = ['cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
+    wd_fasta = fasta_file_out    
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
     call = subprocess.Popen(com, stdout = gff_file_outfile, stderr=errorFilefile, cwd = wd)
     call.communicate()
     errorFilefile.close()
@@ -337,9 +337,7 @@ def strand(gff_file, fasta, proc, wd):
     for line in err_file:
         if line.startswith("Warning"):
              listErr.append(("mRNA" + line.split("::")[1]).split(".")[0])
-    listErrUniq = list(set(listErr))
-    print (listErrUniq)
-    
+    listErrUniq = list(set(listErr))    
     
     for evm in listErrUniq:
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
@@ -351,7 +349,6 @@ def strand(gff_file, fasta, proc, wd):
             #gff_out.write_rec(i)
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
-    
     
     outputFilenameFinal = wd + 'finalAnnotation.Final.gff3'
     outfile = open(outputFilenameFinal, "w")
@@ -372,7 +369,8 @@ if __name__ == '__main__':
     evmgff = argv[1]
     fasta = argv[2]
     proc = argv[3]
-    wd = argv[4]
+    pref = argv[4] 
+    wd = argv[5]
     gff = strand(evmgff, fasta, proc, wd)
-    newNames(gff)
+    genename(gff, pref)
     
