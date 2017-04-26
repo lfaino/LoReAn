@@ -283,7 +283,7 @@ def strand(gff_file, fasta, proc, wd):
     errorFile = gff_file + ".gt_err.log"
     fasta_file_outfile = open(fasta_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
+    com = ['util/cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
     call = subprocess.Popen(com, stdout= fasta_file_outfile , stderr=errorFilefile)
     call.communicate()
     fasta_file_outfile.close()
@@ -293,11 +293,12 @@ def strand(gff_file, fasta, proc, wd):
     errorFile = gtf_file_out + ".gt_err.log"
     gff_file_outfile = open(gff_file_out_u, "w")
     errorFilefile = open(errorFile, "w")    
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
     call = subprocess.Popen(com, stdout= gff_file_outfile , stderr=errorFilefile)
     call.communicate()
     gff_file_outfile.close()
     errorFilefile.close()
+    #/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
     
     errorFile = gtf_file_out + ".TrDec_err.log"
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
@@ -326,7 +327,7 @@ def strand(gff_file, fasta, proc, wd):
     gff_file_outfile = open(outputFilename, "w")
     errorFilefile = open(errorFile, "w")
     wd_fasta = fasta_file_out    
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
+    com = ['cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
     call = subprocess.Popen(com, stdout = gff_file_outfile, stderr=errorFilefile, cwd = wd)
     call.communicate()
     errorFilefile.close()
@@ -345,8 +346,6 @@ def strand(gff_file, fasta, proc, wd):
         gff_out.write_rec(db1[evm])
         for i in db1.parents(evm, featuretype='gene', order_by='start'):
             gff_out.write_rec(i)
-        #for i in db1.parents(evm, featuretype='mRNA', order_by='start'):
-            #gff_out.write_rec(i)
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
     
@@ -357,9 +356,24 @@ def strand(gff_file, fasta, proc, wd):
     call.communicate()
     outfile.close()
 
-    #errorFile
+    outputFilenameFinalProt = wd + 'finalAnnotation.Final.gff3.exon'
+    com = ['gffread', '-g', fasta, '-w', outputFilenameFinalProt, outputFilenameFinal] 
+    call = subprocess.Popen(com)
+    call.communicate()
+    outfile.close()
     
-    return outputFilenameFinal
+    listProt = []
+    count = 0
+    fastaOut = wd + 'finalAnnotation.Final.gff3.exon.fasta'
+    for record in SeqIO.parse(outputFilenameFinalProt, "fasta"):
+        count += 1
+        record.id = str(count)
+        listProt.append(record)
+    SeqIO.write(listProt, fastaOut , "fasta")
+    
+    
+    
+    return fastaOut
 
 # Main wrapper
 
