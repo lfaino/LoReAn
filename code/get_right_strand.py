@@ -251,8 +251,8 @@ def newNames(oldname):
     errorFilefile.close()
     return finalout
 
-def strand(gff_file, fasta, proc, wd):
-    outputFilename = wd + 'finalAnnotation.gff3'
+def longest(gff_file, fasta, proc, wd): 
+    outputFilename = wd + 'finalAnnotation.strand.gff3'
     outputFilenameLeft = wd + 'finalAnnotation.Left.gff3'
     gff_out = gffwriter.GFFWriter(outputFilenameLeft)
     gff_file_out = gff_file + ".intron.tidy.sorted.gff"
@@ -280,27 +280,27 @@ def strand(gff_file, fasta, proc, wd):
     db1 = gffutils.create_db(gff_file_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
 
     fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
-    errorFile = gff_file + ".gt_err.log"
+    errorFile = gff_file + ".1.gt_err.log"
     fasta_file_outfile = open(fasta_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['util/cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_genome_to_cdna_fasta.pl', gtf_file_out, fasta]
     call = subprocess.Popen(com, stdout= fasta_file_outfile , stderr=errorFilefile)
     call.communicate()
     fasta_file_outfile.close()
     errorFilefile.close()
     
     gff_file_out_u = gtf_file_out + ".gff3"
-    errorFile = gtf_file_out + ".gt_err.log"
+    errorFile = gtf_file_out + ".2.gt_err.log"
     gff_file_outfile = open(gff_file_out_u, "w")
     errorFilefile = open(errorFile, "w")    
-    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
     call = subprocess.Popen(com, stdout= gff_file_outfile , stderr=errorFilefile)
     call.communicate()
     gff_file_outfile.close()
     errorFilefile.close()
     #/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
     
-    errorFile = gtf_file_out + ".TrDec_err.log"
+    errorFile = gtf_file_out + ".TrDec_err.2.log"
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile = open(gff_file_out, "w")
     errorFilefile = open(errorFile, "w")    
@@ -311,7 +311,7 @@ def strand(gff_file, fasta, proc, wd):
     gff_file_outfile.close()
     
     
-    errorFile = gtf_file_out + ".TrDec_err.log"
+    errorFile = gtf_file_out + ".TrDec_err.3.log"
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile = open(gff_file_out, "w")
     errorFilefile = open(errorFile, "w")
@@ -322,12 +322,12 @@ def strand(gff_file, fasta, proc, wd):
     errorFilefile.close()
     gff_file_outfile.close()
 
-    errorFile = gtf_file_out + ".TrDec_err.log"
+    errorFile = gtf_file_out + ".TrDec_err.4.log"
     gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile = open(outputFilename, "w")
     errorFilefile = open(errorFile, "w")
     wd_fasta = fasta_file_out    
-    com = ['cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
+    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cdna_alignment_orf_to_genome_orf.pl',  wd_fasta + '.transdecoder.gff3',  gff_file_out_u , wd_fasta] 
     call = subprocess.Popen(com, stdout = gff_file_outfile, stderr=errorFilefile, cwd = wd)
     call.communicate()
     errorFilefile.close()
@@ -356,35 +356,135 @@ def strand(gff_file, fasta, proc, wd):
     call.communicate()
     outfile.close()
 
-    outputFilenameFinalProt = wd + 'finalAnnotation.Final.gff3.exon'
-    com = ['gffread', '-g', fasta, '-w', outputFilenameFinalProt, outputFilenameFinal] 
-    call = subprocess.Popen(com)
+    return outputFilenameFinal
+
+def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
+    outputFilename = wd + 'finalAnnotation.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilename)
+    outputFilenameGmap = wd + 'finalAnnotation.gmap.sing.gff3'
+    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap)
+    
+    gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
+    errorFile = gff_file1 + ".gt_err.log"
+    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file1]
+    file1 = open(gff_file1_out, 'w')
+    err1 = open(errorFile, 'w')
+    gt_call = subprocess.Popen( gt_com, stdout=file1, stderr=err1)
+    gt_call.communicate()
+    
+    gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
+    errorFile = gff_file2 + ".gt_err.log"
+    file1 = open(gff_file2_out, 'w')
+    err1 = open(errorFile, 'w')
+    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file2]
+    gt_call = subprocess.Popen( gt_com, stdout=file1, stderr=err1)
+    gt_call.communicate()
+    
+    db1 = gffutils.create_db(gff_file1_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
+    db2 = gffutils.create_db(gff_file2_out, ':memory:',  merge_strategy='create_unique', keep_order=True)
+    listgene1 = []
+    listgeneintrons = []
+    listgenetotal = []
+    for i in db1.features_of_type("intron"):
+        g = ' '.join (i.attributes['Parent'])
+        listgeneintrons.append(g)
+    for i in db1.features_of_type("CDS"):
+        g = ' '.join (i.attributes['Parent'])
+        listgenetotal.append(g)
+    listgene1 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
+    listgene2 = []
+    listgeneintrons = []
+    listgenetotal = []
+    newlist = []
+    for i in db2.features_of_type("intron"):
+        g = ' '.join (i.attributes['Parent'])
+        listgeneintrons.append(g)
+    for i in db2.features_of_type("CDS"):
+        g = ' '.join (i.attributes['Parent'])
+        listgenetotal.append(g)
+    listgene2 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
+    
+    geneDict = {}
+    for a in listgene2:   
+        b =  a.split('_', 1)[1]
+        bb = b.split('.')
+        del bb[-1]
+        evm = '.'.join(bb)
+        newlist.append(evm)
+        if evm in geneDict:
+            z = geneDict[evm]
+            geneDict[evm] = z + [a]
+        else:
+            geneDict[evm] =  [a]
+    
+    commonlist = list(set(listgene1).intersection(newlist))
+    
+    for evm in commonlist:
+        if geneDict[evm]:
+            del geneDict[evm]
+
+    listuniq = [] 
+    listUniqIntrons = []
+    listgmap = []
+
+    for a in geneDict:
+        for c in geneDict[a]:
+            listuniq.append(c)
+    
+    listUniqIntrons = list(set(listgeneintrons))
+    listgmap = list(set(listuniq))
+
+    for evm in commonlist:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            gff_out_s.write_rec(i)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out_s.write_rec(i)
+       
+    for evm in listUniqIntrons:
+        for i in db2.children(evm, featuretype='CDS', order_by='start'):
+            gff_out_s.write_rec(i) 
+        gff_out_s.write_rec(db2[evm])
+        for i in db2.parents(evm, featuretype='gene', order_by='start'):
+            gff_out_s.write_rec(i)
+        for i in db2.children(evm, featuretype='exon', order_by='start'):
+            gff_out_s.write_rec(i)
+    
+    for evm in listgmap:
+        for i in db2.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i) 
+        gff_out.write_rec(db2[evm])
+        for i in db2.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in db2.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
+    gff_out_s.close()
+
+    gffOrf = longest(outputFilename, fasta, proc, wd)
+    
+    outputFilenameFinal = wd + 'finalAnnotation.Final.Comb.gff3'
+    outfile = open(outputFilenameFinal, "w")
+    com = ['cat', gffOrf, outputFilenameGmap] 
+    call = subprocess.Popen(com, stdout = outfile, cwd = wd)
     call.communicate()
     outfile.close()
-    
-    listProt = []
-    count = 0
-    fastaOut = wd + 'finalAnnotation.Final.gff3.exon.fasta'
-    for record in SeqIO.parse(outputFilenameFinalProt, "fasta"):
-        count += 1
-        record.id = str(count)
-        listProt.append(record)
-    SeqIO.write(listProt, fastaOut , "fasta")
-    
-    
-    
-    return fastaOut
 
-# Main wrapper
+    
+    return outputFilenameFinal
+
 
 if __name__ == '__main__':
     
     
     evmgff = argv[1]
-    fasta = argv[2]
-    proc = argv[3]
-    pref = argv[4] 
+    gmap = argv[2]
+    fasta = argv[3]
+    proc = argv[4]
+    #pref = argv[5] 
     wd = argv[5]
-    gff = strand(evmgff, fasta, proc, wd)
-    genename(gff, pref)
+    strand(evmgff, gmap, fasta, proc, wd)
+    #genename(gff, pref)
     
