@@ -762,7 +762,7 @@ def main():
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
         #finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
-        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads , gmap_wd)
+        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd)
         gffPasa = grs.appendID(strandMappedGFF3)
         noOverl = grs.removeOverlap(gffPasa)
         #simplified = grs.parseGff(finalOutput)

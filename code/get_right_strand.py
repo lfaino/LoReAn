@@ -358,7 +358,7 @@ def longest(gff_file, fasta, proc, wd):
 
     return outputFilenameFinal
 
-def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
+def strand(gff_file1, gff_file2, fasta, proc, wd): 
     outputFilename = wd + 'finalAnnotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilename)
     outputFilenameGmap = wd + 'finalAnnotation.gmap.sing.gff3'
@@ -392,10 +392,11 @@ def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
         g = ' '.join (i.attributes['Parent'])
         listgenetotal.append(g)
     listgene1 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
+    #print (len(set(listgenetotal)))
     listgene2 = []
     listgeneintrons = []
     listgenetotal = []
-    newlist = []
+
     for i in db2.features_of_type("intron"):
         g = ' '.join (i.attributes['Parent'])
         listgeneintrons.append(g)
@@ -404,8 +405,9 @@ def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
         listgenetotal.append(g)
     listgene2 = sorted(set(list(set(listgenetotal)^set(listgeneintrons))))
     
+    newlist = []
     geneDict = {}
-    for a in listgene2:   
+    for a in listgene2:
         b =  a.split('_', 1)[1]
         bb = b.split('.')
         del bb[-1]
@@ -416,34 +418,37 @@ def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
             geneDict[evm] = z + [a]
         else:
             geneDict[evm] =  [a]
-    
     commonlist = list(set(listgene1).intersection(newlist))
+    uniqGmap = sorted(set(list(set(newlist)^set(commonlist))))
+
+    evmList = []
+    gmapList = []
+    count = 0
+    for a in commonlist:
+        if geneDict[a] and len(geneDict[a]) < 2:
+            evmList.append(a)
+        elif geneDict[a] and len(geneDict[a]) > 1:
+            gmapList = gmapList + geneDict[a]
     
-    for evm in commonlist:
-        if geneDict[evm]:
-            del geneDict[evm]
+    for a in uniqGmap:
+        if geneDict[a]:
+            gmapList = gmapList + geneDict[a]
+    listgeneintronsU = []
+    listgeneintronsU = (set(listgeneintrons))
 
-    listuniq = [] 
-    listUniqIntrons = []
-    listgmap = []
-
-    for a in geneDict:
-        for c in geneDict[a]:
-            listuniq.append(c)
-    
-    listUniqIntrons = list(set(listgeneintrons))
-    listgmap = list(set(listuniq))
-
-    for evm in commonlist:
+    for evm in evmList:
+        #print (evm)
+        #print ("1")
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
-            gff_out_s.write_rec(i)
-        gff_out_s.write_rec(db1[evm])
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
         for i in db1.parents(evm, featuretype='gene', order_by='start'):
-            gff_out_s.write_rec(i)
+            gff_out.write_rec(i)
         for i in db1.children(evm, featuretype='exon', order_by='start'):
-            gff_out_s.write_rec(i)
+            gff_out.write_rec(i)
        
-    for evm in listUniqIntrons:
+    for evm in gmapList:
+        #print ("in 2")
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out_s.write_rec(i) 
         gff_out_s.write_rec(db2[evm])
@@ -452,7 +457,8 @@ def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
         for i in db2.children(evm, featuretype='exon', order_by='start'):
             gff_out_s.write_rec(i)
     
-    for evm in listgmap:
+    for evm in listgeneintronsU:
+        #print ("in 3")
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i) 
         gff_out.write_rec(db2[evm])
@@ -463,11 +469,11 @@ def strand(gff_file1, gff_file2, fasta, proc, wd): #strand(evmgff, gmapgff, wd)
     gff_out.close()
     gff_out_s.close()
 
-    gffOrf = longest(outputFilename, fasta, proc, wd)
+    gffOrf = longest(outputFilenameGmap, fasta, proc, wd)
     
     outputFilenameFinal = wd + 'finalAnnotation.Final.Comb.gff3'
     outfile = open(outputFilenameFinal, "w")
-    com = ['cat', gffOrf, outputFilenameGmap] 
+    com = ['cat', gffOrf, outputFilename] 
     call = subprocess.Popen(com, stdout = outfile, cwd = wd)
     call.communicate()
     outfile.close()
@@ -483,8 +489,13 @@ if __name__ == '__main__':
     gmap = argv[2]
     fasta = argv[3]
     proc = argv[4]
-    #pref = argv[5] 
-    wd = argv[5]
-    strand(evmgff, gmap, fasta, proc, wd)
-    #genename(gff, pref)
+    pref = argv[5] 
+    wd = argv[6]
+    gffR = strand(evmgff, gmap, fasta, proc, wd)
+    gffPasa = appendID(gffR)
+    noOverl = removeOverlap(gffPasa)
+    #simplified = grs.parseGff(finalOutput)
+    noDisc = removeDiscrepancy(noOverl, evmgff)
+    uniqGene = newNames(noDisc)
+    genename(uniqGene, pref)
     
