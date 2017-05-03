@@ -774,7 +774,7 @@ def main():
         
         finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
         print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
-        finalupdate4 = exonerate(ref, finalupdate3, args.threads, gmap_wd)
+        finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, gmap_wd)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene)
         
         fastaAll = logistic.catTwoFasta(
