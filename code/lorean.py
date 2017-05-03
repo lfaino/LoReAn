@@ -770,11 +770,16 @@ def main():
         uniqGene = grs.newNames(noDisc)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
+
+        
+        finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
+        print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
+        finalupdate4 = exonerate(ref, finalupdate3, args.threads, gmap_wd)
+        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene)
+        
         fastaAll = logistic.catTwoFasta(
             trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
-        
-        finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
         
         finalupdate = evm_pipeline.update_database(
             args.threads,
@@ -784,7 +789,7 @@ def main():
             align_pasa_conf,
             ref,
             fastaAll,
-            finalupdate3,
+            finalupdate5,
             "a")
         round_n += 1
         finalupdate2 = evm_pipeline.update_database(

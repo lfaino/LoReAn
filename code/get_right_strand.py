@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import re
+import os
 import gffutils
 from sys import argv
 import subprocess
@@ -10,6 +11,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import IUPAC
 from Bio import SeqIO
+from multiprocessing import Pool
 
 def removeDiscrepancy(gff, evmFile):
     badName = []
@@ -437,8 +439,6 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
     listgeneintronsU = (set(listgeneintrons))
 
     for evm in evmList:
-        #print (evm)
-        #print ("1")
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
         gff_out.write_rec(db1[evm])
@@ -448,7 +448,6 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
             gff_out.write_rec(i)
        
     for evm in gmapList:
-        #print ("in 2")
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out_s.write_rec(i) 
         gff_out_s.write_rec(db2[evm])
@@ -458,7 +457,6 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
             gff_out_s.write_rec(i)
     
     for evm in listgeneintronsU:
-        #print ("in 3")
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i) 
         gff_out.write_rec(db2[evm])
@@ -477,25 +475,174 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
     call = subprocess.Popen(com, stdout = outfile, cwd = wd)
     call.communicate()
     outfile.close()
-
-    
     return outputFilenameFinal
+
+def exonerate(ref, gff_file, proc, wd):
+    exon_file_out = gff_file + ".exons.fasta"
+    prot_file_out = gff_file + ".prot.fasta"
+    errorFile = gff_file + ".gt_err.log"
+    com = ['gffread', '-W','-g', ref, '-w', exon_file_out, '-y', prot_file_out, gff_file]
+    fasta_file_outfile = open(exon_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    call = subprocess.Popen(com, stdout= fasta_file_outfile , stderr=errorFilefile)
+    call.communicate()
+    fasta_file_outfile.close()
+    errorFilefile.close()
+    
+    listComplete = []
+    listIncomplete = []
+    listFasta = []
+    dictFastaProt = {}
+    for record in SeqIO.parse(prot_file_out, "fasta"):
+        if (record.seq).startswith("M") and (record.seq).endswith("."):
+                listComplete.append(record.id)
+        elif (record.seq).startswith("M") and not (record.seq).endswith("."):
+                newseq = (record.seq).split(".")
+                if len(newseq) > 1:
+                    newseqM = newseq[0] + "."
+                    record.seq = newseqM
+                    if len(record.seq) > 10:
+                        listIncomplete.append(record.id)
+                        dictFastaProt[record.id] = record
+                        #listFasta.append(record)
+        elif not (record.seq).startswith("M") and (record.seq).endswith("."):
+                newseq = (record.seq).split("M")
+                if len(newseq) > 1:
+                    newseqM =  "M" + newseq[1] 
+                    record.seq = newseqM
+                    if len(record.seq) > 10:
+                        listIncomplete.append(record.id)
+                        dictFastaProt[record.id] = record
+                        #listFasta.append(record)
+        elif not (record.seq).startswith("M") and not (record.seq).endswith("."):
+                newseq = (record.seq).split("M")
+                if len(newseq) > 1:
+                    newseqM =  "M" + newseq[1] 
+                    record.seq = newseqM
+                    newseq = (record.seq).split(".")
+                    if len(newseq) > 1:
+                        newseqM = newseq[0] + "."
+                        record.seq = newseqM
+                        if len(record.seq) > 10:
+                            listIncomplete.append(record.id)
+                            dictFastaProt[record.id] = record
+                            #listFasta.append(record)
+    #prot_file_out_out = prot_file_out + ".mod.fasta"
+    #SeqIO.write(listFasta, prot_file_out_out, "fasta")
+    outputFilenameGff = wd + 'Annotation.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilenameGff)
+    db1 = gffutils.create_db(gff_file, ':memory:',  merge_strategy='create_unique', keep_order=True)
+    for evm in listComplete:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
+    commandList = []
+    for record in SeqIO.parse(exon_file_out, "fasta"):
+        if record.id in listIncomplete:
+            outputFilenameProt = wd + record.id +'.prot.fasta'
+            SeqIO.write(dictFastaProt[record.id], outputFilenameProt, "fasta")
+            listFields = (record.description).split(' ')
+            for elem in listFields:
+                outputFilename = wd + record.id +'.genome.fasta'
+                bedFile = wd + record.id + '.genome.bed'
+                if (elem.startswith('loc') and elem.endswith('+')) or (elem.startswith('loc') and elem.endswith('-')):
+                    coordsList = elem.split('|', -2)
+                    chrN = coordsList[0].split(':')
+                    coord = coordsList[1].split('-')
+                    locus = '\t'.join([chrN[1],coord[0],coord[1]])
+                    locus = locus + '\n'
+                    bedhandler = open(bedFile, 'w')
+                    bedhandler.write(locus)
+                    bedhandler.close()
+                    com = ['bedtools', 'getfasta','-fi', ref, '-bed', bedFile, '-fo', outputFilename]
+                    call = subprocess.Popen(com) #, stdout= fasta_file_outfile , stderr=errorFilefile)
+                    call.communicate()
+                    combList = [outputFilenameProt, outputFilename]
+            commandList.append(combList)    
+
+    with Pool(int(proc)) as p:
+        p.map(runExonerate, commandList)
+    
+    listGff3 = []
+    for root, dirs, files, in os.walk(wd):
+        for fileN in files:
+            if fileN.endswith('gff3'):
+                listGff3.append(os.path.join(root, fileN))
+    
+    orintedFIle = wd + '/oriented.gff3'
+    dataGff3 = open(orintedFIle, 'w')
+    orintedFIleErr = wd + '/oriented.gff3.error'
+    dataGff3Err = open(orintedFIleErr, 'w')
+    comcat = ['cat'] + listGff3
+    gt_com = ['gt', 'gff3', '-sort', '-tidy']
+    callcat = subprocess.Popen(comcat, stdout= subprocess.PIPE)
+    callgt = subprocess.Popen(gt_com, stdin = callcat.stdout, stdout = dataGff3, stderr=dataGff3Err)
+    callgt.communicate()
+    dataGff3.close()
+    dataGff3Err.close()
+    
+    return orintedFIle
+        
+def runExonerate(commandList):
+    #print (commandList)
+    outputFilenameProt = commandList[0]
+    outputFilename = commandList[1]
+    protGff = outputFilenameProt + ".exonOut"
+    errorFile = outputFilenameProt + ".exonerate_err.log"
+    protGff_outfile = open(protGff, "w")
+    errorFilefile = open(errorFile, "w")
+    com = ['exonerate', '--model', 'protein2genome', '--bestn', '1', '--showtargetgff', 'yes', '--query',  outputFilenameProt, '--target', outputFilename] 
+    call = subprocess.Popen(com, stdout= protGff_outfile, stderr=errorFilefile)
+    call.communicate()
+    fileGff = open(protGff, "r")
+    protGff3 = protGff + ".gff3"
+    fileFinalGff = open(protGff3, "w")
+    gff = fileGff.readlines()
+    for line in gff:
+        if "exonerate:protein2genome:local" in line:
+            splitLine = line.split("\t")
+            #print (splitLine)
+            if (len(splitLine))> 8:
+                chNr = splitLine[0].split(":")
+                start = chNr[1].split("-")[0]
+                elm = splitLine[8].split(";")
+                if "gene" in splitLine[2]:
+                    nameGene = elm[1].split(" ")
+                    geneList = [chNr[0],"LoReAn" , splitLine[2], str(int(splitLine[3]) + int(start)), str(int(splitLine[4]) + int(start)), '.', splitLine[6], splitLine[7], "ID=" + nameGene[2]]
+                    mRNAList = [chNr[0],"LoReAn" , 'mRNA', str(int(splitLine[3]) + int(start)), str(int(splitLine[4]) + int(start)), '.', splitLine[6], splitLine[7], "ID=" + nameGene[2] + ".mRNA;Parent=" + nameGene[2]]
+                    fileFinalGff.write(('\t'.join(geneList)) + "\n")
+                    fileFinalGff.write(('\t'.join(mRNAList)) + "\n")
+                if "cds" in splitLine[2]:
+                    cdsList = [chNr[0],"LoReAn" , "CDS", str(int(splitLine[3]) + int(start)), str(int(splitLine[4]) + int(start)), splitLine[5], splitLine[6], splitLine[7], "Parent=" + nameGene[2] + ".mRNA"]
+                    fileFinalGff.write(('\t'.join(cdsList)) + "\n")
+                if "exon" in splitLine[2]:
+                    exonList = [chNr[0],"LoReAn" , splitLine[2], str(int(splitLine[3]) + int(start)), str(int(splitLine[4]) + int(start)), splitLine[5], splitLine[6], splitLine[7], "Parent=" + nameGene[2] + ".mRNA"]
+                    fileFinalGff.write(('\t'.join(exonList)) + "\n")
+    fileFinalGff.close()
+
+
 
 
 if __name__ == '__main__':
     
     
     evmgff = argv[1]
-    gmap = argv[2]
-    fasta = argv[3]
-    proc = argv[4]
-    pref = argv[5] 
-    wd = argv[6]
-    gffR = strand(evmgff, gmap, fasta, proc, wd)
-    gffPasa = appendID(gffR)
-    noOverl = removeOverlap(gffPasa)
-    #simplified = grs.parseGff(finalOutput)
-    noDisc = removeDiscrepancy(noOverl, evmgff)
-    uniqGene = newNames(noDisc)
-    genename(uniqGene, pref)
+    #gmap = argv[2]
+    fasta = argv[2]
+    proc = argv[3]
+    #pref = argv[5] 
+    wd = argv[4]
+    #gffR = strand(evmgff, gmap, fasta, proc, wd)
+    #gffPasa = appendID(gffR)
+    #noOverl = removeOverlap(gffPasa)
+    ##simplified = grs.parseGff(finalOutput)
+    #noDisc = removeDiscrepancy(noOverl, evmgff)
+    #uniqGene = newNames(noDisc)
+    #genename(uniqGene, pref)
+    exonerate(fasta, evmgff, proc, wd)
     
