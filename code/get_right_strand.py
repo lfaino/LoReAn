@@ -480,9 +480,11 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
 def exonerate(ref, gff_file, proc, wd):
     exon_file_out = gff_file + ".exons.fasta"
     prot_file_out = gff_file + ".prot.fasta"
-    errorFile = gff_file + ".gt_err.log"
+    errorFile = gff_file + ".gffread_err.log"
+    logFile = exon_file_out + "gffread_log.log"
     com = ['gffread', '-W','-g', ref, '-w', exon_file_out, '-y', prot_file_out, gff_file]
-    fasta_file_outfile = open(exon_file_out, "w")
+    #print (com)
+    fasta_file_outfile = open(logFile, "w")
     errorFilefile = open(errorFile, "w")
     call = subprocess.Popen(com, stdout= fasta_file_outfile , stderr=errorFilefile)
     call.communicate()
@@ -491,45 +493,44 @@ def exonerate(ref, gff_file, proc, wd):
     
     listComplete = []
     listIncomplete = []
-    listFasta = []
     dictFastaProt = {}
+    
     for record in SeqIO.parse(prot_file_out, "fasta"):
         if (record.seq).startswith("M") and (record.seq).endswith("."):
                 listComplete.append(record.id)
-        elif (record.seq).startswith("M") and not (record.seq).endswith("."):
+        else:
+            oldSeq = record.seq
+            if (record.seq).startswith("M") and not (record.seq).endswith("."):
+                oldseq = record.seq
                 newseq = (record.seq).split(".")
                 if len(newseq) > 1:
-                    newseqM = newseq[0] + "."
+                    newseqM = newseq[0] 
                     record.seq = newseqM
-                    if len(record.seq) > 10:
-                        listIncomplete.append(record.id)
-                        dictFastaProt[record.id] = record
-                        #listFasta.append(record)
-        elif not (record.seq).startswith("M") and (record.seq).endswith("."):
-                newseq = (record.seq).split("M")
-                if len(newseq) > 1:
-                    newseqM =  "M" + newseq[1] 
-                    record.seq = newseqM
-                    if len(record.seq) > 10:
-                        listIncomplete.append(record.id)
-                        dictFastaProt[record.id] = record
-                        #listFasta.append(record)
-        elif not (record.seq).startswith("M") and not (record.seq).endswith("."):
-                newseq = (record.seq).split("M")
-                if len(newseq) > 1:
-                    newseqM =  "M" + newseq[1] 
-                    record.seq = newseqM
-                    newseq = (record.seq).split(".")
+            elif not (record.seq).startswith("M") and (record.seq).endswith("."):
+                    newseq = (record.seq).split("M", 1)
                     if len(newseq) > 1:
-                        newseqM = newseq[0] + "."
+                        newseqM =  "M" + newseq[1] 
+                        newseqA = newseqM.split(".")[0]
+                        record.seq = newseqA
+            elif not (record.seq).startswith("M") and not (record.seq).endswith("."):
+                    newseq = (record.seq).split("M")
+                    if len(newseq) > 1:
+                        newseqM =  "M" + newseq[1] 
                         record.seq = newseqM
-                        if len(record.seq) > 10:
-                            listIncomplete.append(record.id)
-                            dictFastaProt[record.id] = record
-                            #listFasta.append(record)
-    #prot_file_out_out = prot_file_out + ".mod.fasta"
-    #SeqIO.write(listFasta, prot_file_out_out, "fasta")
-    outputFilenameGff = wd + 'Annotation.gff3'
+                        newseq = (record.seq).split(".")
+                        if len(newseq) > 1:
+                            newseqM = newseq[0] 
+                            record.seq = newseqM
+            if ((len(record.seq))/(len(oldSeq))) < 0.5:
+                record.seq = oldSeq.split(".")[0]
+            if  (record.seq).endswith("."):
+                seqCorr = record.seq
+                record.seq = seqCorr.split(".")[0]
+                #newseqA = oldSeq.split(".")[0]
+            listIncomplete.append(record.id)
+            dictFastaProt[record.id] = record
+
+    outputFilenameGff = wd + 'mRNA_complaete_gene_Annotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilenameGff)
     db1 = gffutils.create_db(gff_file, ':memory:',  merge_strategy='create_unique', keep_order=True)
     for evm in listComplete:
@@ -571,17 +572,23 @@ def exonerate(ref, gff_file, proc, wd):
     listGff3 = []
     for root, dirs, files, in os.walk(wd):
         for fileN in files:
-            if fileN.endswith('gff3'):
+            if fileN.endswith('gff3') and fileN.startswith('mRNA'):
                 listGff3.append(os.path.join(root, fileN))
+    
+    orintedFIleN = wd + '/oriented.oldname.gff3'
+    dataGff3N = open(orintedFIleN, 'w')    
+    for fname in listGff3:
+        with open(fname) as f:
+            for line in f.readlines():
+                dataGff3N.write(line)
+    dataGff3N.close()    
     
     orintedFIle = wd + '/oriented.gff3'
     dataGff3 = open(orintedFIle, 'w')
     orintedFIleErr = wd + '/oriented.gff3.error'
     dataGff3Err = open(orintedFIleErr, 'w')
-    comcat = ['cat'] + listGff3
-    gt_com = ['gt', 'gff3', '-sort', '-tidy']
-    callcat = subprocess.Popen(comcat, stdout= subprocess.PIPE)
-    callgt = subprocess.Popen(gt_com, stdin = callcat.stdout, stdout = dataGff3, stderr=dataGff3Err)
+    gt_com = ['gt', 'gff3', '-sort', '-tidy' , orintedFIleN]
+    callgt = subprocess.Popen(gt_com, stdout = dataGff3, stderr=dataGff3Err)
     callgt.communicate()
     dataGff3.close()
     dataGff3Err.close()
