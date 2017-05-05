@@ -12,8 +12,6 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import IUPAC
 from Bio import SeqIO
 from multiprocessing import Pool
-from Bio import Seq
-import regex as re
 
 def removeDiscrepancy(gff, evmFile):
     badName = []
@@ -192,6 +190,7 @@ def genename(gff_filename, prefix):
     errorFilefile = open(errorFile, "w") 
     gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy', gff_filename], stdout=subprocess.PIPE, stderr = errorFilefile)
     errorFilefile.close()
+    
     fields = []
     featureann = []
     chrold = ''
@@ -493,72 +492,65 @@ def exonerate(ref, gff_file, proc, wd):
     errorFilefile.close()
     
     listComplete = []
-    dictIncomplete = {}
+    listIncomplete = []
     dictFastaProt = {}
-    longestProt = []
-    listTotal = []
-    
     
     for record in SeqIO.parse(prot_file_out, "fasta"):
-        listTotal.append(record.id)
         if (record.seq).startswith("M") and (record.seq).endswith("."):
-            listComplete.append(record.id)
+                listComplete.append(record.id)
         else:
-            dictIncomplete[record.id] = record.id
-    for record in SeqIO.parse(exon_file_out, "fasta"):
-        if record.id in dictIncomplete:
-            newrecord = record.reverse_complement()
-            input_seq = str(record.seq)
-            startP = re.compile('ATG')
-            nuc = input_seq.replace('\n','')
-            longest = (0,)
-            for m in startP.finditer(nuc, overlapped=True):
-                if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
-                    pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
-                    longest = [len(pro), m.start(), str(pro),  nuc[m.start():m.start()+len(pro)*3+3]]
-                    if len(longest) == 4 :
-                        record.seq = Seq.Seq(longest[2])
-                        dictFastaProt[record.id] = record
-                    else:
-                        dictFastaProt[record.id] = record
-            input_seq = str(newrecord.seq)
-            startP = re.compile('ATG')
-            nuc = input_seq.replace('\n','')
-            longest = (0,)
-            for m in startP.finditer(nuc, overlapped=True):
-                if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
-                    pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
-                    longest = [len(pro), m.start(), str(pro),  nuc[m.start():m.start()+len(pro)*3+3]]
-                    if len(longest) == 4 :
-                        if record.id in dictFastaProt:
-                            if (len((dictFastaProt[record.id]).seq)) < (len(longest[2])):
-                                record.seq = Seq.Seq(longest[2])
-                                dictFastaProt[record.id] = record
-                        elif len(longest) == 4 :
-                            record.seq = Seq.Seq(longest[2])
-                            dictFastaProt[record.id] = record
-                        else:
-                            dictFastaProt[record.id] = record
-                            
+            oldSeq = record.seq
+            if (record.seq).startswith("M") and not (record.seq).endswith("."):
+                oldseq = record.seq
+                newseq = (record.seq).split(".")
+                if len(newseq) > 1:
+                    newseqM = newseq[0] 
+                    record.seq = newseqM
+            elif not (record.seq).startswith("M") and (record.seq).endswith("."):
+                    newseq = (record.seq).split("M", 1)
+                    if len(newseq) > 1:
+                        newseqM =  "M" + newseq[1] 
+                        newseqA = newseqM.split(".")[0]
+                        record.seq = newseqA
+            elif not (record.seq).startswith("M") and not (record.seq).endswith("."):
+                    newseq = (record.seq).split("M")
+                    if len(newseq) > 1:
+                        newseqM =  "M" + newseq[1] 
+                        record.seq = newseqM
+                        newseq = (record.seq).split(".")
+                        if len(newseq) > 1:
+                            newseqM = newseq[0] 
+                            record.seq = newseqM
+            if ((len(record.seq))/(len(oldSeq))) < 0.5:
+                record.seq = oldSeq.split(".")[0]
+            if  (record.seq).endswith("."):
+                seqCorr = record.seq
+                record.seq = seqCorr.split(".")[0]
+                #newseqA = oldSeq.split(".")[0]
+            listIncomplete.append(record.id)
+            dictFastaProt[record.id] = record
 
-            
-    for mod in dictFastaProt:
-        longestProt.append(dictFastaProt[mod])
-    prot_file_out_mod = prot_file_out + ".mod.fasta"
-    SeqIO.write(longestProt, prot_file_out_mod, "fasta") 
-
+    outputFilenameGff = wd + 'mRNA_complaete_gene_Annotation.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilenameGff)
+    db1 = gffutils.create_db(gff_file, ':memory:',  merge_strategy='create_unique', keep_order=True)
+    for evm in listComplete:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
     commandList = []
-    listShort = []
-    record_dict  = SeqIO.to_dict(SeqIO.parse(exon_file_out, "fasta"))
-    for key in dictFastaProt:
-        if key in record_dict:
-            listShort.append(key)
-            outputFilenameProt = wd + key +'.prot.fasta'
-            SeqIO.write(dictFastaProt[key], outputFilenameProt, "fasta")
-            listFields = (record_dict[key].description).split(' ')
+    for record in SeqIO.parse(exon_file_out, "fasta"):
+        if record.id in listIncomplete:
+            outputFilenameProt = wd + record.id +'.prot.fasta'
+            SeqIO.write(dictFastaProt[record.id], outputFilenameProt, "fasta")
+            listFields = (record.description).split(' ')
             for elem in listFields:
-                outputFilename = wd + key +'.genome.fasta'
-                bedFile = wd + key + '.genome.bed'
+                outputFilename = wd + record.id +'.genome.fasta'
+                bedFile = wd + record.id + '.genome.bed'
                 if (elem.startswith('loc') and elem.endswith('+')) or (elem.startswith('loc') and elem.endswith('-')):
                     coordsList = elem.split('|', -2)
                     chrN = coordsList[0].split(':')
@@ -582,23 +574,6 @@ def exonerate(ref, gff_file, proc, wd):
         for fileN in files:
             if fileN.endswith('gff3') and fileN.startswith('mRNA'):
                 listGff3.append(os.path.join(root, fileN))
-    
-    listInGff = listComplete + listShort
-    listAsbent = sorted(set(list(set(listTotal)^set(listInGff))))
-    listCompleteAll = listAsbent + listComplete
-
-    outputFilenameGff = wd + 'mRNA_complaete_gene_Annotation.gff3'
-    gff_out = gffwriter.GFFWriter(outputFilenameGff)
-    db1 = gffutils.create_db(gff_file, ':memory:',  merge_strategy='create_unique', keep_order=True)
-    for evm in listCompleteAll:
-        for i in db1.children(evm, featuretype='CDS', order_by='start'):
-            gff_out.write_rec(i)
-        gff_out.write_rec(db1[evm])
-        for i in db1.parents(evm, featuretype='gene', order_by='start'):
-            gff_out.write_rec(i)
-        for i in db1.children(evm, featuretype='exon', order_by='start'):
-            gff_out.write_rec(i)
-    gff_out.close()
     
     orintedFIleN = wd + '/oriented.oldname.gff3'
     dataGff3N = open(orintedFIleN, 'w')    

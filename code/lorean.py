@@ -765,16 +765,16 @@ def main():
         # INVERT THE ORIGINAL STRAND
         #finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
         strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd)
-        #gffPasa = grs.appendID(strandMappedGFF3)
-        #noOverl = grs.removeOverlap(gffPasa)
+        gffPasa = grs.appendID(strandMappedGFF3)
+        noOverl = grs.removeOverlap(gffPasa)
         ##simplified = grs.parseGff(finalOutput)
-        #noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
-        #uniqGene = grs.newNames(noDisc)
+        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
+        uniqGene = grs.newNames(noDisc)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         
-        finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene)
+        finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
         print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene)
