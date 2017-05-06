@@ -506,6 +506,13 @@ def exonerate(ref, gff_file, proc, wd):
         else:
             dictIncomplete[record.id] = record.id
     for record in SeqIO.parse(exon_file_out, "fasta"):
+        exonSingle = False
+        listFields = (record.description).split(' ')
+        for elem in listFields:
+            if (elem.startswith('exons')):
+                exonNumber = elem.split(",")
+                if (len(exonNumber)) == 1:
+                    exonSingle = True
         if record.id in dictIncomplete:
             newrecord = record.reverse_complement()
             input_seq = str(record.seq)
@@ -521,24 +528,25 @@ def exonerate(ref, gff_file, proc, wd):
                         dictFastaProt[record.id] = record
                     else:
                         dictFastaProt[record.id] = record
-            input_seq = str(newrecord.seq)
-            startP = re.compile('ATG')
-            nuc = input_seq.replace('\n','')
-            longest = (0,)
-            for m in startP.finditer(nuc, overlapped=True):
-                if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
-                    pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
-                    longest = [len(pro), m.start(), str(pro),  nuc[m.start():m.start()+len(pro)*3+3]]
-                    if len(longest) == 4 :
-                        if record.id in dictFastaProt:
-                            if (len((dictFastaProt[record.id]).seq)) < (len(longest[2])):
+            if exonSingle:
+                input_seq = str(newrecord.seq)
+                startP = re.compile('ATG')
+                nuc = input_seq.replace('\n','')
+                longest = (0,)
+                for m in startP.finditer(nuc, overlapped=True):
+                    if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
+                        pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
+                        longest = [len(pro), m.start(), str(pro),  nuc[m.start():m.start()+len(pro)*3+3]]
+                        if len(longest) == 4 :
+                            if record.id in dictFastaProt:
+                                if (len((dictFastaProt[record.id]).seq)) < (len(longest[2])):
+                                    record.seq = Seq.Seq(longest[2])
+                                    dictFastaProt[record.id] = record
+                            elif len(longest) == 4 :
                                 record.seq = Seq.Seq(longest[2])
                                 dictFastaProt[record.id] = record
-                        elif len(longest) == 4 :
-                            record.seq = Seq.Seq(longest[2])
-                            dictFastaProt[record.id] = record
-                        else:
-                            dictFastaProt[record.id] = record
+                            else:
+                                dictFastaProt[record.id] = record
                             
 
             
