@@ -584,13 +584,7 @@ def exonerate(ref, gff_file, proc, wd):
 
     with Pool(int(proc)) as p:
         p.map(runExonerate, commandList)
-    
-    listGff3 = []
-    for root, dirs, files, in os.walk(wd):
-        for fileN in files:
-            if fileN.endswith('gff3') and fileN.startswith('mRNA'):
-                listGff3.append(os.path.join(root, fileN))
-    
+        
     listInGff = listComplete + listShort
     listAsbent = sorted(set(list(set(listTotal)^set(listInGff))))
     listCompleteAll = listAsbent + listComplete
@@ -607,7 +601,13 @@ def exonerate(ref, gff_file, proc, wd):
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
     gff_out.close()
-    
+
+    listGff3 = []
+    for root, dirs, files, in os.walk(wd):
+        for fileN in files:
+            if fileN.endswith('gff3') and fileN.startswith('mRNA'):
+                listGff3.append(os.path.join(root, fileN))
+
     orintedFIleN = wd + '/oriented.oldname.gff3'
     dataGff3N = open(orintedFIleN, 'w')    
     for fname in listGff3:
