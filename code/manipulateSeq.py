@@ -17,8 +17,7 @@ from Bio import SeqIO
 import ssw_lib
 from Bio.Seq import reverse_complement
 import io
-
-
+from multiprocessing import Pool
 
 def to_int(seq, lEle, dEle2Int):
     num_decl = len(seq) * ct.c_int8
@@ -46,7 +45,9 @@ def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
     ssw.align_destroy(res)
     return (nScore, nScore2, nRefBeg, nRefEnd, nQryBeg, nQryEnd, nRefEnd2, nCigarLen, lCigar)
 
-def align_call(record, adapter):
+def align_call(elem):
+    record = elem[0]
+    adapter = elem[1]
     lEle = []
     dRc = {} 
     dEle2Int = {}
@@ -107,7 +108,7 @@ def align_call(record, adapter):
     ssw.init_destroy(qRcProfile)
     return outputAlign
 
-def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
+def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads, a):
     '''Filters out reads longer than length provided'''
     finalSeq= []
     seqDict = {}
@@ -134,14 +135,20 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
             return outFilename, 0
     if fastqFilename.endswith('fastq') or fastqFilename.endswith('fq'):
         for record in SeqIO.parse(fastqFilename, "fastq"):
-            record.id = str(filter_count)
-            filter_count += 1
-            record_dict[record.id] = record
+            if len(str(record.seq)) > int(min_length) and len(str(record.seq)) < int(max_length):
+                record.description= ""
+                record.name = ""
+                record.id = str(filter_count)
+                filter_count += 1
+                record_dict[record.id] = record
     elif fastqFilename.endswith('fasta') or fastqFilename.endswith('fa'):
         for record in SeqIO.parse(fastqFilename, "fasta"):
-            record.id = str(filter_count)
-            filter_count += 1
-            record_dict[record.id] = record
+            if len(str(record.seq)) > int(min_length) and len(str(record.seq)) < int(max_length):
+                record.description= ""
+                record.name = ""
+                record.id = str(filter_count)
+                filter_count += 1
+                record_dict[record.id] = record
     if adapter:
         for adpt in SeqIO.parse(adapter, "fasta"):
             listAdapter.append(adpt.id)
@@ -173,35 +180,53 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter , a):
                 seqDict[key][0].seq = sequenze
                 finalSeq.append(seqDict[key][0])
 
-
     elif len(listAdapter) == 2:
+        listCommand = []
         for key in record_dict:
-            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                for adpter in listSeqAdap:
-                    alingRes = align_call(record_dict[key], adpter)
-                    #print (alingRes)
-                    if len(alingRes) == 0:
-                        next
-                    elif key in firstDictSeq:
-                        seqDict[key] =  firstDictSeq[key]  +  [ alingRes[2], alingRes[0]]
-                        scoreDict[key] = firstDictScore[key]  +  [alingRes[3]]
-                    else:
-                        firstDictSeq[key] = [record_dict[key], alingRes[2], alingRes[0]]
-                        firstDictScore[key] =  [alingRes[3]]
+            for adpter in listSeqAdap:
+                listCommand.append([record_dict[key], adpter])
+        with Pool(int(threads)) as p:
+            alignResul = p.map(align_call, listCommand)
+        for alingRes in alignResul:
+            if len(alingRes) == 0:
+                next
+            elif alingRes[1] in firstDictSeq:
+                seqDict[alingRes[1]] =  firstDictSeq[alingRes[1]]  +  [ alingRes[2], alingRes[0]]
+                scoreDict[alingRes[1]] = firstDictScore[alingRes[1]]  +  [ alingRes[0], alingRes[3]]
+            else:
+                firstDictSeq[alingRes[1]] = [record_dict[alingRes[1]], alingRes[2], alingRes[0]]
+                firstDictScore[alingRes[1]] =  [ alingRes[0], alingRes[3]]
+        maxScoreFirst = 0
+        maxScoreSecond = 0
         for key in scoreDict:
-            for score in scoreDict[key]:
-                if score > maxScore:
-                    maxScore = score
-        valueOptimal = score - (score/10)
-        for key in seqDict:
-            if seqDict[key][1] == 1 and seqDict[key][3] == 0 and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+            score = scoreDict[key]
+            if score[0] == listAdapter[0] and score[1] > maxScoreFirst:
+                maxScoreFirst = score[1]
+            if score[2] == listAdapter[0] and score[3] > maxScoreFirst:
+                maxScoreFirst = score[3]
+            if score[0] == listAdapter[1] and score[1] > maxScoreSecond:
+                maxScoreSecond = score[1]
+            if score[2] == listAdapter[1] and score[3] > maxScoreSecond:
+                maxScoreSecond = score[3]
+        valueOptimalFirst = maxScoreFirst - (maxScoreFirst/20)
+        valueOptimalSecond = maxScoreSecond - (maxScoreSecond/20)
+        listReadsOverLimit = []
+        for key in scoreDict:
+            score = scoreDict[key]
+            if (score[0] == listAdapter[0] and score[1] > valueOptimalFirst) and (score[2] == listAdapter[1] and score[3] > valueOptimalSecond):
+                listReadsOverLimit.append(key)
+            elif (score[2] == listAdapter[0] and score[3] > valueOptimalFirst) and (score[0] == listAdapter[1] and score[1] > valueOptimalSecond):
+                listReadsOverLimit.append(key)
+
+        for key in listReadsOverLimit:
+            if seqDict[key][1] == 1 and seqDict[key][3] == 0:
                 if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
                     finalSeq.append(seqDict[key][0])
                 elif seqDict[key][2] in listAdapter[1] and seqDict[key][4] in listAdapter[0]:
                     sequenze = reverse_complement(seqDict[key][0].seq)
                     seqDict[key][0].seq = sequenze
                     finalSeq.append(seqDict[key][0])
-            elif seqDict[key][1] == 0 and seqDict[key][3] == 1 and scoreDict[key][0] > valueOptimal and scoreDict[key][1] > valueOptimal:
+            elif seqDict[key][1] == 0 and seqDict[key][3] == 1:
                 if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
                     sequenze = reverse_complement(seqDict[key][0].seq)
                     seqDict[key][0].seq = sequenze
@@ -233,4 +258,12 @@ def maskedgenome(wd, ref , gff3):
     return out_name
 
 if __name__ == '__main__':
-    main()
+
+    fastqFilename = argv[1]
+    min_length = argv[2]
+    max_length = argv[3]
+    wd = argv[4]
+    adapter = argv[5] 
+    threads = argv[6]
+    a = True
+    filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads, a)
