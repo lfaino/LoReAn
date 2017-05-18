@@ -804,7 +804,8 @@ def main():
             fastaAll,
             finalupdate,
             "a")
-        FinalFiles.append(finalupdate2)
+        finalUpdate = grs.genename(finalupdate2, args.prefix_gene)
+        FinalFiles.append(finalUpdate)
 
         now = datetime.datetime.now().strftime(fmtdate)
         print(('\n###CREATING OUTPUT DIRECTORY\t'  + now  + '\t###\n'))
