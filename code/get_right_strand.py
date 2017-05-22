@@ -673,10 +673,11 @@ if __name__ == '__main__':
     
     evmgff = argv[1]
     #gmap = argv[2]
-    fasta = argv[2]
-    proc = argv[3]
-    #pref = argv[5] 
-    wd = argv[4]
+    #fasta = argv[2]
+    #proc = argv[3]
+    pref = argv[2] 
+    #wd = argv[4]
+    genename(evmgff, pref)
     #gffR = strand(evmgff, gmap, fasta, proc, wd)
     #gffPasa = appendID(gffR)
     #noOverl = removeOverlap(gffPasa)
@@ -684,5 +685,5 @@ if __name__ == '__main__':
     #noDisc = removeDiscrepancy(noOverl, evmgff)
     #uniqGene = newNames(noDisc)
     #genename(uniqGene, pref)
-    exonerate(fasta, evmgff, proc, wd)
+    #exonerate(fasta, evmgff, proc, wd)
     

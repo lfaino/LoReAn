@@ -156,20 +156,26 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads,
     outFile = open(outFilename, 'w')
     
     if len(listAdapter) == 1:
+        listCommand = []
         for key in record_dict:
-            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                for adpter in listSeqAdap:
-                    alingRes = align_call(record_dict[key], adpter)
-                    if len(alingRes) == 0:
-                        next
-                    else:
-                        seqDict[record_dict[key].id] = [record_dict[key], alingRes[2]]
-                        scoreDict[record_dict[key].id] =  alingRes[3]
+            for adpter in listSeqAdap:
+                listCommand.append([record_dict[key], adpter])
+        with Pool(int(threads)) as p:
+            alignResul = p.map(align_call, listCommand)
+        #print (len(alignResul))
+        for alingRes in alignResul:
+            #print (alingRes)
+            if len(alingRes) == 0:
+                next
+            else:
+                seqDict[alingRes[1]] = [record_dict[alingRes[1]], alingRes[2]]
+                scoreDict[alingRes[1]] =  alingRes[3]
+        #print (len(scoreDict))
         for key in scoreDict:
             #for score in scoreDict[key]:
             if scoreDict[key] > maxScore:
                 maxScore = scoreDict[key]
-        valueOptimal = maxScore - (maxScore/10)
+        valueOptimal = maxScore - (maxScore/20)
         for key in scoreDict:
             if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
                 filter_count += 1
@@ -196,6 +202,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads,
             else:
                 firstDictSeq[alingRes[1]] = [record_dict[alingRes[1]], alingRes[2], alingRes[0]]
                 firstDictScore[alingRes[1]] =  [ alingRes[0], alingRes[3]]
+        #print (len(firstDictSeq))
+        #print (len(seqDict))
         maxScoreFirst = 0
         maxScoreSecond = 0
         for key in scoreDict:
@@ -208,8 +216,8 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads,
                 maxScoreSecond = score[1]
             if score[2] == listAdapter[1] and score[3] > maxScoreSecond:
                 maxScoreSecond = score[3]
-        valueOptimalFirst = maxScoreFirst - (maxScoreFirst/20)
-        valueOptimalSecond = maxScoreSecond - (maxScoreSecond/20)
+        valueOptimalFirst = maxScoreFirst - (maxScoreFirst/30)
+        valueOptimalSecond = maxScoreSecond - (maxScoreSecond/30)
         listReadsOverLimit = []
         for key in scoreDict:
             score = scoreDict[key]
@@ -217,6 +225,7 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads,
                 listReadsOverLimit.append(key)
             elif (score[2] == listAdapter[0] and score[3] > valueOptimalFirst) and (score[0] == listAdapter[1] and score[1] > valueOptimalSecond):
                 listReadsOverLimit.append(key)
+        #print (len(listReadsOverLimit))
 
         for key in listReadsOverLimit:
             if seqDict[key][1] == 1 and seqDict[key][3] == 0:
