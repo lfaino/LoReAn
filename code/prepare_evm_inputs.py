@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-from dirs_and_files import check_create_dir
 
 
 def convert_augustus(aug_file, wd):

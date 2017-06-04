@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import os
-import subprocess
 import protein_alignment
 import transcript_assembly as transcripts
 import dirs_and_files as logistic

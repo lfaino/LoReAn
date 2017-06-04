@@ -6,10 +6,6 @@ import gffutils
 from sys import argv
 import subprocess
 import gffutils.gffwriter as gffwriter
-from pybedtools import BedTool
-from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
-from Bio.Alphabet import IUPAC
 from Bio import SeqIO
 from multiprocessing import Pool
 from Bio import Seq

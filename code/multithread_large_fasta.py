@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 
-from multiprocessing import Pool
-import sys
 import subprocess
-import argparse
 import os
-import re
-import shutil
-from dirs_and_files import check_create_dir
-from Bio import SeqIO
 from queue import Queue
 from threading import Thread, Lock
-import itertools
 from Bio import SeqIO
 import transcript_assembly as transcripts
 import dirs_and_files as logistic
@@ -25,7 +17,12 @@ length_cluster_aat = 0
 
 
 def single_fasta(ref, wd):
-    '''From a fasta file make single files with each sequence'''
+    """
+    From a fasta file make single files with each sequence
+    :param ref:
+    :param wd:
+    :return:
+    """
     wd_split = wd + '/split/'
     logistic.check_create_dir(wd_split)
     fastaFile = open(ref, 'r')
@@ -129,15 +126,3 @@ def aat_multi(ref, threads, protein_evidence, single_fasta_list, wd):
         b.start()
     aat_queue.join()
     protein_alignment.parseAAT(wd)
-
-
-def main():
-    '''Main body of the function'''
-
-    ref = os.path.abspath(sys.argv[1])
-    threads = sys.argv[2]
-    species = sys.argv[3]
-    wd = os.path.abspath(sys.argv[4])
-
-    augustus_multi(ref, threads, species, single_fasta_list, wd)
-

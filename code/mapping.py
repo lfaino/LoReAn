@@ -331,7 +331,13 @@ def samtools_view(sam_file, wd):
 
 
 def samtools_sort(bam_file, threads, wd):
-    '''BAM sorting'''
+    '''
+    run a sorting of a bam file
+    :param bam_file:
+    :param threads:
+    :param wd:
+    :return:
+    '''
     s_bam_filename = bam_file + '.sorted'
 
     if not os.path.isfile(s_bam_filename + '.bam'):

@@ -1,22 +1,11 @@
 #!/usr/bin/env python3
-from Bio import pairwise2
-from Bio import SeqIO
-import sys
 from sys import argv
-import numpy as np
 import os
-from Bio.Seq import reverse_complement
 import subprocess
-import itertools
-from Bio.SeqUtils import GC
-import os.path as op
 import ctypes as ct
-import timeit as ti
-import math
 from Bio import SeqIO
 import ssw_lib
 from Bio.Seq import reverse_complement
-import io
 from multiprocessing import Pool
 
 def to_int(seq, lEle, dEle2Int):

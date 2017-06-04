@@ -1,16 +1,8 @@
 #!/usr/bin/env python3
 from multiprocessing import Pool
-import sys
 import subprocess
-import argparse
 import os
-import re
-import shutil
-from dirs_and_files import check_create_dir
 from Bio import SeqIO
-from queue import Queue
-from threading import Thread, Lock
-import itertools
 from sys import argv
 
 

@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import errno
 import subprocess
-#from subprocess import Popen, PIPE
-from pybedtools import BedTool
 
 
 def check_dir(path):

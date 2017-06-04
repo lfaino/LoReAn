@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
-import sys
 import subprocess
-import argparse
 import os
 import re
-from dirs_and_files import check_create_dir
 from Bio import SeqIO
 from queue import Queue
 from threading import Thread

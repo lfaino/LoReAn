@@ -31,8 +31,6 @@ import transcript_assembly as transcripts
 import prepare_evm_inputs as inputEvm
 import evm_pipeline
 import consensus_iAssembler as consensus
-import intersect_EVM_consensus as intersectEvm
-import protein_alignment
 import collect_only as collect
 import handlers as handler
 import get_right_strand as grs
@@ -45,10 +43,6 @@ import time
 ####################################
 ### CHEKS BEFORE START LOREAN ######
 ####################################
-
-#os.system('sudo usermod -d /var/lib/mysql/ mysql')
-#os.system('sudo /etc/init.d/mysql start')
-#os.system('mysql --user="root" --password="lorean" --execute="set global sql_mode=\'STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION\';"')
 
 ###############
 ###FUNCTIONS###
