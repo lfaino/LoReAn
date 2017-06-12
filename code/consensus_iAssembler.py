@@ -127,6 +127,7 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     :param wd:
     :return:
     """
+
     global idents, end, start, chrm
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
