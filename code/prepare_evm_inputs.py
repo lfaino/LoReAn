@@ -191,7 +191,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
             raise NameError('')
         pred_file.close()
 
-    return (list_soft, pred_filename, transcript_file, protein_file)
+    return list_soft, pred_filename, transcript_file, protein_file
 
 
 def group_EVM_inputs(evm_dir, inputs):
@@ -202,7 +202,7 @@ def group_EVM_inputs(evm_dir, inputs):
     # Concatenate
     list_soft, pred_file, transcript_file, protein_file = cat_EVM_inputs(
         evm_dir)
-    return (list_soft, pred_file, transcript_file, protein_file)
+    return list_soft, pred_file, transcript_file, protein_file
 
 
 def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):

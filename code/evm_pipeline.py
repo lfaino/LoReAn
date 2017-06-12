@@ -84,7 +84,7 @@ def evm_partitions(
     stdout_f = open(stdout_file, 'w')
 
     try:
-        evm_call = subprocess.Popen(args,  stdout=stdout_f,  stderr=log, cwd = evm_output)
+        evm_call = subprocess.Popen(args, stdout=stdout_f, stderr=log, cwd=evm_output)
         evm_call.communicate()
         # print '> Partitions created\n'
     except:
@@ -132,13 +132,9 @@ def evm_write_commands(
     log = open(log_name, 'w')
 
     try:
-        evm_call = subprocess.Popen(args,  stdout=command,  stderr=log, cwd = evm_output)
+        evm_call = subprocess.Popen(args, stdout=command, stderr=log, cwd=evm_output)
         evm_call.communicate()
-
-        #subprocess.check_call(args, stdout=command, stderr=log, cwd=evm_output)
-        ## print '> Command list created. Output is: ' + command_file +'\n'
     except:
-        # print 'Command file could not be created\n'
         raise NameError('')
 
     command.close()
@@ -164,16 +160,11 @@ def evm_run(evm_output, command_list, threads):
 
     try:
         cat = subprocess.Popen(args1, stdout=subprocess.PIPE, cwd=evm_output)
-        #evm_call = subprocess.Popen(args,  stdout=command,  stderr=log)
-        #evm_call.communicate()
+        # evm_call.communicate()
         parallel = subprocess.Popen(args2, stdin=cat.stdout, cwd=evm_output, stderr=log)
         parallel.communicate()
-
-        # print '> EVM finished.\n'
     except:
-        # print 'Error in EVM run\n'
         raise NameError('')
-
     log.close()
 
 
@@ -196,13 +187,9 @@ def evm_combine(evm_output, partitions):
     log = open(log_name, 'w')
 
     try:
-        evm_call = subprocess.Popen(args,  stdout=st_out,  stderr=log, cwd = evm_output)
+        evm_call = subprocess.Popen(args, stdout=st_out, stderr=log, cwd=evm_output)
         evm_call.communicate()
-
-        #subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
-        # print '> Partitions combined\n'
     except:
-        # print 'Partitions could not be combined\n'
         raise NameError('')
 
     st_out.close()
@@ -229,13 +216,9 @@ def evm_to_gff3(evm_output, partitions, reference):
     log = open(log_name, 'w')
 
     try:
-        evm_call = subprocess.Popen(args,  stdout=st_out,  stderr=log, cwd = evm_output)
+        evm_call = subprocess.Popen(args, stdout=st_out, stderr=log, cwd=evm_output)
         evm_call.communicate()
-
-        #subprocess.check_call(args, stdout=st_out, stderr=log, cwd=evm_output)
-        # print '> Converted to GFF3 \n'
     except:
-        # print 'Could not convert to GFF3\n'
         raise NameError('')
 
     st_out.close()
@@ -425,10 +408,10 @@ def annot_comparison(
     out_log = open(log_out_name, 'w')
 
     try:
-        pasa_call = subprocess.Popen(args,  stdout=out_log,  stderr=log, cwd=pasa_dir)
+        pasa_call = subprocess.Popen(args, stdout=out_log, stderr=log, cwd=pasa_dir)
         pasa_call.communicate()
-        #update_process = subprocess.check_call(
-            #args, stdout=out_log, stderr=log, cwd=pasa_dir)
+        # update_process = subprocess.check_call(
+        # args, stdout=out_log, stderr=log, cwd=pasa_dir)
     except:
         raise NameError('')
 
@@ -439,10 +422,11 @@ def annot_comparison(
 def parse_pasa_update(round_n, pasa_dir, pasa_db):
     '''Parses through the files in the PASA directory, finds the update file and
     renames it and returns it'''
+    global update_file
     pasa_files = os.listdir(pasa_dir)
 
     pattern_build = '^' + pasa_db + \
-        '.gene_structures_post_PASA_updates.[0-9]+.gff3$'
+                    '.gene_structures_post_PASA_updates.[0-9]+.gff3$'
 
     pasa_pattern = re.compile(pattern_build)
     for filename in pasa_files:
@@ -452,7 +436,7 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db):
             update_file = filename
 
     new_filename = pasa_dir + \
-        'FinalAnnotationLorean' + '.gff3'
+                   'FinalAnnotationLorean' + '.gff3'
     args = ['mv', update_file, new_filename]
 
     try:
@@ -483,6 +467,5 @@ def update_database(
                      transcripts_file, n_cpu, valueS)
     print('\t###PARSING OUTPUT###\n')
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db)
-    
-    
+
     return gff3_out

@@ -6,8 +6,14 @@ from Bio import SeqIO
 count_sequences = 0
 length_cluster = 0
 
-def parseOnly(threshold_float, unitigs, tmp_wd):
-    '''to join the assembly and the parsing process'''
+
+def parse_only(threshold_float, tmp_wd):
+    """
+    to join the assembly and the parsing process
+    :param threshold_float:
+    :param tmp_wd:
+    :return:
+    """
     evm_list = []
     wd = tmp_wd + 'consensus/tmp/'
     for root, dirs, _ in os.walk(wd):
@@ -15,7 +21,7 @@ def parseOnly(threshold_float, unitigs, tmp_wd):
             if 'output' in direc:
                 outputDir = wd + direc + '/'
                 if outputDir:
-                    parse_contigs(outputDir, threshold_float, unitigs)
+                    parse_contigs(outputDir, threshold_float)
             try:
                 t_filename = root + direc + '/contig_member'
                 t_file = open(t_filename, 'r')
@@ -34,9 +40,13 @@ def parseOnly(threshold_float, unitigs, tmp_wd):
     return evm_list
 
 
-def parse_contigs(outputAssembly, threshold_float, unitigs):
-    '''Parses the output from iAssembler, to a single FASTA file'''
-    # PARSE CONTIG MEMBERS FILE
+def parse_contigs(outputAssembly, threshold_float):
+    """
+    Parses the output from iAssembler, to a single FASTA file
+    :param outputAssembly: 
+    :param threshold_float: 
+    :return:
+    """
     fname = outputAssembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
     if fname_exists:
@@ -64,36 +74,24 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
         count_unitigs = 1
         for key, element in list(contigs.items()):
             # to retrieve only supported assembly
-            if unitigs:
-                if len(element) == 2:
-                    if element[0] >= threshold and 'evm' in element[1]:
-                        real_contigs[key] = element[1] + ' ' + str(
-                            element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
-                elif len(element) == 1:
-                    if element[0] >= threshold:
-                        real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + ' ' + str(
-                            element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
-                        count_unitigs += 1
-            # to retrieve all the evm even if not supported
-            else:
-                if len(element) == 2:
-                    if element[0] >= threshold and 'evm' in element[1]:
-                        real_contigs[key] = element[1] + ' ' + str(
-                            element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
-                    elif element[0] < threshold and 'evm' in element[1]:
-                        real_contigs[key] = element[1] + ' ' + str(
-                            element[0]) + '_below_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
-                elif len(element) == 1:
-                    if element[0] >= threshold:
-                        real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + ' ' + str(
-                            element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
-                        count_unitigs += 1
+            if len(element) == 2:
+                if element[0] >= threshold and 'evm' in element[1]:
+                    real_contigs[key] = element[1] + ' ' + str(
+                        element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
+                elif element[0] < threshold and 'evm' in element[1]:
+                    real_contigs[key] = element[1] + ' ' + str(
+                        element[0]) + '_below_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
+            elif len(element) == 1:
+                if element[0] >= threshold:
+                    real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + ' ' + str(
+                        element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
+                    count_unitigs += 1
         # writes the outputs
         fileAssembly = outputAssembly + 'unigene_seq.new.fasta'
         contigSeq = open(fileAssembly, 'r')
         contigDict = SeqIO.to_dict(SeqIO.parse(contigSeq, 'fasta'))
-        outputFilename = outputAssembly[:-1] + '_assembled.fasta'
-        outputFile = open(outputFilename, 'w')
+        output_filename = outputAssembly[:-1] + '_assembled.fasta'
+        outputFile = open(output_filename, 'w')
         for iden, write_iden in list(real_contigs.items()):
             if iden in contigDict:
                 outputFile.write('>' + write_iden + '\n' +
@@ -104,13 +102,17 @@ def parse_contigs(outputAssembly, threshold_float, unitigs):
 
 
 def catAssembled(wd):
+    """
+    collect the assembled contigs and generate a multifasta file
+    :param wd: 
+    :return: 
+    """
     print('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     '''C at all the assembled single fasta files in to a uniq file'''
     wd_tmp = wd + 'consensus/tmp/'
     fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
     for root, dirs, files in os.walk(wd_tmp):
-
         for name in files:
             wd_fasta = os.path.join(root, name)
 
@@ -124,82 +126,54 @@ def catAssembled(wd):
     return fileName
 
 
-def addEVM(wholeFastaName,
-        outputFilename,
-        unitigs,
-        evm_nosupport,
-        outputMergedFastaName):
+def addEVM(whole_fasta_name, output_filename, evm_nosupport, output_merged_fasta_name):
+    """
+    this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
+    support
+    :param whole_fasta_name: 
+    :param output_filename: 
+    :param evm_nosupport:
+    :param output_merged_fasta_name: 
+    :return: 
+    """
     print('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
-    wholeFasta = open(wholeFastaName, 'r')
-    outFastaFile = open(outputFilename, 'r')
-    outputMerged = open(outputMergedFastaName, 'w')
-    wholeDict = SeqIO.to_dict(SeqIO.parse(wholeFasta, 'fasta'))
+    whole_fasta = open(whole_fasta_name, 'r')
+    out_fasta_file = open(output_filename, 'r')
+    outputMerged = open(output_merged_fasta_name, 'w')
+    wholeDict = SeqIO.to_dict(SeqIO.parse(whole_fasta, 'fasta'))
     count = 0
-    if unitigs:
-        outFasta = SeqIO.parse(outputMergedFastaName, 'fasta')
-        for record in outFasta:
+    dictOut = {}
+    outFasta = SeqIO.parse(out_fasta_file, 'fasta')
+    for record in outFasta:
+        if record.id in dictOut:
+            dictOut[str(record.id) + '_' + str(count)] = str(record.seq)
             count += 1
-            ident = '>Gene' + str(count)
-            outputMerged.write(ident + '\n' + str(record.seq) + '\n')
-            exons = description.split(',')
-            if len(exons) == 1 and "evm" not in record.id:
-                SeqIO.write(record, s_file, "fasta")
-            else:
-                SeqIO.write(record, m_file, "fasta")
-        newDict = {}
-        for key, values in list(wholeDict.items()):
-            if key in evm_nosupport:
-                continue
-            else:
-                newDict[key] = values
-        dictOut = {}
-        outFasta = SeqIO.parse(outFastaFile, 'fasta')
-        for record in outFasta:
-            if record.id in dictOut:
-                dictOut[str(record.id) + '_' + str(count)] = str(record.seq)
-                count += 1
-            else:
-                dictOut[record.id] = str(record.seq)
-        seq_count = 1
-        for key in list(newDict.keys()):
-            if 'evm' in key and key not in dictOut:
-                ident = '>Gene' + str(count) + '_' + key
-                outputMerged.write(ident + '\n' + str(newDict[key].seq) + '\n')
-                count += 1
-        for key, element in list(dictOut.items()):
+        else:
+            dictOut[record.id] = str(record.seq)
+    seq_count = 1
+    for key in list(wholeDict.keys()):
+        if 'evm' in key and key not in dictOut:
             ident = '>Gene' + str(count) + '_' + key
-            outputMerged.write(ident + '\n' + str(element) + '\n')
+            outputMerged.write(
+                ident + '\n' + str(wholeDict[key].seq) + '\n')
             count += 1
-    else:
-        dictOut = {}
-        outFasta = SeqIO.parse(outFastaFile, 'fasta')
+    for key, element in list(dictOut.items()):
+        ident = '>Gene' + str(count) + '_' + key
+        outputMerged.write(ident + '\n' + str(element) + '\n')
+        count += 1
 
-        for record in outFasta:
-            #            count = 0
-            if record.id in dictOut:
-                dictOut[str(record.id) + '_' + str(count)] = str(record.seq)
-                count += 1
-            else:
-                dictOut[record.id] = str(record.seq)
-        seq_count = 1
-        for key in list(wholeDict.keys()):
-            if 'evm' in key and key not in dictOut:
-                ident = '>Gene' + str(count) + '_' + key
-                outputMerged.write(
-                    ident + '\n' + str(wholeDict[key].seq) + '\n')
-                count += 1
-        for key, element in list(dictOut.items()):
-            ident = '>Gene' + str(count) + '_' + key
-            outputMerged.write(ident + '\n' + str(element) + '\n')
-            count += 1
-
-    wholeFasta.close()
+    whole_fasta.close()
     outFasta.close()
     outputMerged.close()
 
 
 def getEVMnoUnitig(target_wd):
+    """
+    this module change the name of the assembled contigs in evm names and replace the unigene identifiers
+    :param target_wd: 
+    :return: 
+    """
     print('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
     '''Gets the name of evm prediction in the assembly that do not have support'''
     evm_list = []

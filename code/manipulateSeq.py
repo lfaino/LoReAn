@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
-from sys import argv
+import ctypes as ct
 import os
 import subprocess
-import ctypes as ct
-from Bio import SeqIO
-import ssw_lib
-from Bio.Seq import reverse_complement
 from multiprocessing import Pool
+import ssw_lib
+from Bio import SeqIO
+from Bio.Seq import reverse_complement
+
 
 def to_int(seq, lEle, dEle2Int):
+    """
+    it is used for the alignment of the primers to the reads
+    :param seq: 
+    :param lEle: 
+    :param dEle2Int: 
+    :return: 
+    """
     num_decl = len(seq) * ct.c_int8
     num = num_decl()
     for i,ele in enumerate(seq):
@@ -20,7 +27,20 @@ def to_int(seq, lEle, dEle2Int):
             num[i] = n
     return num
 
+
 def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
+    """
+    this function calculate the score and other results from the alignment
+    :param ssw: 
+    :param qProfile: 
+    :param rNum: 
+    :param nRLen: 
+    :param nOpen: 
+    :param nExt: 
+    :param nFlag: 
+    :param nMaskLen: 
+    :return: 
+    """
     res = ssw.ssw_align(qProfile, rNum, ct.c_int32(nRLen), nOpen, nExt, nFlag, 0, 0, int(nMaskLen))
     nScore = res.contents.nScore
     nScore2 = res.contents.nScore2
@@ -32,9 +52,15 @@ def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
     lCigar = [res.contents.sCigar[idx] for idx in range(res.contents.nCigarLen)]
     nCigarLen = res.contents.nCigarLen
     ssw.align_destroy(res)
-    return (nScore, nScore2, nRefBeg, nRefEnd, nQryBeg, nQryEnd, nRefEnd2, nCigarLen, lCigar)
+    return nScore, nScore2, nRefBeg, nRefEnd, nQryBeg, nQryEnd, nRefEnd2, nCigarLen, lCigar
+
 
 def align_call(elem):
+    """
+    this function call the aligner software
+    :param elem: 
+    :return: 
+    """
     record = elem[0]
     adapter = elem[1]
     lEle = []
@@ -97,42 +123,50 @@ def align_call(elem):
     ssw.init_destroy(qRcProfile)
     return outputAlign
 
-def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads, a):
-    '''Filters out reads longer than length provided'''
-    finalSeq= []
-    seqDict = {}
-    firstDictScore = {}
-    firstDictSeq = {}
-    scoreDict = {}
-    listScore=[]
-    listSeqGood = []
-    listAdapter = []
-    finalSeq = []
-    listSeqAdap = []
+
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, a):
+    """
+    Filters out reads longer than length provided and it is used to call the alignemnt and parse the outputs
+    :param fastq_filename: 
+    :param min_length: 
+    :param max_length: 
+    :param wd: 
+    :param adapter: 
+    :param threads: 
+    :param a: 
+    :return: 
+    """
+    seq_dict = {}
+    first_dict_score = {}
+    first_dict_seq = {}
+    score_dict = {}
+    listA_adapter = []
+    final_seq = []
+    list_seq_adap = []
     record_dict = {}
-    maxScore = 0
+    max_score = 0
     if a and not adapter:
-        outFilename = wd + fastqFilename + '.longreads.filtered.fasta'
+        out_filename = wd + fastq_filename + '.longreads.filtered.fasta'
     elif a and adapter:
-        outFilename = wd + fastqFilename + '.longreads.filtered.oriented.fasta'
+        out_filename = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
     else:
-        outFilename = fastqFilename + '.longreads.filtered.fasta'
+        out_filename = fastq_filename + '.longreads.filtered.fasta'
     filter_count = 0
-    if os.path.isfile(outFilename):
+    if os.path.isfile(out_filename):
             print(('Filtered FASTQ existed already: ' +
-                outFilename + ' --- skipping\n'))
-            return outFilename, 0
-    if fastqFilename.endswith('fastq') or fastqFilename.endswith('fq'):
-        for record in SeqIO.parse(fastqFilename, "fastq"):
-            if len(str(record.seq)) > int(min_length) and len(str(record.seq)) < int(max_length):
+                out_filename + ' --- skipping\n'))
+            return out_filename, 0
+    if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
+        for record in SeqIO.parse(fastq_filename, "fastq"):
+            if len(str(record.seq)) > int(min_length) < int(max_length):
                 record.description= ""
                 record.name = ""
                 record.id = str(filter_count)
                 filter_count += 1
                 record_dict[record.id] = record
-    elif fastqFilename.endswith('fasta') or fastqFilename.endswith('fa'):
-        for record in SeqIO.parse(fastqFilename, "fasta"):
-            if len(str(record.seq)) > int(min_length) and len(str(record.seq)) < int(max_length):
+    elif fastq_filename.endswith('fasta') or fastq_filename.endswith('fa'):
+        for record in SeqIO.parse(fastq_filename, "fasta"):
+            if int(min_length) < len(str(record.seq)) < int(max_length):
                 record.description= ""
                 record.name = ""
                 record.id = str(filter_count)
@@ -140,128 +174,116 @@ def filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads,
                 record_dict[record.id] = record
     if adapter:
         for adpt in SeqIO.parse(adapter, "fasta"):
-            listAdapter.append(adpt.id)
-            listSeqAdap.append(adpt)
-    outFile = open(outFilename, 'w')
+            listA_adapter.append(adpt.id)
+            list_seq_adap.append(adpt)
+    outFile = open(out_filename, 'w')
     
-    if len(listAdapter) == 1:
-        listCommand = []
+    if len(listA_adapter) == 1:
+        list_command = []
         for key in record_dict:
-            for adpter in listSeqAdap:
-                listCommand.append([record_dict[key], adpter])
+            for adpter in list_seq_adap:
+                list_command.append([record_dict[key], adpter])
         with Pool(int(threads)) as p:
-            alignResul = p.map(align_call, listCommand)
-        #print (len(alignResul))
-        for alingRes in alignResul:
-            #print (alingRes)
-            if len(alingRes) == 0:
+            align_resul = p.map(align_call, list_command)
+        for aling_res in align_resul:
+            if len(aling_res) == 0:
                 next
             else:
-                seqDict[alingRes[1]] = [record_dict[alingRes[1]], alingRes[2]]
-                scoreDict[alingRes[1]] =  alingRes[3]
-        #print (len(scoreDict))
-        for key in scoreDict:
-            #for score in scoreDict[key]:
-            if scoreDict[key] > maxScore:
-                maxScore = scoreDict[key]
-        valueOptimal = maxScore - (maxScore/20)
-        for key in scoreDict:
-            if scoreDict[key]  > valueOptimal and seqDict[key][1] == 0:
+                seq_dict[aling_res[1]] = [record_dict[aling_res[1]], aling_res[2]]
+                score_dict[aling_res[1]] =  aling_res[3]
+        for key in score_dict:
+            if score_dict[key] > max_score:
+                max_score = score_dict[key]
+        value_optimal = max_score - (max_score/20)
+        for key in score_dict:
+            if score_dict[key]  > value_optimal and seq_dict[key][1] == 0:
                 filter_count += 1
-                finalSeq.append(seqDict[key][0])
-            elif scoreDict[key]  > valueOptimal and seqDict[key][1] == 1:
+                final_seq.append(seq_dict[key][0])
+            elif score_dict[key]  > value_optimal and seq_dict[key][1] == 1:
                 filter_count += 1
-                sequenze = reverse_complement(seqDict[key][0].seq)
-                seqDict[key][0].seq = sequenze
-                finalSeq.append(seqDict[key][0])
+                sequenze = reverse_complement(seq_dict[key][0].seq)
+                seq_dict[key][0].seq = sequenze
+                final_seq.append(seq_dict[key][0])
 
-    elif len(listAdapter) == 2:
-        listCommand = []
+    elif len(listA_adapter) == 2:
+        list_command = []
         for key in record_dict:
-            for adpter in listSeqAdap:
-                listCommand.append([record_dict[key], adpter])
+            for adpter in list_seq_adap:
+                list_command.append([record_dict[key], adpter])
         with Pool(int(threads)) as p:
-            alignResul = p.map(align_call, listCommand)
-        for alingRes in alignResul:
-            if len(alingRes) == 0:
+            align_resul = p.map(align_call, list_command)
+        for aling_res in align_resul:
+            if len(aling_res) == 0:
                 next
-            elif alingRes[1] in firstDictSeq:
-                seqDict[alingRes[1]] =  firstDictSeq[alingRes[1]]  +  [ alingRes[2], alingRes[0]]
-                scoreDict[alingRes[1]] = firstDictScore[alingRes[1]]  +  [ alingRes[0], alingRes[3]]
+            elif aling_res[1] in first_dict_seq:
+                seq_dict[aling_res[1]] =  first_dict_seq[aling_res[1]]  +  [ aling_res[2], aling_res[0]]
+                score_dict[aling_res[1]] = first_dict_score[aling_res[1]]  +  [ aling_res[0], aling_res[3]]
             else:
-                firstDictSeq[alingRes[1]] = [record_dict[alingRes[1]], alingRes[2], alingRes[0]]
-                firstDictScore[alingRes[1]] =  [ alingRes[0], alingRes[3]]
-        #print (len(firstDictSeq))
-        #print (len(seqDict))
-        maxScoreFirst = 0
-        maxScoreSecond = 0
-        for key in scoreDict:
-            score = scoreDict[key]
-            if score[0] == listAdapter[0] and score[1] > maxScoreFirst:
-                maxScoreFirst = score[1]
-            if score[2] == listAdapter[0] and score[3] > maxScoreFirst:
-                maxScoreFirst = score[3]
-            if score[0] == listAdapter[1] and score[1] > maxScoreSecond:
-                maxScoreSecond = score[1]
-            if score[2] == listAdapter[1] and score[3] > maxScoreSecond:
-                maxScoreSecond = score[3]
-        valueOptimalFirst = maxScoreFirst - (maxScoreFirst/30)
-        valueOptimalSecond = maxScoreSecond - (maxScoreSecond/30)
+                first_dict_seq[aling_res[1]] = [record_dict[aling_res[1]], aling_res[2], aling_res[0]]
+                first_dict_score[aling_res[1]] =  [ aling_res[0], aling_res[3]]
+        max_score_first = 0
+        max_score_second = 0
+        for key in score_dict:
+            score = score_dict[key]
+            if score[0] == listA_adapter[0] and score[1] > max_score_first:
+                max_score_first = score[1]
+            if score[2] == listA_adapter[0] and score[3] > max_score_first:
+                max_score_first = score[3]
+            if score[0] == listA_adapter[1] and score[1] > max_score_second:
+                max_score_second = score[1]
+            if score[2] == listA_adapter[1] and score[3] > max_score_second:
+                max_score_second = score[3]
+        value_optimal_first = max_score_first - (max_score_first/30)
+        value_optimal_second = max_score_second - (max_score_second/30)
         listReadsOverLimit = []
-        for key in scoreDict:
-            score = scoreDict[key]
-            if (score[0] == listAdapter[0] and score[1] > valueOptimalFirst) and (score[2] == listAdapter[1] and score[3] > valueOptimalSecond):
+        for key in score_dict:
+            score = score_dict[key]
+            if (score[0] == listA_adapter[0] and score[1] > value_optimal_first) and (score[2] == listA_adapter[1] and score[3] > value_optimal_second):
                 listReadsOverLimit.append(key)
-            elif (score[2] == listAdapter[0] and score[3] > valueOptimalFirst) and (score[0] == listAdapter[1] and score[1] > valueOptimalSecond):
+            elif (score[2] == listA_adapter[0] and score[3] > value_optimal_first) and (score[0] == listA_adapter[1] and score[1] > value_optimal_second):
                 listReadsOverLimit.append(key)
-        #print (len(listReadsOverLimit))
-
         for key in listReadsOverLimit:
-            if seqDict[key][1] == 1 and seqDict[key][3] == 0:
-                if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
-                    finalSeq.append(seqDict[key][0])
-                elif seqDict[key][2] in listAdapter[1] and seqDict[key][4] in listAdapter[0]:
-                    sequenze = reverse_complement(seqDict[key][0].seq)
-                    seqDict[key][0].seq = sequenze
-                    finalSeq.append(seqDict[key][0])
-            elif seqDict[key][1] == 0 and seqDict[key][3] == 1:
-                if seqDict[key][2] == listAdapter[0] and seqDict[key][4] == listAdapter[1]:
-                    sequenze = reverse_complement(seqDict[key][0].seq)
-                    seqDict[key][0].seq = sequenze
-                    finalSeq.append(seqDict[key][0])
-                elif seqDict[key][2] in listAdapter[1] and seqDict[key][4] in listAdapter[0]:
-                    finalSeq.append(seqDict[key][0])
-    elif len(listAdapter) == 0:
+            if seq_dict[key][1] == 1 and seq_dict[key][3] == 0:
+                if seq_dict[key][2] == listA_adapter[0] and seq_dict[key][4] == listA_adapter[1]:
+                    final_seq.append(seq_dict[key][0])
+                elif seq_dict[key][2] in listA_adapter[1] and seq_dict[key][4] in listA_adapter[0]:
+                    sequenze = reverse_complement(seq_dict[key][0].seq)
+                    seq_dict[key][0].seq = sequenze
+                    final_seq.append(seq_dict[key][0])
+            elif seq_dict[key][1] == 0 and seq_dict[key][3] == 1:
+                if seq_dict[key][2] == listA_adapter[0] and seq_dict[key][4] == listA_adapter[1]:
+                    sequenze = reverse_complement(seq_dict[key][0].seq)
+                    seq_dict[key][0].seq = sequenze
+                    final_seq.append(seq_dict[key][0])
+                elif seq_dict[key][2] in listA_adapter[1] and seq_dict[key][4] in listA_adapter[0]:
+                    final_seq.append(seq_dict[key][0])
+    elif len(listA_adapter) == 0:
         for key in record_dict:
-            if len(str(record_dict[key].seq)) > int(min_length) and len(str(record_dict[key].seq)) < int(max_length):
-                finalSeq.append(record_dict[key])
-    SeqIO.write(finalSeq, outFilename, "fasta")
-    return (outFilename, filter_count)
+            if int(min_length) < len(str(record_dict[key].seq)) < int(max_length):
+                final_seq.append(record_dict[key])
+    SeqIO.write(final_seq, out_filename, "fasta")
+    return out_filename, filter_count
+
 
 def maskedgenome(wd, ref , gff3):
+    """
+    this module is used to mask the genome when a gff or bed file is provided
+    :param wd:
+    :param ref:
+    :param gff3:
+    :return:
+    """
     if '/' in ref:
         out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
     else:
         out_name = wd + "/" +  ref + '.masked.fasta'
-    #out_name = gmap_ref
     outmerged = wd + "/" + gff3 + '.masked.gff3'
     outputmerge = open(outmerged, 'w')
     cat = subprocess.Popen(['cat', gff3], stdout = subprocess.PIPE)
     bedsort = subprocess.Popen(['bedtools', 'sort'], stdin = cat.stdout, stdout = subprocess.PIPE)
     bedmerge = subprocess.Popen(['bedtools', 'merge'], stdout = outputmerge, stdin = bedsort.stdout)
-    out = bedmerge.communicate()
+    bedmerge.communicate()
     outputmerge.close()
     maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', ref , '-bed', outmerged, '-fo', out_name])
     maskfasta.communicate()
     return out_name
-
-if __name__ == '__main__':
-
-    fastqFilename = argv[1]
-    min_length = argv[2]
-    max_length = argv[3]
-    wd = argv[4]
-    adapter = argv[5] 
-    threads = argv[6]
-    a = True
-    filterLongReads(fastqFilename, min_length, max_length, wd, adapter, threads, a)

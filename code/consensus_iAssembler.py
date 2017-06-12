@@ -11,9 +11,15 @@ count_sequences = 0
 length_cluster = 0
 
 
-def gffread(gff3File, reference, working_dir):
-    '''Runs gffread on a gff3 file to produce fasta files with the
-    matching records'''
+def gff_read(gff3_file, reference, working_dir):
+    """
+    Runs gffread on a gff3 file to produce fasta files with the
+    matching records
+    :param gff3_file:
+    :param reference:
+    :param working_dir:
+    :return:
+    """
     out_name = working_dir + 'getFasta.fasta'
     args = [
         'bedtools',
@@ -21,7 +27,7 @@ def gffread(gff3File, reference, working_dir):
         '-fi',
         reference,
         '-bed',
-        gff3File,
+        gff3_file,
         '-fo',
         out_name,
         '-name',
@@ -36,20 +42,25 @@ def gffread(gff3File, reference, working_dir):
 
     try:
         subprocess.check_call(args)
-        # print '>gff3read worked. Output is: ' + out_name +'\n'
     except:
-        # print 'gff3read did not work properly\n'
         raise NameError('')
     return out_name
 
 
-def cluster_pipeline(gff3File, mergeDistance, strand, wd):
-    '''here the cluseter of sequence from the same locus are prepared'''
-    tmpFile = wd + 'clusters.tmp.bed'
-    BTsort1 = ['bedtools', 'sort', '-i', gff3File]
-    dist = '-' + str(mergeDistance)
+def cluster_pipeline(gff3_file, merge_distance, strand, wd):
+    """
+    here the cluseter of sequence from the same locus are prepared
+    :param gff3_file:
+    :param merge_distance:
+    :param strand:
+    :param wd:
+    :return:
+    """
+
+    btsort1 = ['bedtools', 'sort', '-i', gff3_file]
+    dist = '-' + str(merge_distance)
     if strand:
-        BTmerge1 = [
+        btmerge1 = [
             'bedtools',
             'merge',
             '-s',
@@ -62,7 +73,7 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
 
         print("\t###CLUSTERING IN STRANDED MODE###\n")
     else:
-        BTmerge1 = [
+        btmerge1 = [
             'bedtools',
             'merge',
             '-d',
@@ -72,43 +83,51 @@ def cluster_pipeline(gff3File, mergeDistance, strand, wd):
             '-o',
             'count,distinct']
         print("\t###CLUSTERING IN NON-STRANDED MODE###\n")
-    BTsort2 = ['bedtools', 'sort']
+    btsort2 = ['bedtools', 'sort']
 
     # Sort the GFF3 file
-    #BTsortfile = open( gff3File + ".sorted.bed", "w")
-    BTsort1_call = subprocess.Popen( BTsort1, stdout=subprocess.PIPE)
-    #BTsort1_call.communicate()
-    #BTmergefileout = gff3File + ".sorted.merged.bed"
-    #BTmergefile = open(gff3File + ".sorted.merged.bed", "w")
+    btsort1_call = subprocess.Popen(btsort1, stdout=subprocess.PIPE)
     # Merge the BED entries, count number of reads on each merged entry
-    BTmerge1_call = subprocess.Popen(BTmerge1, stdin = BTsort1_call.stdout, stdout = subprocess.PIPE)
-    #BTmerge1_call.communicate()
+    btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE)
     # NSort it again and returns
-    BTsort2_call = subprocess.Popen(BTsort2, stdin   =  BTmerge1_call.stdout, stdout = subprocess.PIPE)
-    outputBT = BTsort2_call.communicate()[0]
+    btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE)
+    outputBT = btsort2_call.communicate()[0]
     final_output = outputBT.splitlines()
-    #final_outn = list(final_output.decode("utf-8"))
-    #print (final_output)
     return final_output
 
 
-def fasta2Dict(fastaFilename):
-    '''Prepare a dictionary of all the sequences that is used together with
-    the fasta file to make single fasta files for the assembly'''
-    fastaFile = open(fastaFilename, 'r')
-    fastaDict2 = SeqIO.to_dict(SeqIO.parse(fastaFile, 'fasta'))
-    fastaDict = {}
-    for key, seq2 in list(fastaDict2.items()):
+def fasta2Dict(fasta_filename):
+    """
+    Prepare a dictionary of all the sequences that is used together with
+    the fasta file to make single fasta files for the assembly
+    :param fasta_filename:
+    :return:
+    """
+    fasta_file = open(fasta_filename, 'r')
+    fasta_dict2 = SeqIO.to_dict(SeqIO.parse(fasta_file, 'fasta'))
+    fasta_dict = {}
+    for key, seq2 in list(fasta_dict2.items()):
         seq = str(seq2.seq).replace("N", "")
-        fastaDict[key] = seq
-        del fastaDict2[key]
-    fastaFile.close()
-    return fastaDict
+        fasta_dict[key] = seq
+        del fasta_dict2[key]
+    fasta_file.close()
+    return fasta_dict
 
 
-def write_fastas( count, bedline, fastaDict, min_length, min_evidence,max_evidence,wd):
-    '''From the output list of the pipeline, recovers the ID and goes back to the
-    fasta file to retrieve the sequence'''
+def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evidence, wd):
+    """
+    From the output list of the pipeline, recovers the ID and goes back to the
+    fasta file to retrieve the sequence
+    :param count:
+    :param bedline:
+    :param fasta_dict:
+    :param min_length:
+    :param min_evidence:
+    :param max_evidence:
+    :param wd:
+    :return:
+    """
+    global idents, end, start, chrm
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
         chrm, start, end, strand, number, idents = (
@@ -129,23 +148,23 @@ def write_fastas( count, bedline, fastaDict, min_length, min_evidence,max_eviden
 
     unique_ids = list(set(ids_short))
     clusterFilename = wd + \
-        '_'.join([chrm, start, end]) + '_' + str(count) + '.fasta'
+                      '_'.join([chrm, start, end]) + '_' + str(count) + '.fasta'
     clusterFile = open(clusterFilename, 'w')
     read_count = 1
 
     for iden in unique_ids:
-        if iden in fastaDict:
-            if len(str(fastaDict[iden])) > int(min_length):
+        if iden in fasta_dict:
+            if len(str(fasta_dict[iden])) > int(min_length):
                 if len(iden) < 40:
                     clusterFile.write('>' + iden + '\n' +
-                                      str(fastaDict[iden]) + '\n')
+                                      str(fasta_dict[iden]) + '\n')
                 else:
                     clusterFile.write('>' + str(read_count) +
-                                      '\n' + str(fastaDict[iden]) + '\n')
+                                      '\n' + str(fasta_dict[iden]) + '\n')
                     read_count += 1
-                del fastaDict[iden]
+                del fasta_dict[iden]
             else:
-                del fastaDict[iden]
+                del fasta_dict[iden]
 
     clusterFile.close()
     clusterFile = open(clusterFilename, 'r')
@@ -160,10 +179,17 @@ def write_fastas( count, bedline, fastaDict, min_length, min_evidence,max_eviden
     return clusterFilename
 
 
-def iAssembler(fastaFile, overlapLength, percent_identity, overhang, wd):
-    '''Call iAssembler to assemble every cluster in fasta_list'''
-    newFasta = fastaFile.split('/')[-1]
-    args = ['iAssembler.pl', '-i', newFasta, '-h', str(overlapLength),
+def iAssembler(fasta_file, overlap_length, percent_identity, wd):
+    """
+    Call iAssembler to assemble every cluster in fasta_list
+    :param fasta_file:
+    :param overlap_length:
+    :param percent_identity:
+    :param wd:
+    :return:
+    """
+    newFasta = fasta_file.split('/')[-1]
+    args = ['iAssembler.pl', '-i', newFasta, '-h', str(overlap_length),
             '-p', str(percent_identity), '-o', newFasta + '_output', '2> ']
     outputDir = wd + newFasta + '_output/'  # whole path
     try:
@@ -178,8 +204,8 @@ def iAssembler(fastaFile, overlapLength, percent_identity, overhang, wd):
     return outputDir
 
 
-def assembleParse(queue, overlapLength, percent_identity, overhang, wd):
-    '''to join the assembly and the parsing process'''
+def assembleParse(queue, overlap_length, percent_identity, wd):
+    """to join the assembly and the parsing process"""
     while True:
         try:
             clusterFasta = queue.get()
@@ -187,9 +213,8 @@ def assembleParse(queue, overlapLength, percent_identity, overhang, wd):
             break
         outputDir = iAssembler(
             clusterFasta,
-            overlapLength,
+            overlap_length,
             percent_identity,
-            overhang,
             wd)
         queue.task_done()
         global count_sequences
@@ -202,9 +227,21 @@ def func_star(a_b):
     return assembleParse(*a_b)
 
 
-def assembly(clusterList, fastaDict, min_evidence, max_evidence, overlapLength,
-             percent_identity, overhang, threads, wd):
-    '''handles the assembly process and parsing in a multithreaded way'''
+def assembly(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length,
+             percent_identity, threads, wd):
+    """
+    handles the assembly process and parsing in a multithreaded way
+    :param clusterList:
+    :param fasta_dict:
+    :param min_evidence:
+    :param max_evidence:
+    :param overlap_length:
+    :param percent_identity:
+    :param threads:
+    :param wd:
+    :return:
+    """
+
     assembly_queue = Queue()
     cluster_counter = 1
     for record in clusterList:
@@ -212,8 +249,8 @@ def assembly(clusterList, fastaDict, min_evidence, max_evidence, overlapLength,
         clusterFasta = write_fastas(
             cluster_counter,
             record,
-            fastaDict,
-            overlapLength,
+            fasta_dict,
+            overlap_length,
             min_evidence,
             max_evidence,
             wd)
@@ -230,9 +267,8 @@ def assembly(clusterList, fastaDict, min_evidence, max_evidence, overlapLength,
             target=assembleParse,
             args=(
                 assembly_queue,
-                overlapLength,
+                overlap_length,
                 percent_identity,
-                overhang,
                 wd))
         t.daemon = True
         t.start()

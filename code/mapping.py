@@ -79,6 +79,7 @@ def star_build(reference, genome_dir, threads, wd):
 def star_map(reference, reads, threads, genome_dir, max_intron_length, wd):
     '''Calls STAR to map reads to reference'''
 
+    global args
     prefix = 'STAR_shortreads'
     if isinstance(reads, str):  # Only one file
         args = [
@@ -265,6 +266,7 @@ def gmap_map(
         type_out):
     '''Calls gmap to map reads to reference
     Out_format can be samse of gff3 (2)'''
+    global filename
     if out_format == 'samse':
         filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':

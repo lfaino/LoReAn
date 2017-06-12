@@ -25,6 +25,7 @@ def check_create_dir(path):
         if exception.errno != errno.EEXIST:
             raise
 
+
 def copy_file(in_file, directory):
     '''Copies a file into a directory'''
     args = ['cp', '-f', in_file, directory]
@@ -70,9 +71,9 @@ def catTwoBeds(gmap, evm, outFilename):
         countLine += 1
         linenew = line.split('\t')
         if "evm" in linenew[3]:
-            #aline = '\t'.join(linenew)
+            # aline = '\t'.join(linenew)
             o.write(line)
-#            print line
+        # print line
         else:
             linenew[3] = str(countLine)
             aline = '\t'.join(linenew)
@@ -92,7 +93,7 @@ def catTwoFasta(trinity, consens, allSeq, wd):
         allOutFasta = outFileFasta + ".long.clean"
         cat_con = ['cat', trinity, allSeq, consens]
         allOutFastafile = open(allOutFasta, "w")
-        #print (cat_con)
+        # print (cat_con)
         cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
         outFileFasta = allOutFasta
@@ -100,11 +101,10 @@ def catTwoFasta(trinity, consens, allSeq, wd):
     else:
         allOutFastafile = open(outFileFasta, "w")
         cat_con = ['cat', trinity, allSeq, consens]
-        #print (cat_con)
-        #print ("in")
+        # print (cat_con)
+        # print ("in")
         cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
         allOutFastafile.close()
 
     return outFileFasta
-

@@ -107,10 +107,6 @@ def aatParse(aat_queue, protein_evidence, wd):
     return
 
 
-def func_star(a_b):
-    return aatParse(*a_b)
-
-
 def aat_multi(ref, threads, protein_evidence, single_fasta_list, wd):
     '''handles the assembly process and parsing in a multithreaded way'''
 
