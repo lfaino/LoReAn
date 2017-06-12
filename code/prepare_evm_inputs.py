@@ -5,9 +5,13 @@ import subprocess
 
 
 def convert_augustus(aug_file, wd):
-    '''Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
+    """
+    Converts augustus.gff to augustus.gff3 (from BRAKER1) using the EVM
     script EVMUtils/misc/augustus_GTF_to_EVM_GFF3.pl which needs to be in PATH
-    '''
+    :param aug_file:
+    :param wd:
+    :return:
+    """
     print('\t###CONVERTING AUGUSTUS TO GFF3###\n')
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
@@ -37,8 +41,13 @@ def convert_augustus(aug_file, wd):
 
 
 def convert_genemark(genemark_file, wd):
-    '''Converts genemark.gtf to genemark.gff3 (from BRAKER1) using gtf2gff3.pl,
-    which needs to be in PATH'''
+    """
+    Converts genemark.gtf to genemark.gff3 (from BRAKER1) using gtf2gff3.pl,
+    which needs to be in PATH
+    :param genemark_file:
+    :param wd:
+    :return:
+    """
 
     print('\t###CONVERTING GENEMARK TO GFF3###\n')
     args = ['gtf2gff3.pl', genemark_file]
@@ -72,7 +81,14 @@ def convert_genemark(genemark_file, wd):
 
 
 def move_single_file(filename, key, evm_dir, new_file_d):
-    '''Moves a single file into the directory and appends the new path to the dictionary'''
+    """
+    Moves a single file into the directory and appends the new path to the dictionary
+    :param filename:
+    :param key:
+    :param evm_dir:
+    :param new_file_d:
+    :return:
+    """
     args = ['cp', filename, evm_dir]
     #COMMANDS.append(' '.join(args))
 
@@ -93,10 +109,16 @@ def move_single_file(filename, key, evm_dir, new_file_d):
 
 
 def move_cat_files(file_list, key, evm_dir, new_file_d):
-    '''Moves and concatenate files to evm dir (case of GFF3 when using long
-    and short reads)'''
+    """
+    Moves and concatenate files to evm dir (case of GFF3 when using long
+    and short reads)
+    :param file_list:
+    :param key:
+    :param evm_dir:
+    :param new_file_d:
+    :return:
+    """
     args = ['cat'] + file_list
-    #COMMANDS.append(' '.join(args))
 
     out_file = evm_dir + key + '.gff3'
     if os.path.isfile(out_file):
@@ -111,13 +133,18 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
         file_.close()
         return new_file_d
     except:
-        print('Could not move ' + filename)
+        print('Could not move ' + out_file)
         raise NameError('')
 
 
 def move_EVM_inputs(evm_dir, inputs):
-    '''Takes a dictionary with files that are inputs for EVM and groups them in
-    the same directory'''
+    """
+    Takes a dictionary with files that are inputs for EVM and groups them in
+    the same directory
+    :param evm_dir:
+    :param inputs:
+    :return:
+    """
     print('\t###MOVING IMPORTANT FILES###\n')
     new_files = {}
     for key, filename in list(inputs.items()):
@@ -133,10 +160,14 @@ def move_EVM_inputs(evm_dir, inputs):
 
 
 def cat_EVM_inputs(evm_dir):  # , inputs):
-    '''Takes the files in EVM input directory and concatenates the needed
+    """
+    Takes the files in EVM input directory and concatenates the needed
     files to prepare the EVM command. Augustus, Genemark and Transdecoder
     go into gene_predictions.gff3 and pasa asemblies and transcript
-    alignments go into transcripts.gff3'''
+    alignments go into transcripts.gff3
+    :param evm_dir:
+    :return:
+    """
     # GENE PREDICTIONS
 
     print('\t###CONCATENATING FILES###\n')
@@ -195,8 +226,13 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
 
 
 def group_EVM_inputs(evm_dir, inputs):
-    '''Moves all the inputs to EVM directory and concatenates them
-    in the same file'''
+    """
+    Moves all the inputs to EVM directory and concatenates them
+    in the same file
+    :param evm_dir:
+    :param inputs:
+    :return:
+    """
     # Move
     new_inputs = move_EVM_inputs(evm_dir, inputs)
     # Concatenate
@@ -206,7 +242,15 @@ def group_EVM_inputs(evm_dir, inputs):
 
 
 def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
-    '''Writes a weight file "weights.txt" on evm_dir'''
+    """
+    Writes a weight file "weights.txt" on evm_dir
+    :param evm_dir:
+    :param weights_dic:
+    :param evidences:
+    :param pasa_name:
+    :param gmap_name:
+    :return:
+    """
     w_filename = evm_dir + 'weights.txt'
     list_match = []
 

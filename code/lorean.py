@@ -554,7 +554,6 @@ def main():
                     protein_file,
                     args.segmentSize,
                     args.overlapSize)
-            # print '\n>>> EVM pipeline finished!!\n'
             # KEEP THIS OUTPUT
             FinalFiles.append(evm_gff3)
             if args.short_reads == '' and args.long_reads == '':
@@ -590,8 +589,8 @@ def main():
                         trinity_out,
                         evm_gff3,
                         "a")
-                    final = parsegff3.genename(finalOutput, args.prefix_gene)
-                    updatedGff3 = grs.newNames(final)
+                    finalUpdate = grs.genename(finalOutput, args.prefix_gene)
+                    updatedGff3 = grs.newNames(finalUpdate)
 
         else:
             updatedGff3 = evm_gff3
@@ -732,7 +731,6 @@ def main():
         strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd)
         gffPasa = grs.appendID(strandMappedGFF3)
         noOverl = grs.removeOverlap(gffPasa)
-        ##simplified = grs.parseGff(finalOutput)
         noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
         uniqGene = grs.newNames(noDisc)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
