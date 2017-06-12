@@ -69,7 +69,8 @@ RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
 
 RUN cp ../conf_files/createUser.sh /usr/local/bin
 
-RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
+RUN cd /usr/local/bin && chmod -R 777 ./
 
+RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 WORKDIR /data/
