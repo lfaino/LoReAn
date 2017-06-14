@@ -71,6 +71,8 @@ RUN cp ../conf_files/createUser.sh /usr/local/bin
 
 RUN cd /usr/local/bin && chmod -R 777 ./
 
+RUN cd /opt/LoReAn/ && chmod -R 777 ./
+
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 WORKDIR /data/
