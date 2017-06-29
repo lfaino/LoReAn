@@ -47,13 +47,12 @@ def gff_read(gff3_file, reference, working_dir):
     return out_name
 
 
-def cluster_pipeline(gff3_file, merge_distance, strand, wd):
+def cluster_pipeline(gff3_file, merge_distance, strand):
     """
     here the cluseter of sequence from the same locus are prepared
     :param gff3_file:
     :param merge_distance:
     :param strand:
-    :param wd:
     :return:
     """
 
@@ -212,11 +211,6 @@ def assembleParse(queue, overlap_length, percent_identity, wd):
             clusterFasta = queue.get()
         except:
             break
-        outputDir = iAssembler(
-            clusterFasta,
-            overlap_length,
-            percent_identity,
-            wd)
         queue.task_done()
         global count_sequences
         count_sequences += 1

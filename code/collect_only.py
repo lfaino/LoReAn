@@ -126,14 +126,13 @@ def catAssembled(wd):
     return fileName
 
 
-def addEVM(whole_fasta_name, output_filename, evm_nosupport, output_merged_fasta_name):
+def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     """
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
     :param whole_fasta_name: 
     :param output_filename: 
-    :param evm_nosupport:
-    :param output_merged_fasta_name: 
+    :param output_merged_fasta_name:
     :return: 
     """
     print('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
@@ -151,7 +150,6 @@ def addEVM(whole_fasta_name, output_filename, evm_nosupport, output_merged_fasta
             count += 1
         else:
             dictOut[record.id] = str(record.seq)
-    seq_count = 1
     for key in list(wholeDict.keys()):
         if 'evm' in key and key not in dictOut:
             ident = '>Gene' + str(count) + '_' + key

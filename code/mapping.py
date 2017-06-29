@@ -189,8 +189,12 @@ def star(reference, fastq_reads, threads, max_intron_length, wd):
     return out_file
 
 def gmap_build(reference, working_dir):
-    '''Build the GMAP indexed reference from the fasta reference file    '''
-    #  gmap_build -d <genome> -D path/to/DB[-k <kmer size>] <fasta_files...>
+    """
+    Build the GMAP indexed reference from the fasta reference file
+    :param reference:
+    :param working_dir:
+    :return:
+    """
     if '/' in reference:
         refer = reference.split('/')[-1] + '_GMAPindex'
     else:
@@ -287,8 +291,8 @@ def gmap_map(
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
-        args = [ 'gmap',  '-D', str(working_dir),  '-d', str(reference_database), '-H',  str(exon_length),  '--cross-species',  '--expand-offsets', '1',  '-B',  '5',   '--min-intronlength',  
-str(min_intron_length),  '-n',  '1',  '--microexon-spliceprob', '1', '-K',  str(max_intron_length), '-f', str(out_format),  '-t', str(threads)]
+        args = [ 'gmap',  '-D', str(working_dir),  '-d', str(reference_database), '--trim-end-exons',  str(exon_length),  '--cross-species',  '--expand-offsets=', '1',  '-B',  '5',   '--min-intronlength=',
+str(min_intron_length),  '-n',  '1',  '--microexon-spliceprob', '1', '--max-intronlength-middle=',  str(max_intron_length), '--max-intronlength-ends=', str(max_intron_length), '-f', str(out_format),  '-t', str(threads)]
         if not Fflag:
             argsready = args + [reads]
             try:

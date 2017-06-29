@@ -66,7 +66,6 @@ def catTwoBeds(gmap, evm, outFilename):
     lastFile = open(outFilename, 'r')
     o = open(outNameNew, 'w')
     countLine = 0
-    line = []
     for line in lastFile:
         countLine += 1
         linenew = line.split('\t')

@@ -11,15 +11,8 @@ import sys
 import subprocess
 import argparse
 import os
-import errno
-import re
-import shutil
-from Bio import SeqIO
-from BCBio import GFF
-from operator import itemgetter
 from queue import Queue
 from threading import Thread
-import itertools
 import shutil
 import datetime
 
