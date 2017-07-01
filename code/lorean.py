@@ -5,33 +5,33 @@
 ###############
 
 # LIBRARIES
+#TODO
+#check for strand on single exon gene based on reads mapping
 
-from multiprocessing import Pool
-import sys
-import subprocess
 import argparse
+import datetime
 import os
+import shutil
+import subprocess
+import sys
+import time
 from queue import Queue
 from threading import Thread
-import shutil
-import datetime
 
-
+import collect_only as collect
+import consensus_iAssembler as consensus
 # OTHER SCRIPTS
 import dirs_and_files as logistic
-import mapping
-import transcript_assembly as transcripts
-import prepare_evm_inputs as inputEvm
 import evm_pipeline
-import consensus_iAssembler as consensus
-import collect_only as collect
-import handlers as handler
 import get_right_strand as grs
-import multithread_large_fasta as multiple
-import reduceUTRs as utrs
-import parseGff3 as parsegff3
+import handlers as handler
 import manipulateSeq as mseq
-import time
+import mapping
+import multithread_large_fasta as multiple
+import prepare_evm_inputs as inputEvm
+import reduceUTRs as utrs
+import transcript_assembly as transcripts
+
 
 ####################################
 ### CHEKS BEFORE START LOREAN ######
