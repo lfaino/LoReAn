@@ -19,21 +19,17 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
-RUN git clone https://github.com/lfaino/LoReAn.git 
-
-RUN git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && \
-cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/ 
+RUN git clone https://github.com/lfaino/LoReAn.git && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
+mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/
 
 WORKDIR /opt/LoReAn/third_party/software/
 
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && sudo make && sudo make install 
 
-RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz
+RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
 
-RUN tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
-
-RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.0.2.tar.gz && tar -zxvf v2.0.2.tar.gz && rm v2.0.2.tar.gz &&\
-    cd PASApipeline-2.0.2 && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/ 
+RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && tar -zxvf v2.1.0.tar.gz && rm v2.1.0.tar.gz &&\
+    mv PASApipeline-2.1.0 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline-2.0.2/pasa_conf/
     
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.3.tar.gz && \
     tar -zxvf augustus-3.2.3.tar.gz && rm augustus-3.2.3.tar.gz && mv augustus-3.2.3 augustus && cd augustus  && make clean && make 
@@ -53,11 +49,9 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && t
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz
+RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz && \
+ wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
-RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz 
-   
-   
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
      
@@ -67,11 +61,7 @@ RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
      tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
-RUN cp ../conf_files/createUser.sh /usr/local/bin
-
-RUN cd /usr/local/bin && chmod -R 777 ./
-
-RUN cd /opt/LoReAn/ && chmod -R 777 ./
+RUN cp ../conf_files/createUser.sh /usr/local/bin && cd /usr/local/bin && chmod -R 777 ./ && cd /opt/LoReAn/ && chmod -R 777 ./
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
