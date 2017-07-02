@@ -4,7 +4,6 @@ import subprocess
 import math
 
 
-
 def trinity(bam_file, wd, max_intron_length, threads):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
@@ -12,7 +11,6 @@ def trinity(bam_file, wd, max_intron_length, threads):
     #print (real_threads)
     #number_threads = real_threads.split('.')
     out_dir = wd + 'trinity_out_dir/'
-    
     args = [
                 'Trinity',
                 '--genome_guided_bam',
