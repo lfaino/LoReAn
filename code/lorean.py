@@ -661,7 +661,7 @@ def main():
                 # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME
                 # POSITION
                 cluster_list = consensus.cluster_pipeline(
-                    mergedmapGFF3, args.assembly_overlapLength, args.stranded, consensus_wd)
+                    mergedmapGFF3, args.assembly_overlapLength, args.stranded)
                 now = datetime.datetime.now().strftime(fmtdate)
 
                 print(("\n\t#CONSENSUS FOR EACH CLUSTER\t"  + now  + "\t###\n"))
@@ -698,7 +698,6 @@ def main():
         collect.addEVM(
             gffreadFastaFile,
             tmp_assembly,
-            evm_nosupport,
             mergedFastaFilename)
         now = datetime.datetime.now().strftime(fmtdate)
         print(("\n###MAPPING CONSENSUS ASSEMBLIES\t"  + now + "\t###\n"))
