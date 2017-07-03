@@ -11,7 +11,7 @@ count_sequences = 0
 length_cluster = 0
 
 
-def gff_read(gff3_file, reference, working_dir):
+def gffread(gff3_file, reference, working_dir):
     """
     Runs gffread on a gff3 file to produce fasta files with the
     matching records
