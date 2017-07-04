@@ -4,12 +4,10 @@ import subprocess
 import os
 import re
 from Bio import SeqIO
-from queue import Queue
-from threading import Thread
+from multiprocessing import Pool
 
 count_sequences = 0
 length_cluster = 0
-
 
 def gffread(gff3_file, reference, working_dir):
     """
@@ -45,7 +43,6 @@ def gffread(gff3_file, reference, working_dir):
     except:
         raise NameError('')
     return out_name
-
 
 def cluster_pipeline(gff3_file, merge_distance, strand):
     """
@@ -112,7 +109,6 @@ def fasta2Dict(fasta_filename):
     fasta_file.close()
     return fasta_dict
 
-
 def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evidence, wd):
     """
     From the output list of the pipeline, recovers the ID and goes back to the
@@ -178,70 +174,21 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     clusterFile.close()
     return clusterFilename
 
+def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, wd):
+    """write fasta clusters
 
-def iAssembler(fasta_file, overlap_length, percent_identity, wd):
-    """
-    Call iAssembler to assemble every cluster in fasta_list
-    :param fasta_file:
-    :param overlap_length:
-    :param percent_identity:
-    :param wd:
-    :return:
-    """
-    newFasta = fasta_file.split('/')[-1]
-    args = ['iAssembler.pl', '-i', newFasta, '-h', str(overlap_length),
-            '-p', str(percent_identity), '-o', newFasta + '_output', '2> ']
-    outputDir = wd + newFasta + '_output/'  # whole path
-    try:
-        subprocess.call(
-            args,
-            cwd=wd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        # TRY TO CHANGE TO SUBPROCESSPOPEN
-    except:
-        return False
-    return outputDir
-
-
-def assembleParse(queue, overlap_length, percent_identity, wd):
-    """to join the assembly and the parsing process"""
-    while True:
-        try:
-            clusterFasta = queue.get()
-        except:
-            break
-        queue.task_done()
-        global count_sequences
-        count_sequences += 1
-        global length_cluster
-    return
-
-
-def func_star(a_b):
-    return assembleParse(*a_b)
-
-
-def assembly(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length,
-             percent_identity, threads, wd):
-    """
-    handles the assembly process and parsing in a multithreaded way
     :param clusterList:
     :param fasta_dict:
     :param min_evidence:
     :param max_evidence:
     :param overlap_length:
-    :param percent_identity:
-    :param threads:
     :param wd:
     :return:
     """
-
-    assembly_queue = Queue()
     cluster_counter = 1
     for record in clusterList:
         # Write fasta for each cluster
-        clusterFasta = write_fastas(
+        write_fastas(
             cluster_counter,
             record,
             fasta_dict,
@@ -250,21 +197,43 @@ def assembly(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length
             max_evidence,
             wd)
         cluster_counter += 1
-        if clusterFasta:
-            # If it is a cluster to assemble put it on queue
-            assembly_queue.put(clusterFasta)
-        else:
-            continue
-    global length_cluster
-    length_cluster = str(assembly_queue.qsize())
-    for i in range(int(threads)):
-        t = Thread(
-            target=assembleParse,
-            args=(
-                assembly_queue,
-                overlap_length,
-                percent_identity,
-                wd))
-        t.daemon = True
-        t.start()
-    assembly_queue.join()
+
+def assembly(overlap_length, percent_identity, threads, wd):
+    """
+    :param percent_identity:
+    :param threads:
+    :param wd:
+    :return:
+    """
+    new_commands = []
+    for root, dirs, file in os.walk(wd):
+        for fasta_file in file:
+            complete_data = (fasta_file, percent_identity, overlap_length, wd)
+            new_commands.append(complete_data)
+    with Pool(int(threads)) as p:
+        align_resul = p.map(iAssembler, new_commands)
+
+
+def iAssembler(new_commands):
+    """
+    Call iAssembler to assemble every cluster in fasta_list
+    :param fasta_file:
+    :param overlap_length:
+    :param percent_identity:
+    :param wd:
+    :return:
+    """
+
+    args = ['iAssembler.pl', '-i', new_commands[0], '-h', new_commands[2],
+            '-p', new_commands[1], '-o', new_commands[0] + '_output', '2> ']
+    outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
+    try:
+        subprocess.call(
+            args,
+            cwd=new_commands[3],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE)
+        # TRY TO CHANGE TO SUBPROCESSPOPEN
+    except:
+        return False
+    return outputDir

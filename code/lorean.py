@@ -163,7 +163,7 @@ def arguments():
                         default="200",
                         help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
                         metavar='N')
-    parser.add_argument("-api","--assembly_percentIdentity", 
+    parser.add_argument("-api","--assembly_percentIdentity",
                         nargs="?", default="97",
                         help="Minimal identity for the ASSEMBLY (95-100) [97]",
                         metavar='N')
@@ -673,15 +673,14 @@ def main():
                 if os.path.isfile(tmp_assembly_file):
                     print('No assembly')
                 else:
-                    consensus.assembly(
+                    consensus.generate_fasta(
                         cluster_list,
                         gffreadDict,
                         args.cluster_min_evidence,
                         args.cluster_max_evidence,
                         args.assembly_overlapLength,
-                        args.assembly_percentIdentity,
-                        args.threads,
                         tmp_wd)
+                    consensus.assembly(args.assembly_overlapLength, args.assembly_percentIdentity, args.threads, tmp_wd)
                     utrs.lengthSupport(tmp_wd, args.threads)
 
         # WITH THE ELSE, WE ALLOW THE USER TO DECIDE TO CHANGE THE ASSEMBLY
