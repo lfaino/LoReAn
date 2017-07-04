@@ -315,7 +315,6 @@ str(min_intron_length),  '-n',  '1',  '--microexon-spliceprob', '1', '--max-intr
         log.close()
     return filename
 
-
 def samtools_view(sam_file, wd):
     '''SAM to BAM'''
     bam_filename = sam_file + '.bam'
