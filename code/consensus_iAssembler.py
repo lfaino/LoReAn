@@ -223,7 +223,6 @@ def iAssembler(new_commands):
     :param wd:
     :return:
     """
-
     args = ['iAssembler.pl', '-i', new_commands[0], '-h', new_commands[2],
             '-p', new_commands[1], '-o', new_commands[0] + '_output', '2> ']
     outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
