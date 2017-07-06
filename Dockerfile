@@ -54,8 +54,8 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar
 
 
 RUN wget https://downloads.sourceforge.net/project/splicegrapher/SpliceGrapher-0.2.5.tgz &&  tar -zxvf SpliceGrapher-0.2.5.tgz && \
-    cd SpliceGrapher-0.2.5/ && python setup.py build && python setup.py install && cd .. \
-    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python setup.py build && python setup.py install
+    cd SpliceGrapher-0.2.5/ && python3 setup.py build && python3 setup.py install && cd .. \
+    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python3 setup.py build && python3 setup.py install
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
