@@ -52,6 +52,11 @@ RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.g
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz && \
  wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
+
+RUN wget https://downloads.sourceforge.net/project/splicegrapher/SpliceGrapher-0.2.5.tgz &&  tar -zxvf SpliceGrapher-0.2.5.tgz && \
+    cd SpliceGrapher-0.2.5/ && python setup.py build && python setup.py install && cd .. \
+    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python setup.py build && python setup.py install
+
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
      
