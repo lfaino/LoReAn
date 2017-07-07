@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
-    python3.5 python3-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+    python3.5 python2.7 python3-pip python2.7-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -12,6 +12,8 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib
+
+RUN pip pysam matplotlib
 
 WORKDIR /opt/
 
@@ -54,8 +56,8 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar
 
 
 RUN wget https://downloads.sourceforge.net/project/splicegrapher/SpliceGrapher-0.2.5.tgz &&  tar -zxvf SpliceGrapher-0.2.5.tgz && \
-    cd SpliceGrapher-0.2.5/ && python3 setup.py build && python3 setup.py install && cd .. \
-    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python3 setup.py build && python3 setup.py install
+    cd SpliceGrapher-0.2.5/ && python setup.py build && python setup.py install && cd .. \
+    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python setup.py build && python setup.py install
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
