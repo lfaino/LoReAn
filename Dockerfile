@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
-    python3.5 python2.7 python3-pip python2.7-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+    python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
