@@ -13,7 +13,7 @@ RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apa
 
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib
 
-RUN pip pysam matplotlib
+RUN pip install pysam matplotlib bx-python numpy
 
 WORKDIR /opt/
 
