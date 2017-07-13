@@ -277,7 +277,7 @@ def main():
                     now = datetime.datetime.now().strftime(fmtdate)
                     print(('\n###GMAP\t'  + now  + 't###\n'))
 
-                    long_sam = mapping.gmap(
+                    long_sorted_bam = mapping.gmap(
                         'sam',
                         genome_gmap,
                         long_fasta,
@@ -289,8 +289,8 @@ def main():
                         gmap_wd,
                         Fflag=False)
                     # Convert to sorted BAM
-                    long_sorted_bam = mapping.sam_to_sorted_bam(
-                        long_sam, args.threads, wd)
+                    #long_sorted_bam = mapping.sam_to_sorted_bam(
+                     #   long_sam, args.threads, wd)
 
                     # Keep the output
                     FinalFiles.append(long_sorted_bam)
@@ -616,7 +616,7 @@ def main():
                 # HERE WE MAP THE READS ON THE GENOME USING GMAP
 
                 if not long_sorted_bam:
-                    long_sam = mapping.gmap(
+                    long_sorted_bam = mapping.gmap(
                         'sam',
                         genome_gmap,
                         long_fasta,
@@ -627,8 +627,8 @@ def main():
                         args.end_exon,
                         gmap_wd,
                         Fflag=False)  # change in 1 and 2
-                    long_sorted_bam = mapping.sam_to_sorted_bam(
-                        long_sam, args.threads, wd)
+                    #long_sorted_bam = mapping.sam_to_sorted_bam(
+                     #   long_sam, args.threads, wd)
 
         # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
         # FILE
