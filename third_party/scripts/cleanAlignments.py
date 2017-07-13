@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/python
 
 #
 #    Helper script for aligning PacBio reads: cleans reads using reference sequence
