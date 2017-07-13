@@ -34,16 +34,16 @@ RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && t
     mv PASApipeline-2.1.0 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/
     
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
-    tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make 
-    
+    tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
+
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.tar.gz && tar -zxvf Trinity-v2.4.0.tar.gz && mv trinityrnaseq-Trinity-v2.4.0 Trinity && \
-    rm Trinity-v2.4.0.tar.gz && cd Trinity && make && make plugins 
+    rm Trinity-v2.4.0.tar.gz && cd Trinity && make && make plugins
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
-    cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive 
+    cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive
 
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
-    cd TransDecoder-3.0.1 && make  
+    cd TransDecoder-3.0.1 && make
 
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz &&\
     mv gmap-2017-06-20/ gmap && cd gmap/  && ./configure && make && sudo make install
@@ -61,8 +61,8 @@ RUN wget https://downloads.sourceforge.net/project/splicegrapher/SpliceGrapher-0
     cp /opt/LoReAn/third_party/scripts/alignPacBio.py  /usr/local/bin/ && cp /opt/LoReAn/third_party/scripts/cleanAlignments.py  /usr/local/bin/
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
-    sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric 
-     
+    sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric
+
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
