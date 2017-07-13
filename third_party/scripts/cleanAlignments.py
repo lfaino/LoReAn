@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#!/usr/bin/python
 
 #
 #    Helper script for aligning PacBio reads: cleans reads using reference sequence
@@ -106,7 +106,7 @@ canonicalSS = ['GTAG', 'GCAG']
 SJdict = {}
 revCDict = {'G':'C','C':'G','T':'A','A':'T','N':'N'}
 def revComp(s):
-    return ''.join([revCDict[x] for x in s])[::-1]
+    return ''.join([revCDict[x.upper()] for x in s])[::-1]
     
 def junctionAdjust( cigarList, aLim ):
     """

@@ -67,7 +67,7 @@ gmapIn = args.fasta
 
 
 # fix to make generic
-GMAP    = '%s | gmap -D %s -d %s --no-chimeras --cross-species --expand-offsets 1 -B 5 -K %s -f samse -n 1 -t %d > %s 2> %s'
+GMAP    = 'gmap -D %s -d %s --no-chimeras --cross-species --expand-offsets 1 -B 5 -K %s -f samse -n 1 -t %d %s > %s 2> %s'
 CONVERT = 'convertSam.py %s'
 CLEAN   = 'cleanAlignments.py -e %f -t %d -f %s -j %s -s %s -u %s -r %s %s %s'
  
@@ -76,10 +76,7 @@ for epoch in xrange(args.iterations):
         break
     if args.verbose:
         sys.stderr.write('Starting iteration: %d\n' % (epoch+1))
-    prefix = 'cat'
-    if gmapIn.endswith('gz'):
-        prefix = 'zcat '
-    cmd = GMAP % (prefix+gmapIn, args.indexesDir, args.indexName, args.maxIntron, args.procs, 
+    cmd = GMAP % (args.indexesDir, args.indexName, args.maxIntron, args.procs, gmapIn,
                   os.path.join(tempdir,'%s_r%d.sam' % (base,epoch+1)), 
                   os.path.join(tempdir,'%s_r%d.log' % (base,epoch+1)))
     if args.verbose:
