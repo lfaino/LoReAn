@@ -33,8 +33,8 @@ RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && tar -zxvf v2.1.0.tar.gz && rm v2.1.0.tar.gz &&\
     mv PASApipeline-2.1.0 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/
     
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus-3.2.3.tar.gz && \
-    tar -zxvf augustus-3.2.3.tar.gz && rm augustus-3.2.3.tar.gz && mv augustus-3.2.3 augustus && cd augustus  && make clean && make 
+RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
+    tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make 
     
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.tar.gz && tar -zxvf Trinity-v2.4.0.tar.gz && mv trinityrnaseq-Trinity-v2.4.0 Trinity && \
     rm Trinity-v2.4.0.tar.gz && cd Trinity && make && make plugins 
