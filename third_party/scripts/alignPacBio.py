@@ -1,4 +1,4 @@
-#!/bin/python
+#!/usr/bin/python
 
 #
 #    Align PacBio reads to reference genome and fix indels/mismatches
@@ -76,7 +76,7 @@ for epoch in xrange(args.iterations):
         break
     if args.verbose:
         sys.stderr.write('Starting iteration: %d\n' % (epoch+1))
-    prefix = 'cat'
+    prefix = 'cat '
     if gmapIn.endswith('gz'):
         prefix = 'zcat '
     cmd = GMAP % (prefix+gmapIn, args.indexesDir, args.indexName, args.maxIntron, args.procs, 
