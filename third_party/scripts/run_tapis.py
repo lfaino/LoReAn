@@ -10,8 +10,6 @@ from bx.intervals.cluster import ClusterTree
 import matplotlib
 matplotlib.use('agg')
 from matplotlib import pyplot as plt
-#from matplotlib_venn import venn2, venn3
-###################################################
 from SpliceGrapher.shared.utils       import *
 from SpliceGrapher.plot.PlotterConfig import *
 from SpliceGrapher.view.ViewerUtils   import *
@@ -53,7 +51,6 @@ parser.add_argument('-m', '--minDist', dest="minDist",
 parser.add_argument('-s', '--minSupport', dest="minSupport",
                     action='store', type=int, default=2,
                     help='Minimum number of trusted reads supporting a poly-A site, default=2')
-
 parser.add_argument('geneModel', action='store', 
                     type=str, help='Gene models annotation file (GFF/GTF)')
 parser.add_argument('bamfile', action='store', 
@@ -245,6 +242,7 @@ def clusterReads(bamfile, cluster_treesP, cluster_treesN, readDict):
             clusterReads.c += 1
         indicator.update()
     indicator.finish()
+
 def plotNovel(graph, cluster, outname, shrink_introns=False):
     """
     Plot pacBio reads for a gene
@@ -310,7 +308,6 @@ def plotNovel(graph, cluster, outname, shrink_introns=False):
     plt.savefig(outname, dpi=400)
     plt.close()
 
-            
 def plotCluster(referenceGenes, graph, cluster, start, end, geneModel, outname, graph2=None, shrink_introns=False):
     """
     Plot pacBio reads for a gene
@@ -410,7 +407,6 @@ def plotCluster(referenceGenes, graph, cluster, start, end, geneModel, outname, 
     plt.savefig(outname, dpi=400)
     plt.close()
 
-
 def summarizeClusters(treesP, treesN):
     misAnnot = 0
     totClusters = 0
@@ -457,8 +453,6 @@ def summarizeClusters(treesP, treesN):
             else:
                 gCounts[referenceGenes[0].id] += 1
     
-    
-
 def resolveMultiCluster(cluster, refgenes, strand):
     """
     Try and determine if cluster can be paritioned:
@@ -526,7 +520,6 @@ def resolveMultiCluster(cluster, refgenes, strand):
         return (len(fusionReads) == 0,\
             [ (clusters[i], refgenes[i]) for i in xrange(len(refgenes))])
 
-    
 def subsumedIso( iso1, iso2, strand, verbose=False ):
     """
     Checks if iso1 is subsumed by iso2
@@ -742,7 +735,6 @@ def processGene(isos, cluster, gene):
 
     return graph, novel, fullLength
 
-
 def writeNovelGenes(novelClustersP, novelClustersN):
     if args.verbose:
         sys.stderr.write('Processing novel clusters...\n')
@@ -793,7 +785,6 @@ def writeNovelGenes(novelClustersP, novelClustersN):
     fastaout.close()
     fout.close()
     indicator.finish()
-
 
 def getPeaks(depths):
     """
@@ -897,8 +888,6 @@ def remove_border(axes=None, top=False, right=False, left=True, bottom=True):
     if right:
         ax.yaxis.tick_right()
 
-
-# write gtf
 def writeGtf(geneIsos):
     with open(os.path.join(args.outdir,'assembled.gtf'), 'w') as fout:
         for gene in geneIsos:
@@ -929,8 +918,6 @@ def writeGtf(geneIsos):
                      trans_id
                  ))
 
-
-
 ################################################################################
 if __name__ == '__main__':
     # build clusters
@@ -940,12 +927,12 @@ if __name__ == '__main__':
     clusterMembers = 1
     cluster_treesP = collections.defaultdict(lambda:ClusterTree(clusterDist, 
                                                                 clusterMembers))
-    cluster_treesN = collections.defaultdict(lambda:ClusterTree(clusterDist, 
+    cluster_treesN = collections.defaultdict(lambda:ClusterTree(clusterDist,
                                                                 clusterMembers))
     clusterReads(args.bamfile, cluster_treesP, cluster_treesN, readDict)
     keys = list(set.union(*[set(cluster_treesN.keys()), 
                             set(cluster_treesP.keys())]))
-    
+
     # Transcript assembly
     geneIsos = collections.defaultdict(list)
     geneReads = collections.defaultdict(list)
