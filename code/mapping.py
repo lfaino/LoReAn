@@ -271,7 +271,7 @@ def alignLong(reference_db, fastq_reads, threads, max_intron_length, reference_s
     """
 
     args = [ 'alignPacBio.py', '-p', str(threads), '-K', str(max_intron_length), wd, reference_db, reference_seq, fastq_reads]
-    map = subprocess.Popen(args, stdout=out_f, stderr=log, cwd = wd)
+    map = subprocess.Popen(args, cwd = wd)
     map.communicate()
     output_file = wd + "/filtered/aligned.bam"
     return (output_file)
