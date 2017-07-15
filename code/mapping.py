@@ -243,38 +243,19 @@ def gmap(
     reference_db = gmap_build(reference, wd)
     # Mapping
     print('\t###MAP###\n')
-    if Fflag:
-        out_file = gmap_map(
-            reference_db,
-            fastq_reads,
-            threads,
-            out_format,
-            min_intron_length,
-            max_intron_length,
-            exon_length,
-            wd,
-            Fflag,
-            type_out)
-    else:
-        out_file = alignLong(reference_db, fastq_reads, threads, max_intron_length, reference, wd)
+    out_file = gmap_map(
+        reference_db,
+        fastq_reads,
+        threads,
+        out_format,
+        min_intron_length,
+        max_intron_length,
+        exon_length,
+        wd,
+        Fflag,
+        type_out)
     return out_file
 
-
-def alignLong(reference_db, fastq_reads, threads, max_intron_length, reference_seq, wd):
-    """
-    :param reference_db:
-    :param fastq_reads:
-    :param threads:
-    :param max_intron_length:
-    :param wd:
-    :return:
-    """
-
-    args = [ 'alignPacBio.py', '-p', str(threads), '-K', str(max_intron_length), wd, reference_db, reference_seq, fastq_reads]
-    map = subprocess.Popen(args, cwd = wd)
-    map.communicate()
-    output_file = wd + "/filtered/aligned.bam"
-    return (output_file)
 
 
 def gmap_map(
