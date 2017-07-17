@@ -13,8 +13,6 @@ RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apa
 
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib
 
-#RUN pip install pysam matplotlib bx-python numpy
-
 WORKDIR /opt/
 
 RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
@@ -53,12 +51,6 @@ RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.g
 
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/BRAKER1.tar.gz && tar -zxvf BRAKER1.tar.gz && rm BRAKER1.tar.gz && \
  wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
-
-
-#RUN wget https://downloads.sourceforge.net/project/splicegrapher/SpliceGrapher-0.2.5.tgz &&  tar -zxvf SpliceGrapher-0.2.5.tgz && \
-#    cd SpliceGrapher-0.2.5/ && python setup.py build && python setup.py install && cd .. \
-#    && git clone https://bitbucket.org/comp_bio/tapis.git && cd tapis && python setup.py build && python setup.py install && \
-#    cp /opt/LoReAn/third_party/scripts/alignPacBio.py  /usr/local/bin/ && cp /opt/LoReAn/third_party/scripts/cleanAlignments.py  /usr/local/bin/
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric
