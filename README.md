@@ -34,23 +34,24 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 ## SOFTWARE USED IN THE PIPELINE
 
-- samtools
-- bedtools
-- bowtie
-- bamtools
-- AATpackage-r03052011 
-- iAssembler-v1.3.2.x64
+- samtools 0.1.19-96b5f2294a
+- bedtools v2.25.0
+- bowtie  version 1.1.2
+- bamtools 2.4.1
+- AATpackage r03052011 
+- iAssembler v1.3.2.x64
 - gm_et_linux_64 (THIS SOFTWARE IS NOT FREE FOR EVERYONE)
-- PASApipeline-2.0.2 
-- augustus-3.2.2
-- trinityrnaseq-2.4.0
-- STAR-2.5.2b
-- gmap-gsnap-2015-12-31.v10 
-- fasta-36.3.8e
-- BRAKER1
-- EVidenceModeler1.1.1
-- gffread
-- genometools-1.5.9
+- PASApipeline v2.1.0 
+- augustus v3.3
+- trinityrnaseq v2.4.0
+- STAR v2.5.2b
+- gmap-gsnap v2017-06-20
+- fasta v36.3.8e
+- BRAKER v1.11
+- EVidenceModeler v1.1.1
+- gffread  v0.9.9
+- genometools v1.5.9
+
 
 ## AUTHORS:
 - Luigi Faino
