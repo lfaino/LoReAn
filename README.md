@@ -34,7 +34,7 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 ## SOFTWARE USED IN THE PIPELINE
 
-- samtools 0.1.19-96b5f2294a
+- samtools v0.1.19-96b5f2294a
 - bedtools v2.25.0
 - bowtie  version 1.1.2
 - bamtools 2.4.1
