@@ -214,6 +214,13 @@ def main():
         logistic.check_file(ref)
         gmap_wd = wd + '/gmap_output/'
         exonerate_wd = wd + '/exonerate/'
+        pasa_dir = wd + 'PASA/'
+        star_out = wd + '/STAR/'
+        trin_dir = wd + 'Trinity/'
+
+        logistic.check_create_dir(trin_dir)
+        logistic.check_create_dir(star_out)
+        logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
         logistic.check_create_dir(exonerate_wd)
         if args.repeat_masked:
@@ -228,8 +235,6 @@ def main():
             print(('\n###STAR MAPPING  STARTED AT:\t'  + now + '\t###\n'))
             # SHORT READS
             if 'fastq' in args.short_reads or 'fq' in args.short_reads:
-                star_out = wd + '/STAR/'
-                logistic.check_create_dir(star_out)
                 if ',' in args.short_reads:
                     pairedEndFiles = args.short_reads.split(',')
                     short_1 = os.path.abspath(pairedEndFiles[0])
@@ -238,14 +243,8 @@ def main():
                 else:
                     short_reads_file = os.path.abspath(args.short_reads)
                 # Map with STAR
-                short_bam = mapping.star(
-                    ref,
-                    short_reads_file,
-                    args.threads,
-                    args.max_intron_length,
-                    star_out, args.verbose)
-                short_sorted_bam = mapping.samtools_sort(
-                    short_bam, args.threads, wd, args.verbose)
+                short_bam = mapping.star(ref, short_reads_file, args.threads, args.max_intron_length, star_out, args.verbose)
+                short_sorted_bam = mapping.samtools_sort(short_bam, args.threads, wd, args.verbose)
                 # Keep the output
                 FinalFiles.append(short_sorted_bam)
             # BAM SORTED FILES GET IN HERE
@@ -271,7 +270,9 @@ def main():
                 # artefacts
                 now = datetime.datetime.now().strftime(fmtdate)
                 print(("\n###FILTERING OUT LONG READS STARTED AT:\t"  +  now   + "\t###\n"))
-                long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength, args.max_long_read, gmap_wd, args.adapter, args.threads,  a = True)
+                long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength,
+                                                                args.max_long_read, gmap_wd, args.adapter, args.threads,
+                                                                a = True)
                 if filter_count != 0:
                     now = datetime.datetime.now().strftime(fmtdate)
                     print(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t" + str(filter_count) + "\tREADS AFTER LENGTH FILTERING###\n"))
@@ -279,18 +280,8 @@ def main():
                     # If short reads have been mapped dont do it
                     now = datetime.datetime.now().strftime(fmtdate)
                     print(('\n###GMAP\t'  + now  + 't###\n'))
-
-                    long_sam = mapping.gmap(
-                        'sam',
-                        genome_gmap,
-                        long_fasta,
-                        args.threads,
-                        'samse',
-                        args.min_intron_length,
-                        args.max_intron_length,
-                        args.end_exon,
-                        gmap_wd, args.verbose,
-                        Fflag=False)
+                    long_sam = mapping.gmap('sam', genome_gmap, long_fasta, args.threads, 'samse', args.min_intron_length,
+                                            args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=False)
                     # Convert to sorted BAM
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd, args.verbose)
 
@@ -311,38 +302,24 @@ def main():
             # TRINITY
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###TRINITY STARTS AT:\t'  + now  + '\t###\n'))
-            trin_dir = wd + 'Trinity/'
-            logistic.check_create_dir(trin_dir)
             if int(args.threads) > 1:
                 trinity_cpu = int(int(args.threads)/int(2))
             else:
                 trinity_cpu = int(args.threads)
-            trinity_out = transcripts.trinity(
-                default_bam, trin_dir, args.max_intron_length, trinity_cpu)
+            trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu)
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###PASA STARTS AT:\t'  + now  + '\t###\n'))
             # Create PASA folder and configuration file
-            pasa_dir = wd + 'PASA/'
-            logistic.check_create_dir(pasa_dir)
-            align_pasa_conf = transcripts.pasa_configuration(
-                pasa_dir, args.pasa_db)
+            align_pasa_conf = transcripts.pasa_configuration(pasa_dir, args.pasa_db)
             # Launch PASA
-            pasa_gff3 = transcripts.pasa_call(
-                pasa_dir,
-                align_pasa_conf,
-                args.pasa_db,
-                ref,
-                trinity_out,
-                args.max_intron_length,
-                args.threads)
+            pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length,
+                                              args.threads)
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.short_reads != '' or args.long_reads != '':
                 check_species = ['augustus', '--species=help']
-                process = subprocess.Popen(
-                    check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 out, err = process.communicate()
-                #print (type(err))
                 protein_loc = os.path.abspath(args.protein_evidence)
                 if args.species in (err.decode("utf-8")):
                     now = datetime.datetime.now().strftime(fmtdate)
@@ -351,17 +328,8 @@ def main():
                     for i in range(3):
                         queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                         for i in range(3):
-                            t = Thread(
-                                target=handler.AugustGmesAAT,
-                                args=(
-                                    queue,
-                                    ref,
-                                    args.species,
-                                    protein_loc,
-                                    args.threads,
-                                    args.fungus,
-                                    list_fasta_names,
-                                    wd))
+                            t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
+                                                                          args.threads, args.fungus, list_fasta_names, wd))
                             # AugustGmesAAT(queue, ref, species,
                             # protein_evidence, threads, fungus,
                             # list_fasta_names, wd):

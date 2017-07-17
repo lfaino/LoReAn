@@ -4,6 +4,17 @@ import os
 import errno
 import subprocess
 
+#==========================================================================================================
+# COMMANDS LIST
+
+GFFREAD = 'gffread -o- -T %s'
+
+GTF2BED = 'gtf2bed.py transcript %s'
+
+BEDTOOLS = 'bedtools bamtobed -split -bed12 -i %s'
+
+#==========================================================================================================
+
 
 def check_dir(path):
     '''Checks if a directory exists'''
@@ -46,17 +57,17 @@ def catTwoBeds(gmap, evm, outFilename):
     bed12_evm = evm + ".bed12"
     bed12file = open(bed12_evm, "w")
     gtffile = open(gtf, "w")
-    gffread_con = ['gffread', '-o-', '-T', evm]
+    gffread_con = GFFREAD % (evm)
     gffread_call = subprocess.Popen(gffread_con, stdout=gtffile)
     gffread_call.communicate()
-    gft2bed = ['gtf2bed.py', 'transcript', gtf]
+    gft2bed = GTF2BED % (gtf)
     evm_call = subprocess.Popen(gft2bed, stdout=bed12file)
     evm_call.communicate()
     bed12_gmap = gmap + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
-    gmap_con = ['bedtools', 'bamtobed', '-split', '-bed12', '-i', gmap]
-    gmap_call = subprocess.Popen(gmap_con, stdout=bed12gmapfile)
-    gmap_call.communicate()
+    bedtools = BEDTOOLS %(gmap)
+    bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile)
+    bedtools_call.communicate()
     '''Concatenates the two inFiles into the outFile'''
     inFile1 = open(bed12_gmap, 'r')
     inFile2 = open(bed12_evm, 'r')
