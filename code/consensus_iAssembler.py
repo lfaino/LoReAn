@@ -3,13 +3,24 @@
 import subprocess
 import os
 import re
+import sys
 from Bio import SeqIO
 from multiprocessing import Pool
+
+#==========================================================================================================
+# COMMANDS LIST
+
+ASSEMBLY  = 'iAssembler.pl -i %s -h %s  -p %s -o %s_output  2> %s.log'
+
+BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
+
+
+#==========================================================================================================
 
 count_sequences = 0
 length_cluster = 0
 
-def gffread(gff3_file, reference, working_dir):
+def gffread(gff3_file, reference, working_dir, verbose):
     """
     Runs gffread on a gff3 file to produce fasta files with the
     matching records
@@ -19,18 +30,7 @@ def gffread(gff3_file, reference, working_dir):
     :return:
     """
     out_name = working_dir + 'getFasta.fasta'
-    args = [
-        'bedtools',
-        'getfasta',
-        '-fi',
-        reference,
-        '-bed',
-        gff3_file,
-        '-fo',
-        out_name,
-        '-name',
-        '-split']
-
+    cmd = BEDTOOLS_GETFASTA % (reference, gff3_file, out_name)
     if os.path.isfile(out_name):
         print((
             'gff3read file existed already: ' +
@@ -39,7 +39,10 @@ def gffread(gff3_file, reference, working_dir):
         return out_name
 
     try:
-        subprocess.check_call(args)
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        bedtools = subprocess.Popen(cmd, shell=1)
+        bedtools.communicate()
     except:
         raise NameError('')
     return out_name
@@ -90,7 +93,6 @@ def cluster_pipeline(gff3_file, merge_distance, strand):
     outputBT = btsort2_call.communicate()[0]
     final_output = outputBT.splitlines()
     return final_output
-
 
 def fasta2Dict(fasta_filename):
     """
@@ -198,7 +200,7 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
             wd)
         cluster_counter += 1
 
-def assembly(overlap_length, percent_identity, threads, wd):
+def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     :param percent_identity:
     :param threads:
@@ -208,7 +210,7 @@ def assembly(overlap_length, percent_identity, threads, wd):
     new_commands = []
     for root, dirs, file in os.walk(wd):
         for fasta_file in file:
-            complete_data = (fasta_file, percent_identity, overlap_length, wd)
+            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)
             new_commands.append(complete_data)
     with Pool(int(threads)) as p:
         align_resul = p.map(iAssembler, new_commands)
@@ -223,16 +225,18 @@ def iAssembler(new_commands):
     :param wd:
     :return:
     """
-    args = ['iAssembler.pl', '-i', new_commands[0], '-h', new_commands[2],
-            '-p', new_commands[1], '-o', new_commands[0] + '_output', '2> ']
+
+    cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])
     outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
+    log_name = new_commands[3] + "Assembly.log"
+    log = open(log_name, 'w')
+
     try:
-        subprocess.call(
-            args,
-            cwd=new_commands[3],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        # TRY TO CHANGE TO SUBPROCESSPOPEN
+        if new_commands[4]:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        assembly = subprocess.Popen(cmd, cwd=new_commands[3], stderr = log, stdout = log, shell=1)
+        assembly.communicate()
     except:
         return False
+    log.close()
     return outputDir

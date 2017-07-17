@@ -184,6 +184,9 @@ def arguments():
     parser.add_argument("-co","--collect_only",
                         help="Collect only assebmled transcripts [FALSE]",
                         action='store_true')
+    parser.add_argument("-v","--verbose",
+                        help="Prints out the commands used in LoReAn[FALSE]",
+                        action='store_true')
 
     args = parser.parse_args()
     return args
@@ -240,9 +243,9 @@ def main():
                     short_reads_file,
                     args.threads,
                     args.max_intron_length,
-                    star_out)
+                    star_out, args.verbose)
                 short_sorted_bam = mapping.samtools_sort(
-                    short_bam, args.threads, wd)
+                    short_bam, args.threads, wd, args.verbose)
                 # Keep the output
                 FinalFiles.append(short_sorted_bam)
             # BAM SORTED FILES GET IN HERE
@@ -255,7 +258,7 @@ def main():
                 bam_file = args.short_reads.split("/")
                 short_bam = star_out + "/" + bam_file[-1]
                 short_sorted_bam = mapping.samtools_sort(
-                    short_bam, args.threads, wd)
+                    short_bam, args.threads, wd, args.verbose)
                 # print short_sorted_bam
             else:
                 short_sorted_bam = False
@@ -286,10 +289,10 @@ def main():
                         args.min_intron_length,
                         args.max_intron_length,
                         args.end_exon,
-                        gmap_wd,
+                        gmap_wd, args.verbose,
                         Fflag=False)
                     # Convert to sorted BAM
-                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd)
+                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd, args.verbose)
 
                     # Keep the output
                     FinalFiles.append(long_sorted_bam)
@@ -411,17 +414,8 @@ def main():
                     queue.join()
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###GMAP STARTED AT:\t'  + now  + '\t###\n'))
-            trinityGFF3 = mapping.gmap(
-                'trin',
-                genome_gmap,
-                trinity_out,
-                args.threads,
-                'gff3_gene',
-                args.min_intron_length,
-                args.max_intron_length,
-                args.end_exon,
-                gmap_wd,
-                Fflag=True)
+            trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, args.threads, 'gff3_gene', args.min_intron_length,
+                args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
         # USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE
         # LAST)
         elif args.short_reads == '' and args.long_reads == '':
@@ -624,9 +618,9 @@ def main():
                         args.min_intron_length,
                         args.max_intron_length,
                         args.end_exon,
-                        gmap_wd,
+                        gmap_wd, args.verbose,
                         Fflag=False)  # change in 1 and 2
-                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd)
+                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd, args.verbose)
 
         # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
         # FILE
@@ -646,7 +640,7 @@ def main():
                 # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
                 # REFERENCE
                 gffreadFastaFile = consensus.gffread(
-                    mergedmapGFF3, ref, consensus_wd)
+                    mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
                 long_fasta, filter_count = mseq.filterLongReads(
@@ -678,7 +672,7 @@ def main():
                         args.cluster_max_evidence,
                         args.assembly_overlapLength,
                         tmp_wd)
-                    consensus.assembly(args.assembly_overlapLength, args.assembly_percentIdentity, args.threads, tmp_wd)
+                    consensus.assembly(args.assembly_overlapLength, args.assembly_percentIdentity, args.threads, tmp_wd, args.verbose)
                     utrs.lengthSupport(tmp_wd, args.threads)
 
         # WITH THE ELSE, WE ALLOW THE USER TO DECIDE TO CHANGE THE ASSEMBLY
@@ -709,7 +703,7 @@ def main():
             args.min_intron_length,
             args.max_intron_length,
             args.end_exon,
-            gmap_wd,
+            gmap_wd, args.verbose,
             Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
         print(("\n###GETTING THE STRAND RIGHT\t"  + now  + "\t###\n"))
