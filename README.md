@@ -36,8 +36,8 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 - samtools v0.1.19-96b5f2294a
 - bedtools v2.25.0
-- bowtie  version 1.1.2
-- bamtools 2.4.1
+- bowtie  v1.1.2
+- bamtools v2.4.1
 - AATpackage r03052011 
 - iAssembler v1.3.2.x64
 - gm_et_linux_64 (THIS SOFTWARE IS NOT FREE FOR EVERYONE)
