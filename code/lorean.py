@@ -8,7 +8,7 @@
 #TODO
 #check for strand on single exon gene based on reads mapping
 
-import argparse
+
 import datetime
 import os
 import shutil
@@ -19,6 +19,7 @@ from queue import Queue
 from threading import Thread
 
 import collect_only as collect
+import arguments as arguments
 import consensus_iAssembler as consensus
 # OTHER SCRIPTS
 import dirs_and_files as logistic
@@ -33,164 +34,6 @@ import reduceUTRs as utrs
 import transcript_assembly as transcripts
 
 
-####################################
-### CHEKS BEFORE START LOREAN ######
-####################################
-
-###############
-###FUNCTIONS###
-###############
-
-def arguments():
-    '''Parses the arguments from the program invocation'''
-
-    parser = argparse.ArgumentParser(
-        prog='lorean',
-        usage='%(prog)s [options] protein_sequences reference species_name',
-        description='LoReAn - Automated genome annotation pipeline that integrates long reads',
-        epilog='Luigi Faino - March 2017')
-    parser.add_argument("protein_evidence",
-                        help="Path to protein sequences FASTA file []")
-    parser.add_argument("ref",
-                        help="Path to reference file")
-    parser.add_argument("species",
-                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
-    parser.add_argument("-d","--stranded",
-                        help="Run LoReAn on stranded mode [FALSE]",
-                        action='store_true')
-    parser.add_argument("-f","--fungus",
-                        help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
-                        action='store_true')
-    parser.add_argument("-k","--keep_tmp",
-                        help="Keep temporary files [FALSE]",
-                        action='store_true')
-    parser.add_argument("-s","--short_reads",
-                        nargs="?",
-                        default="",
-                        help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
-                        metavar='FASTQ_file')
-    parser.add_argument("-l","--long_reads", 
-                        nargs="?", default="",
-                        help="Path to long reads FASTQ []",
-                        metavar='FASTQ_file')
-    parser.add_argument("-a","--adapter",
-                        nargs="?",
-                        default="",
-                        help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
-                        metavar='FASTA_file')
-    parser.add_argument("-r","--repeat_masked",
-                        nargs="?",
-                        default="",
-                        help="GFF or GFF3 or GTF or BED file containing repeats coordinates []",
-                        metavar='GFF_file')
-    parser.add_argument("-m","--max_long_read",
-                        nargs="?",
-                        default=20000,
-                        help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
-                        type=int)
-    parser.add_argument("-p","--pasa_db", 
-                        nargs="?", default="annotation",
-                        help="PASA database name [pipeline_run]")
-    parser.add_argument("-n","--prefix_gene",
-                        nargs="?",
-                        default="species",
-                        help="Prefix to add to the final Gff3 gene name [specie]")
-    parser.add_argument("-w","--working_dir",
-                        "--working_dir",
-                        nargs="?",
-                        default="annotation",
-                        help="Working directory (will create if not present) [./]")
-    parser.add_argument("-t","--threads", 
-                        nargs="?", default="3",
-                        help="Number of threads [1]",
-                        metavar='N')
-    parser.add_argument("-cw","--augustus",
-                        nargs="?",
-                        default="1",
-                        help="Weight assigned to AUGUSTUS evidence for EVM [1]",
-                        metavar='N')
-    parser.add_argument("-gw","--genemark",
-                        nargs="?",
-                        default="1",
-                        help="Weight assigned to GENEMARK evidence for EVM [1]",
-                        metavar='N')
-    parser.add_argument("-tw","--trinity",
-                        nargs="?",
-                        default="1",
-                        help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
-                        metavar='N')
-    parser.add_argument("-pw","--pasa", 
-                        nargs="?", default="5",
-                        help="Weight assigned to PASA evidence for EVM [5]",
-                        metavar='N')
-    parser.add_argument("-aw","--AAT",
-                        nargs="?",
-                        default="1",
-                        help="Weight assigned to AAT protein evidence for EVM [1]",
-                        metavar='N')
-    parser.add_argument("-c","--segmentSize", 
-                        nargs="?", default="100000",
-                        help="Segment size for EVM partitions [100000]",
-                        metavar='N')
-    parser.add_argument("-e","--overlapSize", 
-                        nargs="?", default="10000",
-                        help="Overlap size for EVM partitions [10000]",
-                        metavar='N')
-    parser.add_argument("-g","--min_intron_length", 
-                        nargs="?", default="9",
-                        help="Minimal intron length for GMAP [9]",
-                        metavar='N')
-    parser.add_argument("-q","--max_intron_length",
-                        nargs="?",
-                        default="1000",
-                        help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
-                        metavar='N')
-    parser.add_argument("-ee", "--end_exon", 
-                        nargs="?", default="20",
-                        help="Minimal length for end exon with GMAP [20]",
-                        metavar='N')
-    parser.add_argument("-cme","--cluster_min_evidence", 
-                        nargs="?", default="5",
-                        help="Minimal evidence needed to form a cluster [5]",
-                        metavar='N')
-    parser.add_argument("-cMe","--cluster_max_evidence",
-                        nargs="?",
-                        default="5000",
-                        help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]",
-                        metavar='N')
-    parser.add_argument("-aol","--assembly_overlapLength",
-                        nargs="?",
-                        default="200",
-                        help="Minimal length (in nt) of overlap for ASSEMBLY [200]",
-                        metavar='N')
-    parser.add_argument("-api","--assembly_percentIdentity",
-                        nargs="?", default="97",
-                        help="Minimal identity for the ASSEMBLY (95-100) [97]",
-                        metavar='N')
-    parser.add_argument("-art","--assembly_readThreshold",
-                        nargs="?",
-                        default="0.3",
-                        help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
-                        metavar='F')
-    parser.add_argument("-ne","--no_EVM",
-                        help="Run until the preparation of EVM inputs [FALSE]",
-                        action='store_true')
-    parser.add_argument("-nc","--no_consensus",
-                        help="Do not run the long reads consensus pipeline [FALSE]",
-                        action='store_true')
-    parser.add_argument("-nu","--no_update",
-                        help="Do not run the PASA update[FALSE]",
-                        action='store_true')
-    parser.add_argument("-co","--collect_only",
-                        help="Collect only assebmled transcripts [FALSE]",
-                        action='store_true')
-    parser.add_argument("-v","--verbose",
-                        help="Prints out the commands used in LoReAn[FALSE]",
-                        action='store_true')
-
-    args = parser.parse_args()
-    return args
-
 ###############
 ###MAIN###
 ###############
@@ -199,7 +42,7 @@ def main():
     if os.path.isfile("/data/gm_key"):
         '''Core of the program'''
         # Parse the arguments
-        args = arguments()
+        args = arguments.setting()
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         # Useful variables for later
@@ -207,9 +50,17 @@ def main():
         wd = wd_base + 'run/'
         ref = os.path.abspath(args.ref)
 
+        gmap_name = args.ref + '_GMAPindex'
+        pasa_name = 'assembler-' + args.pasa_db
+
+        if args.short_reads == '' and args.long_reads == '':
+            weights_dic = {'Augustus': args.augustus, 'GeneMark.hmm': args.genemark, 'AAT': args.AAT}
+
+        elif args.short_reads != '' and args.long_reads != '':
+            weights_dic = {'Augustus': args.augustus, pasa_name : args.pasa, 'GeneMark.hmm': args.genemark,
+                           'AAT': args.AAT, gmap_name: args.trinity}
         FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
 
-        # Arrange stuff before start
         logistic.check_create_dir(wd)
         logistic.check_file(ref)
         gmap_wd = wd + '/gmap_output/'
@@ -217,12 +68,22 @@ def main():
         pasa_dir = wd + 'PASA/'
         star_out = wd + '/STAR/'
         trin_dir = wd + 'Trinity/'
+        evm_dir = wd + 'evm_inputs/'
+        braker_out = wd + 'braker/' + args.species + '/'
 
+
+        logistic.check_create_dir(evm_dir)
         logistic.check_create_dir(trin_dir)
         logistic.check_create_dir(star_out)
         logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
         logistic.check_create_dir(exonerate_wd)
+
+        check_species = ['augustus', '--species=help']
+        process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        outAugustus, errAugustus = process.communicate()
+        protein_loc = os.path.abspath(args.protein_evidence)
+
         if args.repeat_masked:
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
         else:
@@ -307,6 +168,10 @@ def main():
             else:
                 trinity_cpu = int(args.threads)
             trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu)
+            trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, args.threads, 'gff3_gene', args.min_intron_length,
+                                       args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
+            trinity_path = trinityGFF3
+
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###PASA STARTS AT:\t'  + now  + '\t###\n'))
@@ -315,207 +180,114 @@ def main():
             # Launch PASA
             pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length,
                                               args.threads)
+
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
-            if args.short_reads != '' or args.long_reads != '':
-                check_species = ['augustus', '--species=help']
-                process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                out, err = process.communicate()
-                protein_loc = os.path.abspath(args.protein_evidence)
-                if args.species in (err.decode("utf-8")):
-                    now = datetime.datetime.now().strftime(fmtdate)
-                    print(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:'  + now  + '\t###\n'))
-                    queue = Queue()
-                    for i in range(3):
-                        queue.put(i)  # QUEUE WITH A ZERO AND A ONE
-                        for i in range(3):
-                            t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
-                                                                          args.threads, args.fungus, list_fasta_names, wd))
-                            # AugustGmesAAT(queue, ref, species,
-                            # protein_evidence, threads, fungus,
-                            # list_fasta_names, wd):
-                            t.daemon = True
-                            t.start()
-                    queue.join()
-                elif args.short_reads:  # USING PROTEINS AND SHORT READS
-                    queue = Queue()
-                    now = datetime.datetime.now().strftime(fmtdate)
-                    print(('\n###BRAKER1 AND AAT STARTED AT:\t'  + now  + '\t###\n'))
-                    for i in range(2):
-                        queue.put(i)  # QUEUE WITH A ZERO AND A ONE
-                    for i in range(2):
-                        t = Thread(
-                            target=handler.BrakerAAT,
-                            args=(
-                                queue,
-                                ref,
-                                default_bam,
-                                args.species,
-                                args.protein_evidence,
-                                args.threads,
-                                args.fungus,
-                                list_fasta_names,
-                                wd))
-                        t.daemon = True
-                        t.start()
-                    queue.join()
-                elif args.long_reads:  # USING PROTEINS AND LONG READS
-                    queue = Queue()
-                    now = datetime.datetime.now().strftime(fmtdate)
-                    print(('\n###BRAKER1 AND AAT STARTED AT: \t'  + now  + '\t###\n'))
-                    for i in range(2):
-                        queue.put(i)  # QUEUE WITH A ZERO AND A ONE
-                    for i in range(2):
-                        t = Thread(
-                            target=handler.BrakerAAT,
-                            args=(
-                                queue,
-                                ref,
-                                long_sorted_bam,
-                                args.species,
-                                args.protein_evidence,
-                                args.threads,
-                                args.fungus,
-                                list_fasta_names,
-                                wd))
-                        t.daemon = True
-                        t.start()
-                    queue.join()
-            now = datetime.datetime.now().strftime(fmtdate)
-            print(('\n###GMAP STARTED AT:\t'  + now  + '\t###\n'))
-            trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, args.threads, 'gff3_gene', args.min_intron_length,
-                args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
-        # USING PROTEINS AND AUGUSTUS AND GMES_PETAP (TOM IMPLEMENT THE
-        # LAST)
-        elif args.short_reads == '' and args.long_reads == '':
-            check_species = ['augustus', '--species=help']
-            process = subprocess.Popen(
-                check_species,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
-            out, err = process.communicate()
-            protein_loc = os.path.abspath(args.protein_evidence)
-            if args.species in err:
+            if args.species in (errAugustus.decode("utf-8")):
                 now = datetime.datetime.now().strftime(fmtdate)
-                print(('\n###STARTED AT AUGUSTUS, GENEMARK-ES AND AAT:\t'  + now  + '\t###\n'))
+                print(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:'  + now  + '\t###\n'))
                 queue = Queue()
                 for i in range(3):
                     queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                     for i in range(3):
-                        t = Thread(
-                            target=handler.AugustGmesAAT,
-                            args=(
-                                queue,
-                                ref,
-                                args.species,
-                                protein_loc,
-                                args.threads,
-                                args.fungus,
-                                list_fasta_names,
-                                wd))
-                        # AugustGmesAAT(queue, ref, species,
-                        # protein_evidence, threads, fungus,
-                        # list_fasta_names, wd):
+                        t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
+                                                                      args.threads, args.fungus, list_fasta_names, wd))
                         t.daemon = True
                         t.start()
                 queue.join()
-            else:
-                now = datetime.datetime.now().strftime(fmtdate)
-                sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS \t"  + now + "\t#####\n")
-        # Prepare EVM input files
-        now = datetime.datetime.now().strftime(fmtdate)
-        print(('\n###EVM STARTED AT:\t'  + now  + '\t###\n'))
-        # HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
-        gmap_name = args.ref + '_GMAPindex'
-        if args.short_reads != '' or args.long_reads != '':  # WE HAVE SHORT READS AND PROTEINS
-            braker_out = wd + 'braker/' + args.species + '/'
-            if os.path.exists(braker_out):
-                augustus_file = braker_out + 'augustus.gff'
-                augustus_gff3 = inputEvm.convert_augustus(
-                    augustus_file, wd)
-                genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
-                genemark_gff3 = inputEvm.convert_genemark(
-                    genemark_file, wd)
-            else:
                 augustus_file = wd + 'augustus/augustus.gff'
-                augustus_gff3 = inputEvm.convert_augustus(
-                    augustus_file, wd)
+                augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                 genemark_file = wd + 'gmes/genemark.gtf'
-                genemark_gff3 = inputEvm.convert_genemark(
-                    genemark_file, wd)
-            mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
-            trinity_path = gmap_wd + 'gmap.trinity.gff3'
-            weights_dic = {
-                'Augustus': args.augustus,
-                'assembler-' +
-                args.pasa_db: args.pasa,
-                'GeneMark.hmm': args.genemark,
-                'AAT': args.AAT,
-                gmap_name: args.trinity}
-        elif args.short_reads == '' and args.long_reads == '':  # WE HAVE PROTEINS BUT NOT SHORT READS
+                genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
+                mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
+
+            elif args.short_reads:  # USING PROTEINS AND SHORT READS
+                    now = datetime.datetime.now().strftime(fmtdate)
+                    print(('\n###BRAKER1 (USING SHORT READS) AND AAT STARTED AT:\t'  + now  + '\t###\n'))
+                    queue = Queue()
+                    for i in range(2):
+                        queue.put(i)  # QUEUE WITH A ZERO AND A ONE
+                        for i in range(2):
+                            t = Thread(target=handler.BrakerAAT, args=(queue, ref, default_bam, args.species, protein_loc,
+                                                                       args.threads, args.fungus, list_fasta_names, wd))
+                            t.daemon = True
+                            t.start()
+                    queue.join()
+                    augustus_file = braker_out + 'augustus.gff'
+                    augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
+                    genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
+                    genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
+                    mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
+
+            else:  # USING PROTEINS AND LONG READS
+                queue = Queue()
+                now = datetime.datetime.now().strftime(fmtdate)
+                print(('\n###BRAKER1 (USING LONG READS) AND AAT STARTED AT: \t'  + now  + '\t###\n'))
+                for i in range(2):
+                    queue.put(i)  # QUEUE WITH A ZERO AND A ONE
+                for i in range(2):
+                    t = Thread(target=handler.BrakerAAT, args=(queue, ref, long_sorted_bam, args.species, protein_loc,
+                                                               args.threads, args.fungus, list_fasta_names, wd))
+                    t.daemon = True
+                    t.start()
+                queue.join()
+                augustus_file = braker_out + 'augustus.gff'
+                augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
+                genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
+                genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
+                mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
+        elif args.species in (errAugustus.decode("utf-8")):
+            now = datetime.datetime.now().strftime(fmtdate)
+            print(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:'  + now  + '\t###\n'))
+            queue = Queue()
+            for i in range(3):
+                queue.put(i)  # QUEUE WITH A ZERO AND A ONE
+                for i in range(3):
+                    t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
+                                                                  args.threads, args.fungus, list_fasta_names, wd))
+                    t.daemon = True
+                    t.start()
+            queue.join()
             augustus_file = wd + 'augustus/augustus.gff'
             augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
             genemark_file = wd + 'gmes/genemark.gtf'
             genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
             mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
-            weights_dic = {
-                'Augustus': args.augustus,
-                'GeneMark.hmm': args.genemark,
-                'AAT': args.AAT}
+        else:
+            now = datetime.datetime.now().strftime(fmtdate)
+            sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t"  + now + "\t#####\n")
+        # Prepare EVM input files
+        now = datetime.datetime.now().strftime(fmtdate)
+        print(('\n###EVM STARTED AT:\t'  + now  + '\t###\n'))
+        # HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
+
+        if args.short_reads == '' and args.long_reads == '':
+            evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
+        elif args.short_reads != '' and args.long_reads != '':
+            evm_inputs = {'pasa': pasa_gff3,'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3,
+                          'gmap': trinity_path}
+
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE
-        if not args.no_EVM:
-            evm_dir = wd + 'evm_inputs/'
-            logistic.check_create_dir(evm_dir)
-            # print '> EVM input directory created in ' + evm_dir
-            if args.short_reads != '' or args.long_reads != '':  # WE HAVE SHORT READS AND PROTEINS
-                evm_inputs = {
-                    'pasa': pasa_gff3,
-                    'augustus': augustus_gff3,
-                    'genemark': genemark_gff3,
-                    'AAT': mergedProtGFF3,
-                    'gmap': trinity_path}
-            elif args.short_reads == '' and args.long_reads == '':  # WE HAVE PROTEINS BUT NOT SHORT READS
-                evm_inputs = {
-                    'augustus': augustus_gff3,
-                    'genemark': genemark_gff3,
-                    'AAT': mergedProtGFF3}
-            list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(
-                evm_dir, evm_inputs)
-            pasa_name = 'assembler-' + args.pasa_db
-            weight_file = inputEvm.evm_weight(
-                evm_dir, weights_dic, list_soft, pasa_name, gmap_name)
-            # EVM PIPELINE
-            if args.short_reads != '' or args.long_reads != '':  # WE HAVE SHORT READS AND PROTEINS
-                evm_gff3 = evm_pipeline.evm_pipeline(
-                    wd,
-                    args.threads,
-                    genome_gmap,
-                    weight_file,
-                    pred_file,
-                    transcript_file,
-                    protein_file,
-                    args.segmentSize,
-                    args.overlapSize)
-            elif args.short_reads == '' and args.long_reads == '':  # WE HAVE PROTEINS BUT NOT SHORT READS
-                transcript_file = ''
-                evm_gff3 = evm_pipeline.evm_pipeline(
-                    wd,
-                    args.threads,
-                    genome_gmap,
-                    weight_file,
-                    pred_file,
-                    transcript_file,
-                    protein_file,
-                    args.segmentSize,
-                    args.overlapSize)
-            # KEEP THIS OUTPUT
-            FinalFiles.append(evm_gff3)
-            if args.short_reads == '' and args.long_reads == '':
-                now = datetime.datetime.now().strftime(fmtdate)
-                sys.exit("##### EVM FINISHED AT:\t"  + now  + "\t#####\n")
-        else:
-            print(("\n###NOT RUNNING EVM PIPELINE"  + str(datetime.datetime.now())  + "\t###\n"))
-            evm_gff3 = wd + '/evm_output/evm.out.combined.gff3'
+
+        # print '> EVM input directory created in ' + evm_dir
+
+        list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(evm_dir, evm_inputs)
+        weight_file = inputEvm.evm_weight(evm_dir, weights_dic, list_soft, pasa_name, gmap_name)
+        # EVM PIPELINE
+
+
+        if args.short_reads != '' or args.long_reads != '':  # WE HAVE SHORT READS AND PROTEINS
+            evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
+                                                 protein_file, args.segmentSize, args.overlapSize)
+        elif args.short_reads == '' and args.long_reads == '':  # WE HAVE PROTEINS BUT NOT SHORT READS
+            transcript_file = ''
+            evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
+                                                 protein_file, args.segmentSize, args.overlapSize)
+        # KEEP THIS OUTPUT
+        FinalFiles.append(evm_gff3)
+        if args.short_reads == '' and args.long_reads == '':
+            now = datetime.datetime.now().strftime(fmtdate)
+            sys.exit("##### EVM FINISHED AT:\t"  + now  + "\t#####\n")
             # RE-RUN PASA PIPELINE
         # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
         # AFTER EVM; #We only want to update if it ran with short reads
@@ -533,16 +305,8 @@ def main():
                 now = datetime.datetime.now().strftime(fmtdate)
                 print(('\n##UPDATE ROUND \t'  + now  + '\t###\n'))
                 if args.long_reads == "":
-                    finalOutput = evm_pipeline.update_database(
-                        args.threads,
-                        str(round_n),
-                        pasa_dir,
-                        args.pasa_db,
-                        align_pasa_conf,
-                        ref,
-                        trinity_out,
-                        evm_gff3,
-                        "a")
+                    finalOutput = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
+                                                               align_pasa_conf, ref, trinity_out, evm_gff3, "a")
                     finalUpdate = grs.genename(finalOutput, args.prefix_gene)
                     updatedGff3 = grs.newNames(finalUpdate)
 
