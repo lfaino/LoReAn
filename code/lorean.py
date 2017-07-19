@@ -56,7 +56,7 @@ def main():
         if args.short_reads == '' and args.long_reads == '':
             weights_dic = {'Augustus': args.augustus, 'GeneMark.hmm': args.genemark, 'AAT': args.AAT}
 
-        elif args.short_reads != '' and args.long_reads != '':
+        elif args.short_reads != '' or args.long_reads != '':
             weights_dic = {'Augustus': args.augustus, pasa_name : args.pasa, 'GeneMark.hmm': args.genemark,
                            'AAT': args.AAT, gmap_name: args.trinity}
         FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
@@ -262,7 +262,7 @@ def main():
 
         if args.short_reads == '' and args.long_reads == '':
             evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
-        elif args.short_reads != '' and args.long_reads != '':
+        elif args.short_reads != '' or args.long_reads != '':
             evm_inputs = {'pasa': pasa_gff3,'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3,
                           'gmap': trinity_path}
 
