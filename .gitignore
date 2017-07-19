@@ -1,0 +1,8 @@
+.idea/
+_windows/
+codestyles/
+_config.yml
+debugger.xml
+ide.general.xml
+perl5.xml
+*.pyc
