@@ -91,7 +91,7 @@ def main():
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         list_fasta_names = multiple.single_fasta(ref, wd)
-        if args.short_reads != '' or args.long_reads != '':
+        if args.short_reads or args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###STAR MAPPING  STARTED AT:\t'  + now + '\t###\n'))
             # SHORT READS
@@ -260,9 +260,9 @@ def main():
         print(('\n###EVM STARTED AT:\t'  + now  + '\t###\n'))
         # HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
 
-        if args.short_reads == '' and args.long_reads == '':
+        if not args.short_reads and not args.long_reads:
             evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
-        elif args.short_reads != '' or args.long_reads != '':
+        elif args.short_reads or args.long_reads:
             evm_inputs = {'pasa': pasa_gff3,'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3,
                           'gmap': trinity_path}
 
@@ -276,23 +276,23 @@ def main():
         # EVM PIPELINE
 
 
-        if args.short_reads != '' or args.long_reads != '':  # WE HAVE SHORT READS AND PROTEINS
+        if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
             evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
                                                  protein_file, args.segmentSize, args.overlapSize)
-        elif args.short_reads == '' and args.long_reads == '':  # WE HAVE PROTEINS BUT NOT SHORT READS
+        elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
             evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
                                                  protein_file, args.segmentSize, args.overlapSize)
         # KEEP THIS OUTPUT
         FinalFiles.append(evm_gff3)
-        if args.short_reads == '' and args.long_reads == '':
+        if args.short_reads and args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t"  + now  + "\t#####\n")
             # RE-RUN PASA PIPELINE
         # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
         # AFTER EVM; #We only want to update if it ran with short reads
         round_n = 0
-        if (args.short_reads != "" and not args.no_update) and (args.long_reads == "" and not args.no_update):
+        if (args.short_reads and not args.no_update) and (args.long_reads and not args.no_update):
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' +   now  + '\t###\n'))
             firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
@@ -309,13 +309,13 @@ def main():
                                                                align_pasa_conf, ref, trinity_out, evm_gff3, "a")
                     finalUpdate = grs.genename(finalOutput, args.prefix_gene)
                     updatedGff3 = grs.newNames(finalUpdate)
-
         else:
             updatedGff3 = evm_gff3
 
         #updatedGff3 = wd+'PASA/annotation.PASAupdated.round1.gff3'
         # HERE WE CHECK IF WE HAVE LONG READS; IF LONG READS ARE NOT
         # PROVIDED, THE SOFTWARE STOPS
+
         if args.long_reads == '':
             final_output_dir = wd + 'output/'
             logistic.check_create_dir(final_output_dir)
@@ -341,17 +341,8 @@ def main():
                 # HERE WE MAP THE READS ON THE GENOME USING GMAP
 
                 if not long_sorted_bam:
-                    long_sam = mapping.gmap(
-                        'sam',
-                        genome_gmap,
-                        long_fasta,
-                        args.threads,
-                        'samse',
-                        args.min_intron_length,
-                        args.max_intron_length,
-                        args.end_exon,
-                        gmap_wd, args.verbose,
-                        Fflag=False)  # change in 1 and 2
+                    long_sam = mapping.gmap( 'sam', genome_gmap, long_fasta, args.threads, 'samse', args.min_intron_length,
+                                             args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=False)
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd, args.verbose)
 
         # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
