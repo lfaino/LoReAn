@@ -18,9 +18,13 @@ GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offse
 GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
 --microexon-spliceprob 1 -K  %s -t %s -f %s %s'
 
-STAR = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s \
---outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical \
---outSAMattrIHstart 1 --outFilterMultimapNmax 3 --readFilesIn %s'
+STAR_SINGLE = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s ' \
+       '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
+       '--outSAMattrIHstart 1 --outFilterMultimapNmax 3 --readFilesIn %s'
+
+STAR_PAIRED = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s ' \
+       '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
+       '--outSAMattrIHstart 1 --outFilterMultimapNmax 3 --readFilesIn %s %s'
 
 STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases 6 --genomeFastaFiles %s'
 
@@ -142,9 +146,9 @@ def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
     global args
     prefix = 'STAR_shortreads'
     if isinstance(reads, str):  # Only one file
-        cmd = STAR % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads) # '--limitGenomeGenerateRAM', '1100000000',
+        cmd = STAR_SINGLE % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads) # '--limitGenomeGenerateRAM', '1100000000',
     elif isinstance(reads, list):  # Paired end reads
-        cmd = STAR % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads[0], reads[1])
+        cmd = STAR_PAIRED % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads[0], reads[1])
     filename = wd + prefix + 'Aligned.out.bam'
 
     if os.path.isfile(filename):
