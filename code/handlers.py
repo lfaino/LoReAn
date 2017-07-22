@@ -28,7 +28,7 @@ def BrakerAAT(queue,ref, bamFile, species_name, proteinEvidence, threads, fungus
     return
 
 
-def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd):
+def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
     use = (round(int(threads) / 3)-1)
     use_gmes = str(use)
     augustus_wd = wd + 'augustus/'
@@ -41,10 +41,10 @@ def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_f
         dummy = queue.get()
         if dummy == 0:
             print ("\n###RUNNING AUGUSTUS ###\n")
-            multiple.augustus_multi(ref, use, species, list_fasta_names, augustus_wd)
+            multiple.augustus_multi(use, species, list_fasta_names, augustus_wd, verbose)
         if dummy == 1:
             print ("\n###RUNNING AAT ###\n")
-            multiple.aat_multi(ref, use, protein_evidence, list_fasta_names, aat_wd)
+            multiple.aat_multi(ref, use, protein_evidence, list_fasta_names, aat_wd,)
         if dummy == 2:
             print ("\n###RUNNING GENEMARK ###\n")
             transcripts.gmes_call(gmes_wd, ref, fungus, use_gmes)

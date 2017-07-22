@@ -117,8 +117,7 @@ def main():
                 os.system(cmdstring)
                 bam_file = args.short_reads.split("/")
                 short_bam = star_out + "/" + bam_file[-1]
-                short_sorted_bam = mapping.samtools_sort(
-                    short_bam, args.threads, wd, args.verbose)
+                short_sorted_bam = mapping.samtools_sort(short_bam, args.threads, wd, args.verbose)
                 # print short_sorted_bam
             else:
                 short_sorted_bam = False
@@ -167,7 +166,7 @@ def main():
                 trinity_cpu = int(int(args.threads)/int(2))
             else:
                 trinity_cpu = int(args.threads)
-            trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu)
+            trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
             trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, args.threads, 'gff3_gene', args.min_intron_length,
                                        args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
             trinity_path = trinityGFF3
@@ -179,7 +178,7 @@ def main():
             align_pasa_conf = transcripts.pasa_configuration(pasa_dir, args.pasa_db)
             # Launch PASA
             pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length,
-                                              args.threads)
+                                              args.threads, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.species in (errAugustus.decode("utf-8")):
@@ -190,7 +189,7 @@ def main():
                     queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                     for i in range(3):
                         t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
-                                                                      args.threads, args.fungus, list_fasta_names, wd))
+                                                                      args.threads, args.fungus, list_fasta_names, wd, args.verbose))
                         t.daemon = True
                         t.start()
                 queue.join()
@@ -285,30 +284,21 @@ def main():
                                                  protein_file, args.segmentSize, args.overlapSize)
         # KEEP THIS OUTPUT
         FinalFiles.append(evm_gff3)
-        if args.short_reads and args.long_reads:
+        if not args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t"  + now  + "\t#####\n")
             # RE-RUN PASA PIPELINE
         # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
         # AFTER EVM; #We only want to update if it ran with short reads
         round_n = 0
-        if (args.short_reads and not args.no_update) and (args.long_reads and not args.no_update):
+        if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' +   now  + '\t###\n'))
-            firstRound = pasa_dir + 'annotation.PASAupdated.round1.gff3'
-            if os.path.isfile(firstRound):
-                print ('UPDATE ALREADY PERFORMED --- skipping')
-                updatedGff3 = firstRound
-                round_n = 1
-            else:
-                round_n += 1
-                now = datetime.datetime.now().strftime(fmtdate)
-                print(('\n##UPDATE ROUND \t'  + now  + '\t###\n'))
-                if args.long_reads == "":
-                    finalOutput = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
-                                                               align_pasa_conf, ref, trinity_out, evm_gff3, "a")
-                    finalUpdate = grs.genename(finalOutput, args.prefix_gene)
-                    updatedGff3 = grs.newNames(finalUpdate)
+            round_n += 1
+            finalOutput = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
+                                                       align_pasa_conf, ref, trinity_out, evm_gff3, "a")
+            finalUpdate = grs.genename(finalOutput, args.prefix_gene)
+            updatedGff3 = grs.newNames(finalUpdate)
         else:
             updatedGff3 = evm_gff3
 
@@ -332,7 +322,7 @@ def main():
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###RUNNING iASSEMBLER\t'  + now  + '\t###\n'))
 
-            if args.long_reads and not args.no_consensus:
+            if args.long_reads:
                 # Means there are long reads to map and user wants to run
                 # this pipeline
 
@@ -403,8 +393,7 @@ def main():
         # THE FULL PIPELINE
         # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLWCT ONLY SEQUENCE
         # THAT PASS THE FILTER
-        evm_nosupport = collect.parse_only(
-            args.assembly_readThreshold, wd)
+        evm_nosupport = collect.parse_only(args.assembly_readThreshold, wd)
         tmp_assembly = collect.catAssembled(wd)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA

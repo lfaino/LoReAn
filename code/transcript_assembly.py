@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 import os
 import subprocess
+import sys
 import math
 
 
-def trinity(bam_file, wd, max_intron_length, threads):
+
+#==========================================================================================================
+# COMMANDS LIST
+
+TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 10G --output %s --CPU %s --full_cleanup'
+
+LAUNCH_PASA =  'Launch_PASA_pipeline.pl -c %s -C -r -R -g %s -t %s --ALIGNERS gmap --TRANSDECODER -I %s --CPU %s'
+
+#==========================================================================================================
+
+
+def trinity(bam_file, wd, max_intron_length, threads, verbose):
     """Calls genome guided trinity on the BAM file to generate
     assembled transcripts"""
     out_dir = wd + 'trinity_out_dir/'
-    args = [
-                'Trinity',
-                '--genome_guided_bam',
-                bam_file,
-                '--genome_guided_max_intron',
-                max_intron_length,
-                '--max_memory',
-                '10G',
-                '--output',
-                out_dir,
-                '--CPU',
-                str(threads),
-                '--full_cleanup']
+    cmd = TRINITY % (bam_file, max_intron_length,  out_dir, threads)
     
     out_name = out_dir + 'Trinity-GG.fasta'
 
@@ -36,7 +36,9 @@ def trinity(bam_file, wd, max_intron_length, threads):
     log_name = wd + 'trinity.log'
     log = open(log_name, 'w')
     try:
-        trinity_call = subprocess.Popen(args, stdout=log, stderr=log_err)
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1)
         trinity_call.communicate()
     except:
         print('Trinity did not work properly\n')
@@ -88,27 +90,10 @@ def pasa_configuration(pasa_dir, pasa_db):
     conf.close()
     return conf_file
 
-def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length, threads):
+def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length, threads, verbose):
     '''PASA to construct a database of transcripts. It will overwrite any
     database with the same name -the one of the reference-.'''
-    args = [
-        'Launch_PASA_pipeline.pl',
-        '-c',
-        conf_file,
-        '-C',
-        '-r',
-        '-R',
-        '-g',
-        reference,
-        '-t',
-        transcripts,
-        '--ALIGNERS',
-        'gmap',
-        '--TRANSDECODER',
-        '-I',
-        max_intron_length,
-        '--CPU',
-        str(threads)]
+    cmd = LAUNCH_PASA % (conf_file, reference, transcripts, max_intron_length, threads)
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     # print out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file):
@@ -119,7 +104,10 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     log = open(log_name, 'w')
     out_log = open(log_out_name, 'w')
     try:
-        subprocess.check_call(args, stdout=out_log, stderr=log, cwd=pasa_dir)
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        pasa = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=1)
+        pasa.communicate()
     except:
         print('PASA failed')
         raise NameError('')
@@ -177,26 +165,6 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus):
     log_err.close()
     return out_dir
 
-def augustus_call(wd, ref, species_name):
-    args = ['augustus', '--species=' + species_name, ref]
-    chromo = ref.split('/')[-1]
-    wd_augu = wd + '/' + chromo + '.augustus.gff'
-    wd_output = wd + '/' + 'augustus.gff3'
-    if os.path.isfile(wd_augu):
-        print(('Augustus  files exist: ' + wd_output + ' --- skipping\n'))
-        return wd
-    else:
-        log_name = wd_augu
-        log = open(log_name, 'w')
-        log_name_err = wd + 'augustus.err.log'
-        log_e = open(log_name_err, 'w')
-        try:
-            subprocess.check_call(args, stderr=log_e, stdout=log, cwd=wd)
-        except:
-            raise NameError('')
-        log.close()
-        log_e.close()
-    return wd
 
 def gmes_call(wd, ref, fungus, threads):
     wd_output = wd + '/genemark.gtf.gff3'

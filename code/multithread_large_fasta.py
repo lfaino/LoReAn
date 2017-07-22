@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import subprocess
+import sys
 import os
 from queue import Queue
 from threading import Thread, Lock
@@ -8,12 +9,22 @@ from Bio import SeqIO
 import transcript_assembly as transcripts
 import dirs_and_files as logistic
 import protein_alignment
+from multiprocessing import Pool
+import codecs
+import shutil
 
 
 count_sequences = 0
 count_sequences_aat = 0
 length_cluster = 0
 length_cluster_aat = 0
+
+#==========================================================================================================
+# COMMANDS LIST
+
+AUGUSTUS = 'augustus --species=%s %s'
+
+#==========================================================================================================
 
 
 def single_fasta(ref, wd):
@@ -36,59 +47,57 @@ def single_fasta(ref, wd):
     return single_fasta_list
 
 
-def parseAugustus(wd, single_fasta_list):
+def parseAugustus(wd):
     '''From all the augustus output after the multithread generate a single gff file'''
+
     fileName = wd + '/augustus.gff'
-    testGff = open(fileName, 'w')
-    wd_gff = ['cat']
-    for root, dirs, files in os.walk(wd):
-        for name in files:
-            for ident in single_fasta_list:
-                change_id = (ident.split('/')[-1]) + '.augustus.gff'
-                if name == change_id:
-                    wd_gff.append(os.path.join(root, name))
-    cat_call = subprocess.Popen(wd_gff, stdout=testGff)
-    cat_call.communicate()
-    #testGff.write(line.decode("utf-8"))
-                    #t_file.close()
-    testGff.close()
+    with open(fileName, 'wb') as outfile:
+        for root, dirs, files in os.walk(wd):
+            for name in files:
+                if name.endswith("fasta.augustus.gff"):
+                    filename = root + '/' + name
+                    with open(filename, 'rb') as fd:
+                        shutil.copyfileobj(fd, outfile, 1024*1024*10)
+
     return fileName
 
 
-def augustusParse(queue, species_name, wd):
-    '''to join the assembly and the parsing process'''
-    while True:
-        try:
-            ref = queue.get()
-        except:
-            break
-        outputDir = transcripts.augustus_call(wd, ref, species_name)
-        queue.task_done()
-        global count_sequences
-        count_sequences += 1
-        global length_cluster
+def augustus_multi(threads, species, single_fasta_list, wd, verbose):
+    '''handles the assembly process and parsing in a multithreaded way'''
+
+    all_augustus = []
+    augustus = [wd, species, verbose]
+    for record in single_fasta_list:
+        single_command = augustus + [record]
+        all_augustus.append(single_command)
+    with Pool(int(threads)) as p:
+        p.map(augustus_call, all_augustus)
+    parseAugustus(wd)
     return
 
-
-def func_star(a_b):
-    return augustusParse(*a_b)
-
-
-def augustus_multi(ref, threads, species, single_fasta_list, wd):
-    '''handles the assembly process and parsing in a multithreaded way'''
-    augu_queue = Queue()
-    counter = 1
-    for record in single_fasta_list:
-        augu_queue.put(record)
-    global length_cluster
-    length_cluster = str(augu_queue.qsize())
-
-    for i in range(int(threads)):
-        t = Thread(target=augustusParse, args=(augu_queue, species, wd))
-        t.daemon = True
-        t.start()
-    augu_queue.join()
-    parseAugustus(wd, single_fasta_list)
+def augustus_call(all_augustus):
+    '''
+    augustus call
+    :param all_augustus:
+    :return:
+    '''
+    cmd = AUGUSTUS % (all_augustus[1], all_augustus[3])
+    chromo = all_augustus[3].split('/')[-1]
+    wd_augu = all_augustus[0] + '/' + chromo + '.augustus.gff'
+    log_name = wd_augu
+    log = open(log_name, 'w')
+    log_name_err = all_augustus[0] + 'augustus.err.log'
+    log_e = open(log_name_err, 'w')
+    try:
+        if all_augustus[2]:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
+        augustus.communicate()
+    except:
+        raise NameError('')
+    log.close()
+    log_e.close()
+    return all_augustus[0]
 
 
 def aatParse(aat_queue, protein_evidence, wd):
