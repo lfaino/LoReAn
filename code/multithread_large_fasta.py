@@ -51,6 +51,9 @@ def single_fasta(ref, wd):
 def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
 
+
+    if int(threads) < 1:
+        threads = 1
     all_augustus = []
     augustus = [wd, species, verbose]
     for record in single_fasta_list:
@@ -104,6 +107,8 @@ def parseAugustus(wd):
 def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
 
+    if int(threads) < 1:
+        threads = 1
     all_aat = []
     aat = [wd, protein_evidence, verbose]
     for record in single_fasta_list:
@@ -119,6 +124,7 @@ def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
 def aat_call(all_aat):
     '''Calls genome guided trinity on the BAM file to generate
     assembled transcripts'''
+
 
     cmd = AAT % (all_aat[3], all_aat[1] )
     log_name = all_aat[3] + 'AAT.log'

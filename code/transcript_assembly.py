@@ -130,6 +130,9 @@ def gmes_call(wd, ref, fungus, threads, verbose):
     log_e = open(log_name_err, 'w')
     print ("\n###RUNNING GENEMARK ###\n")
 
+    if int(threads) < 1:
+        threads = 1
+
     if fungus:
         cmd = GMES_FU % (threads, ref)
     else:
