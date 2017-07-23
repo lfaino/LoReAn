@@ -207,7 +207,7 @@ def main():
                         queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                         for i in range(2):
                             t = Thread(target=handler.BrakerAAT, args=(queue, ref, default_bam, args.species, protein_loc,
-                                                                       args.threads, args.fungus, list_fasta_names, wd))
+                                                                       args.threads, args.fungus, list_fasta_names, wd, args.verbose))
                             t.daemon = True
                             t.start()
                     queue.join()
@@ -225,7 +225,7 @@ def main():
                     queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                 for i in range(2):
                     t = Thread(target=handler.BrakerAAT, args=(queue, ref, long_sorted_bam, args.species, protein_loc,
-                                                               args.threads, args.fungus, list_fasta_names, wd))
+                                                               args.threads, args.fungus, list_fasta_names, wd, args.verbose))
                     t.daemon = True
                     t.start()
                 queue.join()
@@ -242,7 +242,7 @@ def main():
                 queue.put(i)  # QUEUE WITH A ZERO AND A ONE
                 for i in range(3):
                     t = Thread(target=handler.AugustGmesAAT,args=(queue, ref, args.species, protein_loc,
-                                                                  args.threads, args.fungus, list_fasta_names, wd))
+                                                                  args.threads, args.fungus, list_fasta_names, wd, args.verbose))
                     t.daemon = True
                     t.start()
             queue.join()

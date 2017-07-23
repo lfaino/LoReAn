@@ -2,7 +2,6 @@
 import os
 import subprocess
 import sys
-import math
 
 
 
@@ -13,6 +12,14 @@ TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_me
 
 LAUNCH_PASA =  'Launch_PASA_pipeline.pl -c %s -C -r -R -g %s -t %s --ALIGNERS gmap --TRANSDECODER -I %s --CPU %s'
 
+GMES_FU = 'gmes_petap.pl --ES --fungus --core %s --sequence %s'
+
+GMES = 'gmes_petap.pl --ES --core %s --sequence %s'
+
+BRAKER_FU = 'braker.pl --cores=%s  --useexisting --species=%s --workingdir=%s --genome=%s --fungus --bam=%s'
+
+BRAKER = 'braker.pl --cores=%s  --useexisting --species=%s --workingdir=%s --genome=%s --bam=%s'
+
 #==========================================================================================================
 
 
@@ -21,10 +28,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     assembled transcripts"""
     out_dir = wd + 'trinity_out_dir/'
     cmd = TRINITY % (bam_file, max_intron_length,  out_dir, threads)
-    
     out_name = out_dir + 'Trinity-GG.fasta'
-
-        
     if os.path.isfile(out_name):
         print((
             'Trinity-GG file existed already: ' +
@@ -44,29 +48,6 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
         print('Trinity did not work properly\n')
         raise NameError('')
     log_err.close()
-    log.close()
-    return out_name
-
-def seqclean(trinity_file, wd):
-    '''the function prepare the Trinity fasta file for PASA '''
-    out_dir = '/'.join(trinity_file.split('/')[:-1]) + '/'
-    t_name = trinity_file.split('/')[-1]
-    args = ['seqclean', trinity_file, '-r', out_dir + t_name + '.cln',
-            '-o', out_dir + t_name + '.clean']
-    out_name = trinity_file + '.clean'
-    if os.path.isfile(out_name):
-        print((
-            'Cleaned transcript file existed already: ' +
-            out_name +
-            ' --- skipping\n'))
-        return out_name
-    log_name = wd + 'seqclean.log'
-    log = open(log_name, 'w')
-    try:
-        subprocess.check_call(args, stderr=log, cwd=out_dir)
-    except:
-        print('Seqclean did not work properly\n')
-        raise NameError('')
     log.close()
     return out_name
 
@@ -115,102 +96,53 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     out_log.close()
     return out_file
 
-def braker_call(wd, reference, bam_file, species_name, threads, fungus):
+def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose):
     '''Calls braker, may take a while'''
     # perl ~/bin/BRAKER1/braker.pl --cores=3 --workingdir=/home/jose/mapper_testing/braker1_output/ --species=gmap_gff3
     #--genome=/home/jose/Reference/JR2_Chr8/Verticillium_dahliaejr2.GCA_000400815.2.29.dna.chromosome.8.fa
     #--bam=/home/jose/mapper_testing/gmap/gmap_Chr8_2Dall.sorted.bam
-    if fungus:
-        args = [
-            'braker.pl',
-            '--cores=' +
-            str(threads),
-            '--useexisting',
-            '--species=' +
-            species_name,
-            '--workingdir=' +
-            wd,
-            '--genome=' +
-            reference,
-            '--fungus',
-            '--bam=' +
-            bam_file]
+    print ("\n###RUNNING BRAKER1 ###\n")
 
+    if fungus:
+        cmd = BRAKER_FU % (threads, species_name, wd, reference, bam_file)
     else:
-        args = [
-            'braker.pl',
-            '--cores=' + str(threads),
-            '--useexisting',
-            '--species=' + species_name,
-            '--workingdir=' + wd,
-            '--genome=' + reference,
-            '--bam=' + bam_file]
-    out_dir = wd + 'braker/'
-    if os.path.isdir(out_dir):
-        print((
-            'BRAKER1 output existed already: ' +
-            out_dir +
-            ' --- skipping\n'))
-        return out_dir
+        cmd = BRAKER % (threads, species_name, wd, reference, bam_file)
+
     log_name = wd + 'braker.log'
     log = open(log_name, 'w')
     log_name_err = wd + 'braker.error.log'
     log_err = open(log_name_err, 'w')
     try:
-        braker_ex = subprocess.Popen(args, stdout=log, stderr=log_err)
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        braker_ex = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1)
         braker_ex.communicate()
     except:
         raise NameError('')
     log.close()
     log_err.close()
-    return out_dir
+    return
 
+def gmes_call(wd, ref, fungus, threads, verbose):
+    log_name = wd + 'gm_es.gff'
+    log = open(log_name, 'w')
+    log_name_err = wd + 'gm_es.err.log'
+    log_e = open(log_name_err, 'w')
+    print ("\n###RUNNING GENEMARK ###\n")
 
-def gmes_call(wd, ref, fungus, threads):
-    wd_output = wd + '/genemark.gtf.gff3'
-    # print wd_output
-    if os.path.isfile(wd_output):
-        print(('GeneMarkES  files exist: ' + wd_output + ' --- skipping\n'))
-        return wd
+    if fungus:
+        cmd = GMES_FU % (threads, ref)
     else:
-        if fungus:
-            args = [
-                'gmes_petap.pl',
-                '--ES',
-                '--fungus',
-                '--core',
-                threads,
-                '--sequence',
-                ref]
-            log_name = wd + 'gmes_petap.gff'
-            log = open(log_name, 'w')
-            log_name_err = wd + 'gmes_petaps.err.log'
-            log_e = open(log_name_err, 'w')
-            try:
-                subprocess.check_call(args, stderr=log_e, stdout=log, cwd=wd)
-            except:
-                raise NameError('')
+        cmd = GMES % (threads, ref)
 
-            log.close()
-            log_e.close()
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        genemarks = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=wd, shell=1)
+        genemarks.communicate()
+    except:
+        raise NameError('')
+    log.close()
+    log_e.close()
 
-        else:
-            args = [
-                'gmes_petap.pl',
-                '--ES',
-                '--core',
-                threads,
-                '--sequence',
-                ref]
-            log_name = wd + 'gm_es.gff'
-            log = open(log_name, 'w')
-            log_name_err = wd + 'gm_es.err.log'
-            log_e = open(log_name_err, 'w')
-            try:
-                subprocess.check_call(args, stderr=log_e, stdout=log, cwd=wd)
-            except:
-                raise NameError('')
-            log.close()
-            log_e.close()
-
-        return wd
+    return wd

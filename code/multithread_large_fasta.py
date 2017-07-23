@@ -24,6 +24,8 @@ length_cluster_aat = 0
 
 AUGUSTUS = 'augustus --species=%s %s'
 
+AAT = 'AAT.pl -P -b -q %s -s %s r"--dps" r" \'-f 100 -i 30 -a 200\'" r"--filter" r"\'-c 10\'", r"--nap", r"\'-x 10\'"'
+
 #==========================================================================================================
 
 
@@ -46,22 +48,6 @@ def single_fasta(ref, wd):
         output_handle.close()
     return single_fasta_list
 
-
-def parseAugustus(wd):
-    '''From all the augustus output after the multithread generate a single gff file'''
-
-    fileName = wd + '/augustus.gff'
-    with open(fileName, 'wb') as outfile:
-        for root, dirs, files in os.walk(wd):
-            for name in files:
-                if name.endswith("fasta.augustus.gff"):
-                    filename = root + '/' + name
-                    with open(filename, 'rb') as fd:
-                        shutil.copyfileobj(fd, outfile, 1024*1024*10)
-
-    return fileName
-
-
 def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
 
@@ -70,6 +56,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     for record in single_fasta_list:
         single_command = augustus + [record]
         all_augustus.append(single_command)
+    print ("\n###RUNNING AUGUSTUS ###\n")
     with Pool(int(threads)) as p:
         p.map(augustus_call, all_augustus)
     parseAugustus(wd)
@@ -99,35 +86,70 @@ def augustus_call(all_augustus):
     log_e.close()
     return all_augustus[0]
 
+def parseAugustus(wd):
+    '''From all the augustus output after the multithread generate a single gff file'''
 
-def aatParse(aat_queue, protein_evidence, wd):
-    '''to join the assembly and the parsing process'''
-    #count = 0
-    while True:
-        try:
-            ref_aat = aat_queue.get()
-        except:
-            break
-        outputDir_1 = protein_alignment.AAT(protein_evidence, ref_aat, wd)
-        aat_queue.task_done()
-        global count_sequences_aat
-        count_sequences_aat += 1
-        global length_cluster_aat
+    fileName = wd + '/augustus.gff'
+    with open(fileName, 'wb') as outfile:
+        for root, dirs, files in os.walk(wd):
+            for name in files:
+                if name.endswith("fasta.augustus.gff"):
+                    filename = root + '/' + name
+                    with open(filename, 'rb') as fd:
+                        shutil.copyfileobj(fd, outfile, 1024*1024*10)
+
+    return fileName
+
+
+def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
+    '''handles the assembly process and parsing in a multithreaded way'''
+
+    all_aat = []
+    aat = [wd, protein_evidence, verbose]
+    for record in single_fasta_list:
+        single_command = aat + [record]
+        all_aat.append(single_command)
+    print ("\n###RUNNING AAT ###\n")
+    with Pool(int(threads)) as p:
+        p.map(aat_call, all_aat)
+    parseAAT(wd)
     return
 
 
-def aat_multi(ref, threads, protein_evidence, single_fasta_list, wd):
-    '''handles the assembly process and parsing in a multithreaded way'''
+def aat_call(all_aat):
+    '''Calls genome guided trinity on the BAM file to generate
+    assembled transcripts'''
 
-    aat_queue = Queue()
-    counter = 1
-    for record_aat in single_fasta_list:
-        aat_queue.put(record_aat)
-    global length_cluster_aat
-    length_cluster_aat = str(aat_queue.qsize())
-    for a in range(int(threads)):
-        b = Thread(target=aatParse, args=(aat_queue, protein_evidence, wd))
-        b.daemon = True
-        b.start()
-    aat_queue.join()
-    protein_alignment.parseAAT(wd)
+    cmd = AAT % (all_aat[3], all_aat[1] )
+    log_name = all_aat[3] + 'AAT.log'
+    log = open(log_name, 'w')
+    stdout_f = open(all_aat[3] + 'AAT.stdout', 'w')
+    if all_aat[2]:
+        sys.stderr.write('Executing: %s\n' % cmd)
+    aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=1)
+    aat_process.communicate()
+    log.close()
+    stdout_f.close()
+    return
+
+
+def parseAAT(wd):
+    '''From all the augustus output after the multithread generate a single gff file'''
+
+    fileName = wd + '/AAT.gff'
+    with open(fileName, 'wb') as outfile:
+        for root, dirs, files in os.walk(wd):
+            for name in files:
+                if name.endswith("nap.btab"):
+                    filename = root + '/' + name
+                    with open(filename, 'rb') as fd:
+                        shutil.copyfileobj(fd, outfile, 1024*1024*10)
+
+    outFilenameGff = wd + '/protein_evidence.gff3'
+    args_btab = ['AAT_btab_to_gff3.pl', fileName, 'P', ]
+    stdout_file = open(outFilenameGff, 'w')
+    aat_call = subprocess.Popen(args_btab, stdout=stdout_file, cwd=wd)
+    aat_call.communicate()
+    stdout_file.close()
+    return outFilenameGff
+
