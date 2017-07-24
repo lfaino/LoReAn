@@ -8,7 +8,7 @@ import sys
 #==========================================================================================================
 # COMMANDS LIST
 
-TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 10G --output %s --CPU %s --full_cleanup'
+TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 2G --output %s --CPU %s --full_cleanup'
 
 LAUNCH_PASA =  'Launch_PASA_pipeline.pl -c %s -C -r -R -g %s -t %s --ALIGNERS gmap --TRANSDECODER -I %s --CPU %s'
 
@@ -42,7 +42,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1)
+        trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1, cwd = wd)
         trinity_call.communicate()
     except:
         print('Trinity did not work properly\n')

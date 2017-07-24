@@ -13,7 +13,7 @@ This is how LoReAn works: [LoReAn schematic view](https://github.com/lfaino/LoRe
 
 LoReAn requires three mandatory files:
 * Protein Sequences
-* Reference genome 
+* Reference genome sequence 
 * Genome name
 
 To install the software:
