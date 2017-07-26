@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 name=$1
 uid=$2
 adduser --disabled-password --uid $uid --gecos '' $name && adduser $name sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers 
