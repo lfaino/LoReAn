@@ -1,4 +1,4 @@
-FROM ubuntu:17.04
+FROM ubuntu:16.04
 
 
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
