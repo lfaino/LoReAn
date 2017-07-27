@@ -84,7 +84,7 @@ def augustus_call(all_augustus):
         augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
         augustus.communicate()
     except:
-        raise NameError('')
+        raise NameError('Augustus Failed')
     log.close()
     log_e.close()
     return all_augustus[0]
