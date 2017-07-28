@@ -24,20 +24,9 @@ def gffread(gff3_file, reference, working_dir, verbose):
     """
     Runs gffread on a gff3 file to produce fasta files with the
     matching records
-    :param gff3_file:
-    :param reference:
-    :param working_dir:
-    :return:
     """
     out_name = working_dir + 'getFasta.fasta'
     cmd = BEDTOOLS_GETFASTA % (reference, gff3_file, out_name)
-    if os.path.isfile(out_name):
-        print((
-            'gff3read file existed already: ' +
-            out_name +
-            ' --- skipping\n'))
-        return out_name
-
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)

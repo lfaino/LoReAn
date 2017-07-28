@@ -8,7 +8,7 @@ import sys
 #==========================================================================================================
 # COMMANDS LIST
 
-TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 2G --output %s --CPU %s --full_cleanup'
+TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 5G --output %s --CPU %s --full_cleanup'
 
 LAUNCH_PASA =  'Launch_PASA_pipeline.pl -c %s -C -r -R -g %s -t %s --ALIGNERS gmap --TRANSDECODER -I %s --CPU %s'
 
