@@ -3,6 +3,7 @@ import ctypes as ct
 import os
 import subprocess
 from multiprocessing import Pool
+
 import ssw_lib
 from Bio import SeqIO
 from Bio.Seq import reverse_complement
@@ -127,14 +128,6 @@ def align_call(elem):
 def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, a):
     """
     Filters out reads longer than length provided and it is used to call the alignemnt and parse the outputs
-    :param fastq_filename: 
-    :param min_length: 
-    :param max_length: 
-    :param wd: 
-    :param adapter: 
-    :param threads: 
-    :param a: 
-    :return: 
     """
     seq_dict = {}
     first_dict_score = {}
@@ -179,6 +172,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     outFile = open(out_filename, 'w')
     
     if len(listA_adapter) == 1:
+        filter_count = 0
         list_command = []
         for key in record_dict:
             for adpter in list_seq_adap:
@@ -206,6 +200,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                 final_seq.append(seq_dict[key][0])
 
     elif len(listA_adapter) == 2:
+        filter_count = 0
         list_command = []
         for key in record_dict:
             for adpter in list_seq_adap:
@@ -260,6 +255,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     elif len(listA_adapter) == 0:
         for key in record_dict:
             if int(min_length) < len(str(record_dict[key].seq)) < int(max_length):
+                filter_count += 1
                 final_seq.append(record_dict[key])
     SeqIO.write(final_seq, out_filename, "fasta")
     return out_filename, filter_count
@@ -268,10 +264,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
 def maskedgenome(wd, ref , gff3):
     """
     this module is used to mask the genome when a gff or bed file is provided
-    :param wd:
-    :param ref:
-    :param gff3:
-    :return:
     """
     if '/' in ref:
         out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'

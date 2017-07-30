@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-import subprocess
 import os
 import re
+import subprocess
 import sys
-from Bio import SeqIO
 from multiprocessing import Pool
+
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -38,11 +39,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
 
 def cluster_pipeline(gff3_file, merge_distance, strand):
     """
-    here the cluseter of sequence from the same locus are prepared
-    :param gff3_file:
-    :param merge_distance:
-    :param strand:
-    :return:
+    here the clusters of sequence from the same locus are prepared
     """
 
     btsort1 = ['bedtools', 'sort', '-i', gff3_file]
@@ -87,8 +84,6 @@ def fasta2Dict(fasta_filename):
     """
     Prepare a dictionary of all the sequences that is used together with
     the fasta file to make single fasta files for the assembly
-    :param fasta_filename:
-    :return:
     """
     fasta_file = open(fasta_filename, 'r')
     fasta_dict2 = SeqIO.to_dict(SeqIO.parse(fasta_file, 'fasta'))
@@ -104,14 +99,6 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     """
     From the output list of the pipeline, recovers the ID and goes back to the
     fasta file to retrieve the sequence
-    :param count:
-    :param bedline:
-    :param fasta_dict:
-    :param min_length:
-    :param min_evidence:
-    :param max_evidence:
-    :param wd:
-    :return:
     """
 
     global idents, end, start, chrm
@@ -167,14 +154,6 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
 
 def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, wd):
     """write fasta clusters
-
-    :param clusterList:
-    :param fasta_dict:
-    :param min_evidence:
-    :param max_evidence:
-    :param overlap_length:
-    :param wd:
-    :return:
     """
     cluster_counter = 1
     for record in clusterList:
@@ -191,10 +170,6 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
 
 def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
-    :param percent_identity:
-    :param threads:
-    :param wd:
-    :return:
     """
     new_commands = []
     for root, dirs, file in os.walk(wd):
@@ -202,17 +177,12 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)
             new_commands.append(complete_data)
     with Pool(int(threads)) as p:
-        align_resul = p.map(iAssembler, new_commands)
+        p.map(iAssembler, new_commands)
 
 
 def iAssembler(new_commands):
     """
     Call iAssembler to assemble every cluster in fasta_list
-    :param fasta_file:
-    :param overlap_length:
-    :param percent_identity:
-    :param wd:
-    :return:
     """
 
     cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])

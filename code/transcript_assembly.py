@@ -10,8 +10,6 @@ import sys
 
 TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory 5G --output %s --CPU %s --full_cleanup'
 
-LAUNCH_PASA =  'Launch_PASA_pipeline.pl -c %s -C -r -R -g %s -t %s --ALIGNERS gmap --TRANSDECODER -I %s --CPU %s'
-
 GMES_FU = 'gmes_petap.pl --ES --fungus --core %s --sequence %s'
 
 GMES = 'gmes_petap.pl --ES --core %s --sequence %s'
@@ -50,51 +48,6 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     log_err.close()
     log.close()
     return out_name
-
-def pasa_configuration(pasa_dir, pasa_db):
-    '''Creates a PASA configuration file. Database name will be the reference name'''
-    conf_file = pasa_dir + 'alignAssembly.config'
-    if os.path.isfile(conf_file):
-        print((
-            'PASA configuration file existed already: ' +
-            conf_file +
-            ' --- skipping\n'))
-        return conf_file
-    conf = open(conf_file, 'w')
-    lines = [
-        'MYSQLDB=' + pasa_db,
-        'validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>',
-        'validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>',
-        'subcluster_builder.dbi:-m=50']
-    for line in lines:
-        conf.write(line + '\n')
-    conf.close()
-    return conf_file
-
-def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length, threads, verbose):
-    '''PASA to construct a database of transcripts. It will overwrite any
-    database with the same name -the one of the reference-.'''
-    cmd = LAUNCH_PASA % (conf_file, reference, transcripts, max_intron_length, threads)
-    out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
-    # print out_file, os.path.isfile(out_file)
-    if os.path.isfile(out_file):
-        print(('PASA output existed already: ' + out_file + ' --- skipping\n'))
-        return out_file
-    log_name = pasa_dir + 'pasa.err.log'
-    log_out_name = pasa_dir + 'pasa.out.log'
-    log = open(log_name, 'w')
-    out_log = open(log_out_name, 'w')
-    try:
-        if verbose:
-            sys.stderr.write('Executing: %s\n' % cmd)
-        pasa = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=1)
-        pasa.communicate()
-    except:
-        print('PASA failed')
-        raise NameError('')
-    log.close()
-    out_log.close()
-    return out_file
 
 def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose):
     '''Calls braker, may take a while'''

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-import os
 import errno
+import os
 import subprocess
 
 #==========================================================================================================
@@ -31,8 +31,6 @@ def check_file(path_file):
 def check_create_dir(path):
     """
     Checks a directory and creates it if it does not exist
-    :param path:
-    :return:
     """
 
     try:
@@ -85,9 +83,7 @@ def catTwoBeds(gmap, evm, outFilename):
         countLine += 1
         linenew = line.split('\t')
         if "evm" in linenew[3]:
-            # aline = '\t'.join(linenew)
             o.write(line)
-        # print line
         else:
             linenew[3] = str(countLine)
             aline = '\t'.join(linenew)

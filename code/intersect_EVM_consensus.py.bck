@@ -5,8 +5,14 @@ from BCBio import GFF
 from operator import itemgetter
 import dirs_and_files as logistic
 
+#======================================================================================================================
+
+BEDTOOLS_INT = 'bedtools intersect -a %s -b %s -v'
+
+#======================================================================================================================
 
 def parseConsensus(consensusFilename):
+    print ("1")
     print("\t###PARSE THE CONSENSUS AFTER ASSEMBLY###\n")
     '''Reads the consensus GFF3 file and returns 2 dictionaries,
     one with features and other with locations'''
@@ -40,6 +46,7 @@ def parseConsensus(consensusFilename):
 
 
 def location2Bed(locationDict):
+    print ("2")
     print("\t###location2Bed###\n")
     '''From the location dictionary, returns an array with elements
     as if they were sorted bed files:
@@ -59,6 +66,7 @@ def location2Bed(locationDict):
 
 
 def geneGFF3(gff3Filename):
+    print ("3")
     print("\t###geneGFF3###\n")
     '''From a gff3 file, writes a "tmp" file with only genes'''
     gff3File = open(gff3Filename, 'r')
@@ -71,12 +79,15 @@ def geneGFF3(gff3Filename):
 
 
 def intersectConsensusEVM(consensusBed, evmGeneGFF):
+    print ("4")
     print("\t###intersectConsensusEVM###\n")
     '''Uses bedtools intersect to get the consensus genes that are
     not in the EVM file, returning only the identifiers'''
-    args = ['bedtools', 'intersect', '-a', consensusBed, '-b', evmGeneGFF,
-            '-v']
-    intersect = subprocess.check_output(args)
+
+
+    cmd = BEDTOOLS_INT % (consensusBed, evmGeneGFF)
+
+    intersect = subprocess.check_output(cmd, shell=1)
     geneRecords = intersect.splitlines()
 
     geneIDs = []
@@ -87,6 +98,7 @@ def intersectConsensusEVM(consensusBed, evmGeneGFF):
 
 
 def getFeatures(geneIDs, consensusDict):
+    print ("5")
     print("\t###getFeatures###\n")
     '''Returns an array with the features to write, when the geneID matches'''
     featureIDlist = []
@@ -96,6 +108,7 @@ def getFeatures(geneIDs, consensusDict):
 
 
 def featuresGFF3(features, originalGFF3Filename, outFilename):
+    print ("6")
     print("\t###featuresGFF3###\n")
     '''Writes the features from the list that are in the original GFF3
     to the file in filename'''
@@ -112,6 +125,7 @@ def featuresGFF3(features, originalGFF3Filename, outFilename):
 
 
 def parseGFF3_out(gff3Filename):
+    print ("6")
     print("\t###parseGFF3_out###\n")
     '''Parses the GFF3 file resulting from featuresGFF3 as it writes a lot of
     annoying ##'''
@@ -129,32 +143,3 @@ def parseGFF3_out(gff3Filename):
     inFile.close()
     outFile.close()
     return outFilename
-
-
-###############
-###MAIN###
-###############
-
-def main():
-    '''Main body of the function'''
-    consensusFilename = sys.argv[1]
-    modelFilename = sys.argv[2]
-    consensusDict, locationDict = parseConsensus(consensusFilename)
-    consensusBed = location2Bed(locationDict)
-    geneModelFilename = geneGFF3(modelFilename)
-    geneIDs = intersectConsensusEVM(consensusBed, geneModelFilename)
-
-    features = getFeatures(geneIDs, consensusDict)
-    outTmp = 'consensus.intersect.tmp'
-    featuresGFF3(features, consensusFilename, outTmp)
-    consensusOut = parseGFF3_out(outTmp)
-    logistic.catTwoFiles(
-        consensusOut,
-        modelFilename,
-        'consensus.model.all.gff3')
-
-    print('\n\n\n################\n####FINISHED####\n################\n\n')
-
-
-if __name__ == '__main__':
-    main()

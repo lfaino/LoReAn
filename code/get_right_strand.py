@@ -1,19 +1,44 @@
 #!/usr/bin/env python3
 
-import re
 import os
-import gffutils
-from sys import argv
+import re
 import subprocess
-import gffutils.gffwriter as gffwriter
-from Bio import SeqIO
+import sys
 from multiprocessing import Pool
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 from Bio import Seq
+from Bio import SeqIO
 
+#======================================================================================================================
 
-def removeDiscrepancy(gff, evmFile):
+GT_GFF3 = 'gt gff3 -sort -tidy %s'
+
+BEDTOOLS_GET_FASTA = 'bedtools getfasta -fi %s -bed %s -fo %s'
+
+GFFREAD_W = 'gffread -W -g %s -w %s -y %s %s'
+
+EXONERATE = 'exonerate --model protein2genome --bestn 1 --showtargetgff yes --query %s --target %s'
+
+PASA_VAL = 'pasa_gff3_validator.pl %s'
+
+BEDTOOLS_SORT = 'bedtools sort -i %s'
+
+BEDTOOLS_MERGE = 'bedtools merge -d -100 -s -o count,distinct -c 9,9'
+
+GT_GFF3_INTRON = 'gt gff3 -sort -addintrons -tidy %s'
+
+BEDTOOLS_INTERSECT = 'bedtools intersect -v -a %s -b %s'
+
+#======================================================================================================================
+
+def removeDiscrepancy(gff, evmFile, verbose):
     badName = []
-    gffVal_call = subprocess.Popen(['pasa_gff3_validator.pl', gff], stdout=subprocess.PIPE)
+    comm = PASA_VAL % (gff)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % comm)
+    gffVal_call = subprocess.Popen(comm, stdout=subprocess.PIPE, shell=1)
     for ln in gffVal_call.stdout.readlines():
         name = re.split(' |\.CDS', (ln.decode("utf-8")))
         if len(name) > 3 and "ERROR" in name[0]:
@@ -41,7 +66,10 @@ def removeDiscrepancy(gff, evmFile):
             gff_out.write_rec(i)
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
-    bedtools_call = subprocess.Popen(['bedtools', 'intersect', '-v', '-a', evmFile, '-b', gff], stdout=subprocess.PIPE)
+    cmd = BEDTOOLS_INTERSECT % (evmFile, gff)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % cmd)
+    bedtools_call = subprocess.Popen(cmd , stdout=subprocess.PIPE, shell=1)
     evm_mRNA = []
     for ln in bedtools_call.stdout.readlines():
         lne = ln.decode("utf-8")
@@ -102,7 +130,7 @@ def appendID(gff):
     return outFile
 
 
-def removeOverlap(gff):
+def removeOverlap(gff, verbose):
     i = open(gff, 'r')
     outFile = gff + '.RNA.gff'
     o = open(outFile, 'w')
@@ -117,10 +145,13 @@ def removeOverlap(gff):
     bedouffile = open(bedout, "w")
     errorFile = outFile + ".bedtools_err.log"
     errorFilefile = open(errorFile, "w")
-    bedsort = ['bedtools', 'sort', '-i', outFile]
-    bedmerge = ['bedtools', 'merge', '-d', '-100', '-s', '-o', 'count,distinct', '-c', '9,9']
-    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=errorFilefile)
-    bedmerge_call = subprocess.Popen(bedmerge, stdin=bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile)
+    bedsort = BEDTOOLS_SORT % (outFile)
+    bedmerge = BEDTOOLS_MERGE
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % bedsort)
+        sys.stderr.write('Executing: %s\n\n' % bedmerge)
+    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
+    bedmerge_call = subprocess.Popen(bedmerge, stdin=bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile, shell=1)
     bedmerge_call.communicate()
     listMultiple = []
     listUniq = []
@@ -188,8 +219,11 @@ def genename(gff_filename, prefix):
     global parentname
     errorFile = gff_filename + "error.log"
     errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(['gt', 'gff3', '-sort', '-tidy', gff_filename], stdout=subprocess.PIPE,
-                               stderr=errorFilefile)
+    cmd = GT_GFF3 % (gff_filename)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % cmd)
+    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                               stderr=errorFilefile, shell=1)
     errorFilefile.close()
     fields = []
     featureann = []
@@ -247,25 +281,26 @@ def newNames(oldname):
     errorFile = oldname + ".gt_err.log"
     finaloutfile = open(finalout, "w")
     errorFilefile = open(errorFile, "w")
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', oldname]
-    gt_call = subprocess.Popen(gt_com, stdout=finaloutfile, stderr=errorFilefile)
+    gt_com = GT_GFF3 % (oldname)
+    gt_call = subprocess.Popen(gt_com, stdout=finaloutfile, stderr=errorFilefile, shell=1)
     gt_call.communicate()
     finaloutfile.close()
     errorFilefile.close()
     return finalout
 
 
-def longest(gff_file, fasta, proc, wd):
+def longest(gff_file, fasta, proc, wd, verbose):
     outputFilename = wd + 'finalAnnotation.strand.gff3'
     outputFilenameLeft = wd + 'finalAnnotation.Left.gff3'
     gff_out = gffwriter.GFFWriter(outputFilenameLeft)
     gff_file_out = gff_file + ".intron.tidy.sorted.gff"
     errorFile = gff_file + ".gt_err.log"
-
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', gff_file]
+    gt_com = GT_GFF3_INTRON % (gff_file)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
     gff_file_outfile = open(gff_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile)
+    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
     gt_call.communicate()
     gff_file_outfile.close()
     errorFilefile.close()
@@ -364,7 +399,7 @@ def longest(gff_file, fasta, proc, wd):
     return outputFilenameFinal
 
 
-def strand(gff_file1, gff_file2, fasta, proc, wd):
+def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
     outputFilename = wd + 'finalAnnotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilename)
     outputFilenameGmap = wd + 'finalAnnotation.gmap.sing.gff3'
@@ -471,7 +506,7 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
     gff_out.close()
     gff_out_s.close()
 
-    gffOrf = longest(outputFilenameGmap, fasta, proc, wd)
+    gffOrf = longest(outputFilenameGmap, fasta, proc, wd, verbose)
 
     outputFilenameFinal = wd + 'finalAnnotation.Final.Comb.gff3'
     outfile = open(outputFilenameFinal, "w")
@@ -482,17 +517,19 @@ def strand(gff_file1, gff_file2, fasta, proc, wd):
     return outputFilenameFinal
 
 
-def exonerate(ref, gff_file, proc, wd):
+def exonerate(ref, gff_file, proc, wd, verbose):
     global combList
+    print (gff_file)
     exon_file_out = gff_file + ".exons.fasta"
     prot_file_out = gff_file + ".prot.fasta"
     errorFile = gff_file + ".gffread_err.log"
     logFile = exon_file_out + "gffread_log.log"
-    com = ['gffread', '-W', '-g', ref, '-w', exon_file_out, '-y', prot_file_out, gff_file]
-    # print (com)
+    com = GFFREAD_W % (ref, exon_file_out, prot_file_out, gff_file)
     fasta_file_outfile = open(logFile, "w")
     errorFilefile = open(errorFile, "w")
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=1)
     call.communicate()
     fasta_file_outfile.close()
     errorFilefile.close()
@@ -502,6 +539,7 @@ def exonerate(ref, gff_file, proc, wd):
     dictFastaProt = {}
     longestProt = []
     listTotal = []
+    listSingleExons = []
 
     for record in SeqIO.parse(prot_file_out, "fasta"):
         listTotal.append(record.id)
@@ -510,47 +548,47 @@ def exonerate(ref, gff_file, proc, wd):
         else:
             dictIncomplete[record.id] = record.id
     for record in SeqIO.parse(exon_file_out, "fasta"):
-        exonSingle = False
         listFields = record.description.split(' ')
         for elem in listFields:
             if elem.startswith('exons'):
                 exonNumber = elem.split(",")
                 if (len(exonNumber)) == 1:
-                    exonSingle = True
-        if record.id in dictIncomplete:
-            newrecord = record.reverse_complement()
-            input_seq = str(record.seq)
-            startP = re.compile('ATG')
-            nuc = input_seq.replace('\n', '')
-            longest = (0,)
-            for m in startP.finditer(nuc):
-                if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
-                    pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
-                    longest = [len(pro), m.start(), str(pro), nuc[m.start():m.start() + len(pro) * 3 + 3]]
-                    if len(longest) == 4:
-                        record.seq = Seq.Seq(longest[2])
-                        dictFastaProt[record.id] = record
-                    else:
-                        dictFastaProt[record.id] = record
-            if exonSingle:
-                input_seq = str(newrecord.seq)
-                startP = re.compile('ATG')
-                nuc = input_seq.replace('\n', '')
-                longest = (0,)
-                for m in startP.finditer(nuc):
-                    if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
-                        pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
-                        longest = [len(pro), m.start(), str(pro), nuc[m.start():m.start() + len(pro) * 3 + 3]]
-                        if len(longest) == 4:
-                            if record.id in dictFastaProt:
-                                if (len((dictFastaProt[record.id]).seq)) < (len(longest[2])):
+                    listSingleExons.append(record.id)
+                    if record.id in dictIncomplete:
+                        newrecord = record.reverse_complement()
+                        input_seq = str(record.seq)
+                        startP = re.compile('ATG')
+                        nuc = input_seq.replace('\n', '')
+                        longest = (0,)
+                        for m in startP.finditer(nuc):
+                            if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
+                                pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
+                                longest = [len(pro), m.start(), str(pro), nuc[m.start():m.start() + len(pro) * 3 + 3]]
+                                if len(longest) == 4:
                                     record.seq = Seq.Seq(longest[2])
                                     dictFastaProt[record.id] = record
-                            elif len(longest) == 4:
-                                record.seq = Seq.Seq(longest[2])
-                                dictFastaProt[record.id] = record
-                            else:
-                                dictFastaProt[record.id] = record
+                                else:
+                                    dictFastaProt[record.id] = record
+                        input_seq = str(newrecord.seq)
+                        startP = re.compile('ATG')
+                        nuc = input_seq.replace('\n', '')
+                        longest = (0,)
+                        for m in startP.finditer(nuc):
+                            if len(Seq.Seq(nuc)[m.start():].translate(to_stop=True)) > longest[0]:
+                                pro = Seq.Seq(nuc)[m.start():].translate(to_stop=True)
+                                longest = [len(pro), m.start(), str(pro), nuc[m.start():m.start() + len(pro) * 3 + 3]]
+                                if len(longest) == 4:
+                                    if record.id in dictFastaProt:
+                                        if (len((dictFastaProt[record.id]).seq)) < (len(longest[2])):
+                                            record.seq = Seq.Seq(longest[2])
+                                            dictFastaProt[record.id] = record
+                                    elif len(longest) == 4:
+                                        record.seq = Seq.Seq(longest[2])
+                                        dictFastaProt[record.id] = record
+                                    else:
+                                        dictFastaProt[record.id] = record
+
+
 
     for mod in dictFastaProt:
         longestProt.append(dictFastaProt[mod])
@@ -578,10 +616,12 @@ def exonerate(ref, gff_file, proc, wd):
                     bedhandler = open(bedFile, 'w')
                     bedhandler.write(locus)
                     bedhandler.close()
-                    com = ['bedtools', 'getfasta', '-fi', ref, '-bed', bedFile, '-fo', outputFilename]
-                    call = subprocess.Popen(com)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
+                    com = BEDTOOLS_GET_FASTA % (ref, bedFile, outputFilename)
+                    if verbose:
+                        sys.stderr.write('Executing: %s\n\n' % com)
+                    call = subprocess.Popen(com, shell=1)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
                     call.communicate()
-                    combList = [outputFilenameProt, outputFilename]
+                    combList = [outputFilenameProt, outputFilename, verbose]
             commandList.append(combList)
 
     with Pool(int(proc)) as p:
@@ -622,8 +662,10 @@ def exonerate(ref, gff_file, proc, wd):
     dataGff3 = open(orintedFIle, 'w')
     orintedFIleErr = wd + '/oriented.gff3.error'
     dataGff3Err = open(orintedFIleErr, 'w')
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', orintedFIleN]
-    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err)
+    gt_com = GT_GFF3 % (orintedFIleN)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=1)
     callgt.communicate()
     dataGff3.close()
     dataGff3Err.close()
@@ -639,9 +681,10 @@ def runExonerate(commandList):
     errorFile = outputFilenameProt + ".exonerate_err.log"
     protGff_outfile = open(protGff, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['exonerate', '--model', 'protein2genome', '--bestn', '1', '--showtargetgff', 'yes', '--query',
-           outputFilenameProt, '--target', outputFilename]
-    call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile)
+    com = EXONERATE % (outputFilenameProt, outputFilename)
+    if commandList[2]:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile, shell=1)
     call.communicate()
     fileGff = open(protGff, "r")
     protGff3 = protGff + ".gff3"
@@ -676,3 +719,4 @@ def runExonerate(commandList):
                                 "Parent=" + nameGene[2] + ".mRNA"]
                     fileFinalGff.write(('\t'.join(exonList)) + "\n")
     fileFinalGff.close()
+
