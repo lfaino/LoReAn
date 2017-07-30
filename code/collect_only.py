@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+
 from Bio import SeqIO
 
 count_sequences = 0
@@ -10,9 +11,6 @@ length_cluster = 0
 def parse_only(threshold_float, tmp_wd):
     """
     to join the assembly and the parsing process
-    :param threshold_float:
-    :param tmp_wd:
-    :return:
     """
     evm_list = []
     wd = tmp_wd + 'consensus/tmp/'
@@ -43,9 +41,6 @@ def parse_only(threshold_float, tmp_wd):
 def parse_contigs(outputAssembly, threshold_float):
     """
     Parses the output from iAssembler, to a single FASTA file
-    :param outputAssembly: 
-    :param threshold_float: 
-    :return:
     """
     fname = outputAssembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
@@ -104,8 +99,6 @@ def parse_contigs(outputAssembly, threshold_float):
 def catAssembled(wd):
     """
     collect the assembled contigs and generate a multifasta file
-    :param wd: 
-    :return: 
     """
     print('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     '''C at all the assembled single fasta files in to a uniq file'''
@@ -130,10 +123,6 @@ def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     """
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
-    :param whole_fasta_name: 
-    :param output_filename: 
-    :param output_merged_fasta_name:
-    :return: 
     """
     print('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
@@ -169,8 +158,7 @@ def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
 def getEVMnoUnitig(target_wd):
     """
     this module change the name of the assembled contigs in evm names and replace the unigene identifiers
-    :param target_wd: 
-    :return: 
+
     """
     print('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
     '''Gets the name of evm prediction in the assembly that do not have support'''

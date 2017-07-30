@@ -18,8 +18,8 @@ import time
 from queue import Queue
 from threading import Thread
 
-import collect_only as collect
 import arguments as arguments
+import collect_only as collect
 import consensus_iAssembler as consensus
 # OTHER SCRIPTS
 import dirs_and_files as logistic
@@ -29,6 +29,7 @@ import handlers as handler
 import manipulateSeq as mseq
 import mapping
 import multithread_large_fasta as multiple
+import pasa as pasa
 import prepare_evm_inputs as inputEvm
 import reduceUTRs as utrs
 import transcript_assembly as transcripts
@@ -68,11 +69,13 @@ def main():
         pasa_dir = wd + 'PASA/'
         star_out = wd + '/STAR/'
         trin_dir = wd + 'Trinity/'
-        evm_dir = wd + 'evm_inputs/'
+        evm_inputs_dir = wd + 'evm_inputs/'
         braker_out = wd + 'braker/' + args.species + '/'
+        evm_output_dir = wd + 'evm_output/'
 
 
-        logistic.check_create_dir(evm_dir)
+        logistic.check_create_dir(evm_inputs_dir)
+        logistic.check_create_dir(evm_output_dir)
         logistic.check_create_dir(trin_dir)
         logistic.check_create_dir(star_out)
         logistic.check_create_dir(pasa_dir)
@@ -175,9 +178,9 @@ def main():
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###PASA STARTS AT:\t'  + now  + '\t###\n'))
             # Create PASA folder and configuration file
-            align_pasa_conf = transcripts.pasa_configuration(pasa_dir, args.pasa_db)
+            align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
-            pasa_gff3 = transcripts.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length,
+            pasa_gff3 = pasa.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out, args.max_intron_length,
                                               args.threads, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
@@ -270,17 +273,17 @@ def main():
 
         # print '> EVM input directory created in ' + evm_dir
 
-        list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(evm_dir, evm_inputs)
-        weight_file = inputEvm.evm_weight(evm_dir, weights_dic, list_soft, pasa_name, gmap_name)
+        list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(evm_inputs_dir, evm_inputs)
+        weight_file = inputEvm.evm_weight(evm_inputs_dir, weights_dic, list_soft, pasa_name, gmap_name)
         # EVM PIPELINE
 
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
-            evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
-                                                 protein_file, args.segmentSize, args.overlapSize)
+            evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
+                                                 protein_file, args.segmentSize, args.overlapSize, args.verbose)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
-            evm_gff3 = evm_pipeline.evm_pipeline(wd, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
+            evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, args.threads, genome_gmap, weight_file, pred_file, transcript_file,
                                                  protein_file, args.segmentSize, args.overlapSize)
         # KEEP THIS OUTPUT
         FinalFiles.append(evm_gff3)
@@ -295,9 +298,9 @@ def main():
             now = datetime.datetime.now().strftime(fmtdate)
             print(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' +   now  + '\t###\n'))
             round_n += 1
-            finalOutput = evm_pipeline.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
-                                                       align_pasa_conf, ref, trinity_out, evm_gff3, "a")
-            finalUpdate = grs.genename(finalOutput, args.prefix_gene)
+            finalOutput = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
+                                                       align_pasa_conf, ref, trinity_out, evm_gff3, args.verbose)
+            finalUpdate = grs.genename(finalOutput, args.prefix_gene, args.verbose)
             updatedGff3 = grs.newNames(finalUpdate)
         else:
             updatedGff3 = evm_gff3
@@ -422,47 +425,29 @@ def main():
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
-        #finalOutput = grs.strand(evm_gff3, consensusMappedGFF3, gmap_wd)
-        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd)
+        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose)
         gffPasa = grs.appendID(strandMappedGFF3)
-        noOverl = grs.removeOverlap(gffPasa)
-        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3)
+        noOverl = grs.removeOverlap(gffPasa, args.verbose)
+        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3, args.verbose)
         uniqGene = grs.newNames(noDisc)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         
-        finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
+        finalupdate3 = grs.genename(uniqGene, args.prefix_gene, args.verbose)
         print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
-        finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene)
+        finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
+        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
         
-        fastaAll = logistic.catTwoFasta(
-            trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
+        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         
-        finalupdate = evm_pipeline.update_database(
-            args.threads,
-            str(round_n),
-            pasa_dir,
-            args.pasa_db,
-            align_pasa_conf,
-            ref,
-            fastaAll,
-            finalupdate5,
-            "a")
+        finalupdate = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
+                                           finalupdate5, args.verbose)
         round_n += 1
-        finalupdate2 = evm_pipeline.update_database(
-            args.threads,
-            str(round_n),
-            pasa_dir,
-            args.pasa_db,
-            align_pasa_conf,
-            ref,
-            fastaAll,
-            finalupdate,
-            "a")
-        finalUpdate = grs.genename(finalupdate2, args.prefix_gene)
+        finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
+                                            finalupdate, args.verbose)
+        finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
         FinalFiles.append(finalUpdate)
 
         now = datetime.datetime.now().strftime(fmtdate)
