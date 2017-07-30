@@ -439,8 +439,7 @@ def main():
         finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
         
-        fastaAll = logistic.catTwoFasta(
-            trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
+        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         
         finalupdate = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,

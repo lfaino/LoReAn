@@ -222,8 +222,7 @@ def genename(gff_filename, prefix, verbose):
     cmd = GT_GFF3 % (gff_filename)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
-    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                               stderr=errorFilefile, shell=1)
+    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
     errorFilefile.close()
     fields = []
     featureann = []
