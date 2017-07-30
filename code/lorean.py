@@ -300,7 +300,7 @@ def main():
             round_n += 1
             finalOutput = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db,
                                                        align_pasa_conf, ref, trinity_out, evm_gff3, args.verbose)
-            finalUpdate = grs.genename(finalOutput, args.prefix_gene)
+            finalUpdate = grs.genename(finalOutput, args.prefix_gene, args.verbose)
             updatedGff3 = grs.newNames(finalUpdate)
         else:
             updatedGff3 = evm_gff3
@@ -434,10 +434,10 @@ def main():
         # PASA TO CORRECT SMALL ERRORS
 
         
-        finalupdate3 = grs.genename(uniqGene, args.prefix_gene)
+        finalupdate3 = grs.genename(uniqGene, args.prefix_gene, args.verbose)
         print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene)
+        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
         
         fastaAll = logistic.catTwoFasta(
             trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
@@ -448,7 +448,7 @@ def main():
         round_n += 1
         finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
                                             finalupdate, args.verbose)
-        finalUpdate = grs.genename(finalupdate2, args.prefix_gene)
+        finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
         FinalFiles.append(finalUpdate)
 
         now = datetime.datetime.now().strftime(fmtdate)

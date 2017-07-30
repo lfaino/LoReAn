@@ -215,7 +215,7 @@ def removeOverlap(gff, verbose):
     return outputFilename
 
 
-def genename(gff_filename, prefix):
+def genename(gff_filename, prefix, verbose):
     global parentname
     errorFile = gff_filename + "error.log"
     errorFilefile = open(errorFile, "w")

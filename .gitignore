@@ -7,3 +7,4 @@ ide.general.xml
 perl5.xml
 *.pyc
 ignore.xml
+*.xml
