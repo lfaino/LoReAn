@@ -12,4 +12,5 @@ chown -R $name:$name /home/$name/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/$name/
 #chown -R $name:$name /opt/LoReAn/
 chmod -R 775 /opt/LoReAn
+chmod -R 775 /home/$name/augustus
 su $name

@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+from os.path import expanduser
 from queue import Queue
 from threading import Thread
 
@@ -40,7 +41,8 @@ import transcript_assembly as transcripts
 ###############
 
 def main():
-    if os.path.isfile("/data/gm_key"):
+    home = expanduser("~")
+    if os.path.isfile(home + "/.gm_key"):
         '''Core of the program'''
         # Parse the arguments
         args = arguments.setting()
@@ -82,8 +84,8 @@ def main():
         logistic.check_create_dir(gmap_wd)
         logistic.check_create_dir(exonerate_wd)
 
-        check_species = ['augustus', '--species=help']
-        process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check_species = 'augustus --species=help'
+        process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=1)
         outAugustus, errAugustus = process.communicate()
         protein_loc = os.path.abspath(args.protein_evidence)
 
