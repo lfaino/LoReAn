@@ -66,5 +66,4 @@ RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/cr
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
-
 WORKDIR /data/
