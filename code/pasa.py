@@ -39,8 +39,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
         conf.write(line + '\n')
 
     conf.close()
-    # print '> PASA annotation configuration file created in: ' + conf_file +
-    # '\n'
+
     return conf_file
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):

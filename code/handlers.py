@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-import os
-import protein_alignment
-import transcript_assembly as transcripts
 import dirs_and_files as logistic
 import multithread_large_fasta as multiple
+import transcript_assembly as transcripts
 
 
 def BrakerAAT(queue,ref, bamFile, species_name, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):

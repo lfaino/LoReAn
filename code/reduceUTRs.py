@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from multiprocessing import Pool
-import subprocess
 import os
+import subprocess
+from multiprocessing import Pool
+
 from Bio import SeqIO
-from sys import argv
 
 
 def lengthSupport(tmp_wd, threads):
@@ -111,10 +111,3 @@ def modify(outputDir):
                                         '\n' + str(record.seq) + '\n')
     return
 
-if __name__ == '__main__':
-    
-    
-    wd = argv[1]
-    threads = argv[2]
-    #wd = argv[3]
-    lengthSupport(wd, threads)
