@@ -47,6 +47,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
 
 
+
     if int(threads) < 1:
         threads = 1
     all_augustus = []
@@ -55,8 +56,12 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
         single_command = augustus + [record]
         all_augustus.append(single_command)
     print ("\n###RUNNING AUGUSTUS ###\n")
-    with Pool(int(threads)) as p:
-        p.map(augustus_call, all_augustus)
+
+
+
+    with Pool(int(threads)) as pool:
+        pool.map(augustus_call, all_augustus)
+
     parseAugustus(wd)
     return
 
@@ -67,6 +72,7 @@ def augustus_call(all_augustus):
     cmd = AUGUSTUS % (all_augustus[1], all_augustus[3])
     chromo = all_augustus[3].split('/')[-1]
     wd_augu = all_augustus[0] + '/' + chromo + '.augustus.gff'
+
 
     if os.path.exists(wd_augu) and os.path.getsize(wd_augu) > 0:
         sys.stderr.write('Already executed: %s\n' % cmd)
@@ -81,6 +87,7 @@ def augustus_call(all_augustus):
                 sys.stderr.write('Executing: %s\n' % cmd)
             augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
             augustus.communicate()
+            sys.stderr.write('Done: %s\n' % cmd)
         except:
             raise NameError('Augustus Failed')
         log.close()

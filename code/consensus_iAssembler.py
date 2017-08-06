@@ -4,8 +4,10 @@ import os
 import re
 import subprocess
 import sys
-from multiprocessing import Pool
+import time
+from multiprocessing import Pool, Manager
 
+import progressbar
 from Bio import SeqIO
 
 #==========================================================================================================
@@ -171,13 +173,22 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
 def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     """
+    manage = Manager()
+    queue = manage.Queue()
+    pool = Pool(int(threads))
+
     new_commands = []
     for root, dirs, file in os.walk(wd):
         for fasta_file in file:
-            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)
+            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
             new_commands.append(complete_data)
-    with Pool(int(threads)) as p:
-        p.map(iAssembler, new_commands)
+    #with Pool(int(threads)) as pool:
+    results = pool.map_async(iAssembler, new_commands)
+    with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
+        while not results.ready():
+            size = queue.qsize()
+            bar.update(size)
+            time.sleep(1)
 
 
 def iAssembler(new_commands):
@@ -186,6 +197,7 @@ def iAssembler(new_commands):
     """
 
     cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])
+    new_commands[5].put(cmd)
     outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
     log_name = new_commands[3] + "Assembly.log"
     log = open(log_name, 'w')

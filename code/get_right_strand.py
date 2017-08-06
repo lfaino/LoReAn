@@ -4,10 +4,13 @@ import os
 import re
 import subprocess
 import sys
-from multiprocessing import Pool
+import time
+import warnings
+from multiprocessing import Pool, Manager
 
 import gffutils
 import gffutils.gffwriter as gffwriter
+import progressbar
 from Bio import Seq
 from Bio import SeqIO
 
@@ -518,7 +521,12 @@ def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
 
 def exonerate(ref, gff_file, proc, wd, verbose):
     global combList
-    print (gff_file)
+
+    ##THIS removes the warning. the check of the longest protein was giving a warining. if Biopython change, this could be a problem
+
+    warnings.filterwarnings("ignore")
+
+
     exon_file_out = gff_file + ".exons.fasta"
     prot_file_out = gff_file + ".prot.fasta"
     errorFile = gff_file + ".gffread_err.log"
@@ -587,12 +595,14 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                                     else:
                                         dictFastaProt[record.id] = record
 
-
-
     for mod in dictFastaProt:
         longestProt.append(dictFastaProt[mod])
     prot_file_out_mod = prot_file_out + ".mod.fasta"
     SeqIO.write(longestProt, prot_file_out_mod, "fasta")
+
+    manage = Manager()
+    queue = manage.Queue()
+    pool = Pool(int(proc))
 
     commandList = []
     listShort = []
@@ -620,11 +630,19 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                         sys.stderr.write('Executing: %s\n\n' % com)
                     call = subprocess.Popen(com, shell=1)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
                     call.communicate()
-                    combList = [outputFilenameProt, outputFilename, verbose]
+                    combList = [outputFilenameProt, outputFilename, verbose, queue]
             commandList.append(combList)
 
-    with Pool(int(proc)) as p:
-        p.map(runExonerate, commandList)
+
+
+
+    results = pool.map_async(runExonerate, commandList)
+    with progressbar.ProgressBar(max_value=len(commandList)) as bar:
+        while not results.ready():
+            size = queue.qsize()
+            bar.update(size)
+            time.sleep(1)
+
 
     listInGff = listComplete + listShort
     listAsbent = sorted(set(list(set(listTotal) ^ set(listInGff))))
@@ -681,6 +699,7 @@ def runExonerate(commandList):
     protGff_outfile = open(protGff, "w")
     errorFilefile = open(errorFile, "w")
     com = EXONERATE % (outputFilenameProt, outputFilename)
+    commandList[3].put(com)
     if commandList[2]:
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile, shell=1)
