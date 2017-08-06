@@ -66,4 +66,6 @@ RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/cr
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
+RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
+
 WORKDIR /data/

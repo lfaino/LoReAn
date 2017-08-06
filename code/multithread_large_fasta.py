@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 
+import os
+import shutil
 import subprocess
 import sys
-import os
-from queue import Queue
-from threading import Thread, Lock
-from Bio import SeqIO
-import transcript_assembly as transcripts
-import dirs_and_files as logistic
-import protein_alignment
 from multiprocessing import Pool
-import codecs
-import shutil
 
+import dirs_and_files as logistic
+from Bio import SeqIO
 
 count_sequences = 0
 count_sequences_aat = 0
@@ -68,25 +63,29 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
 def augustus_call(all_augustus):
     '''
     augustus call
-    :param all_augustus:
-    :return:
     '''
     cmd = AUGUSTUS % (all_augustus[1], all_augustus[3])
     chromo = all_augustus[3].split('/')[-1]
     wd_augu = all_augustus[0] + '/' + chromo + '.augustus.gff'
-    log_name = wd_augu
-    log = open(log_name, 'w')
-    log_name_err = all_augustus[0] + 'augustus.err.log'
-    log_e = open(log_name_err, 'w')
-    try:
-        if all_augustus[2]:
-            sys.stderr.write('Executing: %s\n' % cmd)
-        augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
-        augustus.communicate()
-    except:
-        raise NameError('Augustus Failed')
-    log.close()
-    log_e.close()
+
+    if os.path.exists(wd_augu) and os.path.getsize(wd_augu) > 0:
+        sys.stderr.write('Already executed: %s\n' % cmd)
+        pass
+    else:
+        log_name = wd_augu
+        log = open(log_name, 'w')
+        log_name_err = all_augustus[0] + 'augustus.err.log'
+        log_e = open(log_name_err, 'w')
+        try:
+            if all_augustus[2]:
+                sys.stderr.write('Executing: %s\n' % cmd)
+            augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
+            augustus.communicate()
+        except:
+            raise NameError('Augustus Failed')
+        log.close()
+        log_e.close()
+
     return all_augustus[0]
 
 def parseAugustus(wd):
@@ -127,15 +126,26 @@ def aat_call(all_aat):
 
 
     cmd = AAT % (all_aat[3], all_aat[1] )
-    log_name = all_aat[3] + 'AAT.log'
-    log = open(log_name, 'w')
-    stdout_f = open(all_aat[3] + 'AAT.stdout', 'w')
-    if all_aat[2]:
-        sys.stderr.write('Executing: %s\n' % cmd)
-    aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=1)
-    aat_process.communicate()
-    log.close()
-    stdout_f.close()
+
+    chr_fasta_name = all_aat[3].split("/")[-1]
+    chr_name = chr_fasta_name.split(".")[0]
+    prot_fasta_name = all_aat[1].split("/")[-1]
+    file_created = all_aat[0] + "/" +chr_name + "." + prot_fasta_name + ".nap.btab"
+
+    if os.path.exists(file_created) and os.path.getsize(file_created) > 0:
+        sys.stderr.write('Already executed: %s\n' % cmd)
+        pass
+    else:
+        log_name = all_aat[3] + 'AAT.log'
+        log = open(log_name, 'w')
+        stdout_f = open(all_aat[3] + 'AAT.stdout', 'w')
+        if all_aat[2]:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=1)
+        aat_process.communicate()
+        log.close()
+        stdout_f.close()
+
     return
 
 
@@ -143,6 +153,7 @@ def parseAAT(wd):
     '''From all the augustus output after the multithread generate a single gff file'''
 
     fileName = wd + '/AAT.gff'
+
     with open(fileName, 'wb') as outfile:
         for root, dirs, files in os.walk(wd):
             for name in files:

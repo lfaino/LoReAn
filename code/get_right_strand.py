@@ -321,7 +321,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
     errorFile = gff_file + ".1.gt_err.log"
     fasta_file_outfile = open(fasta_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_genome_to_cdna_fasta.pl',
+    com = ['cufflinks_gtf_genome_to_cdna_fasta.pl',
            gtf_file_out, fasta]
     call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
     call.communicate()
@@ -332,7 +332,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
     errorFile = gtf_file_out + ".2.gt_err.log"
     gff_file_outfile = open(gff_file_out_u, "w")
     errorFilefile = open(errorFile, "w")
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile)
     call.communicate()
     gff_file_outfile.close()
@@ -365,7 +365,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
     gff_file_outfile = open(outputFilename, "w")
     errorFilefile = open(errorFile, "w")
     wd_fasta = fasta_file_out
-    com = ['/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/cdna_alignment_orf_to_genome_orf.pl',
+    com = ['cdna_alignment_orf_to_genome_orf.pl',
            wd_fasta + '.transdecoder.gff3', gff_file_out_u, wd_fasta]
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
     call.communicate()

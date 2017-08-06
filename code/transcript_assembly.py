@@ -77,11 +77,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     return
 
 def gmes_call(wd, ref, fungus, threads, verbose):
-    log_name = wd + 'gm_es.gff'
-    log = open(log_name, 'w')
-    log_name_err = wd + 'gm_es.err.log'
-    log_e = open(log_name_err, 'w')
-    print ("\n###RUNNING GENEMARK ###\n")
+
 
     if int(threads) < 1:
         threads = 1
@@ -91,14 +87,24 @@ def gmes_call(wd, ref, fungus, threads, verbose):
     else:
         cmd = GMES % (threads, ref)
 
-    try:
-        if verbose:
-            sys.stderr.write('Executing: %s\n' % cmd)
-        genemarks = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=wd, shell=1)
-        genemarks.communicate()
-    except:
-        raise NameError('')
-    log.close()
-    log_e.close()
+    log_name = wd + 'gm_es.gff'
+
+    if os.path.exists(log_name) and os.path.getsize(log_name) > 0:
+        sys.stderr.write('Already executed: %s\n' % cmd)
+        pass
+    else:
+        log = open(log_name, 'w')
+        log_name_err = wd + 'gm_es.err.log'
+        log_e = open(log_name_err, 'w')
+        print("\n###RUNNING GENEMARK ###\n")
+        try:
+            if verbose:
+                sys.stderr.write('Executing: %s\n' % cmd)
+            genemarks = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=wd, shell=1)
+            genemarks.communicate()
+        except:
+            raise NameError('')
+        log.close()
+        log_e.close()
 
     return wd

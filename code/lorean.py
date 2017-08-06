@@ -357,8 +357,7 @@ def main():
 
                 # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
                 # REFERENCE
-                gffreadFastaFile = consensus.gffread(
-                    mergedmapGFF3, ref, consensus_wd, args.verbose)
+                gffreadFastaFile = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
                 long_fasta, filter_count = mseq.filterLongReads(
@@ -370,8 +369,7 @@ def main():
 
                 # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME
                 # POSITION
-                cluster_list = consensus.cluster_pipeline(
-                    mergedmapGFF3, args.assembly_overlapLength, args.stranded)
+                cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlapLength, args.stranded)
                 now = datetime.datetime.now().strftime(fmtdate)
 
                 print(("\n\t#CONSENSUS FOR EACH CLUSTER\t"  + now  + "\t###\n"))
@@ -403,10 +401,7 @@ def main():
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
         mergedFastaFilename = consensus_wd + 'assembly.wEVM.fasta'
-        collect.addEVM(
-            gffreadFastaFile,
-            tmp_assembly,
-            mergedFastaFilename)
+        collect.addEVM(gffreadFastaFile, tmp_assembly, mergedFastaFilename)
         now = datetime.datetime.now().strftime(fmtdate)
         print(("\n###MAPPING CONSENSUS ASSEMBLIES\t"  + now + "\t###\n"))
 
