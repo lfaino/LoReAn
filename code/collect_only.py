@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import sys
 
 from Bio import SeqIO
 
@@ -100,7 +101,7 @@ def catAssembled(wd):
     """
     collect the assembled contigs and generate a multifasta file
     """
-    print('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
+    sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     '''C at all the assembled single fasta files in to a uniq file'''
     wd_tmp = wd + 'consensus/tmp/'
     fileName = wd_tmp + 'assembly.fasta'
@@ -124,7 +125,7 @@ def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
     """
-    print('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
+    sys.stdout.write('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
     whole_fasta = open(whole_fasta_name, 'r')
     out_fasta_file = open(output_filename, 'r')
@@ -160,7 +161,7 @@ def getEVMnoUnitig(target_wd):
     this module change the name of the assembled contigs in evm names and replace the unigene identifiers
 
     """
-    print('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
+    sys.stdout.write('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
     '''Gets the name of evm prediction in the assembly that do not have support'''
     evm_list = []
     for root, dirs, _ in os.walk(target_wd):

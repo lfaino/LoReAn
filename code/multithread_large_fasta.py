@@ -55,7 +55,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     for record in single_fasta_list:
         single_command = augustus + [record]
         all_augustus.append(single_command)
-    print ("\n###RUNNING AUGUSTUS ###\n")
+    sys.stdout.write ("\n###RUNNING AUGUSTUS ###\n")
 
 
 
@@ -120,7 +120,7 @@ def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
     for record in single_fasta_list:
         single_command = aat + [record]
         all_aat.append(single_command)
-    print ("\n###RUNNING AAT ###\n")
+    sys.stdout.write ("\n###RUNNING AAT ###\n")
     with Pool(int(threads)) as p:
         p.map(aat_call, all_aat)
     parseAAT(wd)

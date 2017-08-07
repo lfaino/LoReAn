@@ -2,6 +2,7 @@
 import ctypes as ct
 import os
 import subprocess
+import sys
 from multiprocessing import Pool
 
 import ssw_lib
@@ -113,13 +114,13 @@ def align_call(elem):
     if res[0] == resRc[0]:
         next
     if res[0] > resRc[0]:
-        resPrint = res
+        ressys.stdout.write = res
         strand = 0
-        outputAlign = [sRId , sQId, strand, resPrint[0]]
+        outputAlign = [sRId , sQId, strand, ressys.stdout.write[0]]
     elif res[0] < resRc[0]:
-        resPrint = resRc
+        ressys.stdout.write = resRc
         strand = 1
-        outputAlign = [sRId , sQId, strand, resPrint[0]]
+        outputAlign = [sRId , sQId, strand, ressys.stdout.write[0]]
     ssw.init_destroy(qProfile)
     ssw.init_destroy(qRcProfile)
     return outputAlign
@@ -146,7 +147,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         out_filename = fastq_filename + '.longreads.filtered.fasta'
     filter_count = 0
     if os.path.isfile(out_filename):
-            print(('Filtered FASTQ existed already: ' +
+            sys.stdout.write(('Filtered FASTQ existed already: ' +
                 out_filename + ' --- skipping\n'))
             return out_filename, 0
     if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):

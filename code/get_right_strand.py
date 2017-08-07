@@ -435,7 +435,7 @@ def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
         g = ' '.join(i.attributes['Parent'])
         listgenetotal.append(g)
     listgene1 = sorted(set(list(set(listgenetotal) ^ set(listgeneintrons))))
-    # print (len(set(listgenetotal)))
+    # sys.stdout.write (len(set(listgenetotal)))
     listgene2 = []
     listgeneintrons = []
     listgenetotal = []
@@ -691,7 +691,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
 
 def runExonerate(commandList):
-    # print (commandList)
+    # sys.stdout.write (commandList)
     outputFilenameProt = commandList[0]
     outputFilename = commandList[1]
     protGff = outputFilenameProt + ".exonOut"
@@ -711,7 +711,7 @@ def runExonerate(commandList):
     for line in gff:
         if "exonerate:protein2genome:local" in line:
             splitLine = line.split("\t")
-            # print (splitLine)
+            # sys.stdout.write (splitLine)
             if (len(splitLine)) > 8:
                 chNr = splitLine[0].split(":")
                 start = chNr[1].split("-")[0]

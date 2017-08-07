@@ -55,9 +55,9 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
         load = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=pasa_dir, shell=1)
         load.communicate()
         processID = load.pid
-        # print '> GFF3 loaded to PASA DB \n'
+        # sys.stdout.write '> GFF3 loaded to PASA DB \n'
     except:
-        # print 'Could not load GFF3 to PASA DB\n'
+        # sys.stdout.write 'Could not load GFF3 to PASA DB\n'
         raise NameError('')
 
     log.close()
@@ -111,14 +111,14 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file, verbose):
     '''Updates the gff3 file with the PASA database'''
-    print('\t###CREATING CONFIGURATION FILE###\n')
+    sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
 
-    print('\t###LOADING GFF3 FILE INTO DATABASE###\n')
+    sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
     processID = load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
-    print('\t###UPDATING GFF3 FILE###\n')
+    sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
     annot_comparison(processID, pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
-    print('\t###PARSING OUTPUT###\n')
+    sys.stdout.write('\t###PARSING OUTPUT###\n')
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
     return gff3_out
@@ -127,7 +127,7 @@ def pasa_configuration(pasa_dir, pasa_db, verbose):
     '''Creates a PASA configuration file. Database name will be the reference name'''
     conf_file = pasa_dir + 'alignAssembly.config'
     if os.path.isfile(conf_file):
-        print((
+        sys.stdout.write((
             'PASA configuration file existed already: ' +
             conf_file +
             ' --- skipping\n'))
@@ -148,9 +148,9 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     database with the same name -the one of the reference-.'''
     cmd = LAUNCH_PASA % (conf_file, reference, transcripts, max_intron_length, threads)
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
-    # print out_file, os.path.isfile(out_file)
+    # sys.stdout.write out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file):
-        print(('PASA output existed already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('PASA output existed already: ' + out_file + ' --- skipping\n'))
         return out_file
     log_name = pasa_dir + 'pasa.err.log'
     log_out_name = pasa_dir + 'pasa.out.log'
@@ -162,7 +162,7 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
         pasa = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=1)
         pasa.communicate()
     except:
-        print('PASA failed')
+        sys.stdout.write('PASA failed')
         raise NameError('')
     log.close()
     out_log.close()

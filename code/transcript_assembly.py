@@ -28,7 +28,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     cmd = TRINITY % (bam_file, max_intron_length,  out_dir, threads)
     out_name = out_dir + 'Trinity-GG.fasta'
     if os.path.isfile(out_name):
-        print((
+        sys.stdout.write((
             'Trinity-GG file existed already: ' +
             out_name +
             ' --- skipping\n'))
@@ -43,7 +43,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
         trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1, cwd = wd)
         trinity_call.communicate()
     except:
-        print('Trinity did not work properly\n')
+        sys.stdout.write('Trinity did not work properly\n')
         raise NameError('')
     log_err.close()
     log.close()
@@ -54,7 +54,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     # perl ~/bin/BRAKER1/braker.pl --cores=3 --workingdir=/home/jose/mapper_testing/braker1_output/ --species=gmap_gff3
     #--genome=/home/jose/Reference/JR2_Chr8/Verticillium_dahliaejr2.GCA_000400815.2.29.dna.chromosome.8.fa
     #--bam=/home/jose/mapper_testing/gmap/gmap_Chr8_2Dall.sorted.bam
-    print ("\n###RUNNING BRAKER1 ###\n")
+    sys.stdout.write ("\n###RUNNING BRAKER1 ###\n")
 
     if fungus:
         cmd = BRAKER_FU % (threads, species_name, wd, reference, bam_file)
@@ -96,7 +96,7 @@ def gmes_call(wd, ref, fungus, threads, verbose):
         log = open(log_name, 'w')
         log_name_err = wd + 'gm_es.err.log'
         log_e = open(log_name_err, 'w')
-        print("\n###RUNNING GENEMARK ###\n")
+        sys.stdout.write("\n###RUNNING GENEMARK ###\n")
         try:
             if verbose:
                 sys.stderr.write('Executing: %s\n' % cmd)

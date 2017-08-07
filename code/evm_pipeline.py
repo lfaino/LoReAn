@@ -26,23 +26,23 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
     It will spit out evm.out.gff3 '''
 
     # Partitions
-    print('\t###PARTITIONING THE INPUTS###\n')
+    sys.stdout.write('\t###PARTITIONING THE INPUTS###\n')
     partitions = evm_partitions(working_dir, reference, gene_preds, transcripts, proteins, segmentSize, overlapSize, verbose)
 
     # Write Commands
-    print('\t###GROUPING COMMANDS###\n')
+    sys.stdout.write('\t###GROUPING COMMANDS###\n')
     command_list = evm_write_commands(working_dir, reference, weights, gene_preds, transcripts, proteins, partitions,verbose)
 
     # Run
-    print('\t###RUNNING EVM###\n')
+    sys.stdout.write('\t###RUNNING EVM###\n')
     evm_run(working_dir, command_list, threads)
 
     # Combine partitions
-    print('\t###COMBINING PARTITIONS###\n')
+    sys.stdout.write('\t###COMBINING PARTITIONS###\n')
     evm_combine(working_dir, partitions)
 
     # Convert to GFF3
-    print('\t###CONVERTING TO GFF3###\n')
+    sys.stdout.write('\t###CONVERTING TO GFF3###\n')
     evm_to_gff3(working_dir, partitions, reference)
 
     # Combine the different chromosomes
@@ -115,7 +115,7 @@ def evm_run(evm_output, command_list, threads):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
 
     log_name = evm_output + 'run.log'
@@ -142,7 +142,7 @@ def evm_combine(evm_output, partitions):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
     st_file = evm_output + 'combine_partitions.stdout'
     log_name = evm_output + 'combine_partitions.log'
@@ -171,7 +171,7 @@ def evm_to_gff3(evm_output, partitions, reference):
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
-        print(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))
         return ''
     st_file = evm_output + 'evm_to_gff3.stdout'
     log_name = evm_output + 'evm_to_gff3.log'

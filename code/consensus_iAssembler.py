@@ -17,6 +17,13 @@ ASSEMBLY  = 'iAssembler.pl -i %s -h %s  -p %s -o %s_output  2> %s.log'
 
 BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
 
+BEDTOOLS_MERGE_ST = 'bedtools merge -s -d %s -c 4,4 -o count,distinct'
+
+BEDTOOLS_MERGE = 'bedtools merge -d %s -c 4,4 -o count,distinct'
+
+CAT = 'cat %s'
+
+BEDTOOLS_SORT = 'bedtools sort'
 
 #==========================================================================================================
 
@@ -44,40 +51,27 @@ def cluster_pipeline(gff3_file, merge_distance, strand):
     here the clusters of sequence from the same locus are prepared
     """
 
-    btsort1 = ['bedtools', 'sort', '-i', gff3_file]
+    cat = CAT %(gff3_file)
+    btsort1 = BEDTOOLS_SORT
+
     dist = '-' + str(merge_distance)
     if strand:
-        btmerge1 = [
-            'bedtools',
-            'merge',
-            '-s',
-            '-d',
-            str(dist),
-            '-c',
-            '4,4',
-            '-o',
-            'count,distinct']
+        btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
+        sys.stdout.write("\t###CLUSTERING IN STRANDED MODE###\n")
 
-        print("\t###CLUSTERING IN STRANDED MODE###\n")
     else:
-        btmerge1 = [
-            'bedtools',
-            'merge',
-            '-d',
-            str(dist),
-            '-c',
-            '4,4',
-            '-o',
-            'count,distinct']
-        print("\t###CLUSTERING IN NON-STRANDED MODE###\n")
-    btsort2 = ['bedtools', 'sort']
+        btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
+        sys.stdout.write("\t###CLUSTERING IN NON-STRANDED MODE###\n")
+
+    btsort2 = BEDTOOLS_SORT
 
     # Sort the GFF3 file
-    btsort1_call = subprocess.Popen(btsort1, stdout=subprocess.PIPE)
+    cat_call = subprocess.Popen(cat, stdout=subprocess.PIPE, shell =1)
+    btsort1_call = subprocess.Popen(btsort1, stdin=cat_call.stdout, stdout=subprocess.PIPE, shell =1)
     # Merge the BED entries, count number of reads on each merged entry
-    btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE)
+    btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE, shell =1)
     # NSort it again and returns
-    btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE)
+    btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE, shell =1)
     outputBT = btsort2_call.communicate()[0]
     final_output = outputBT.splitlines()
     return final_output

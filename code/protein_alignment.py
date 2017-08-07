@@ -2,6 +2,7 @@
 ''
 import os
 import subprocess
+import sys
 from sys import argv
 
 
@@ -10,7 +11,7 @@ def AAT(proteinFastaFile, ref, wd):
     assembled transcripts'''
     wd_output = wd + '/protein_evidence.gff3'
     if os.path.isfile(wd_output):
-        print(('AAT files exist: ' + wd_output + ' --- skipping\n'))
+        sys.stdout.write(('AAT files exist: ' + wd_output + ' --- skipping\n'))
         return True
     else:
         args = [
@@ -68,7 +69,7 @@ def main():
     wd = './'
     AAT(protFasta, ref, wd)
     mergedProtGFF3 = parseAAT(wd)
-#    print mergedProtGFF3
+#    sys.stdout.write mergedProtGFF3
 
 
 if __name__ == '__main__':

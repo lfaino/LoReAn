@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 
 
 def convert_augustus(aug_file, wd):
@@ -12,12 +13,12 @@ def convert_augustus(aug_file, wd):
     :param wd:
     :return:
     """
-    print('\t###CONVERTING AUGUSTUS TO GFF3###\n')
+    sys.stdout.write('\t###CONVERTING AUGUSTUS TO GFF3###\n')
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
     out_file = aug_file + '3'
     if os.path.isfile(out_file):
-        print((
+        sys.stdout.write((
             'Augustus GFF3 file existed already: ' +
             out_file +
             ' --- skipping\n'))
@@ -29,9 +30,9 @@ def convert_augustus(aug_file, wd):
     try:
         subprocess.check_call(args, stdout=out_f, stderr=log)
 
-        # print '> Augustus to GFF3 completed: ' + out_file
+        # sys.stdout.write '> Augustus to GFF3 completed: ' + out_file
     except:
-        # print ' Augustus to GFF3 failed'
+        # sys.stdout.write ' Augustus to GFF3 failed'
         raise NameError('')
 
     log.close()
@@ -49,14 +50,14 @@ def convert_genemark(genemark_file, wd):
     :return:
     """
 
-    print('\t###CONVERTING GENEMARK TO GFF3###\n')
+    sys.stdout.write('\t###CONVERTING GENEMARK TO GFF3###\n')
     args = ['gtf2gff3.pl', genemark_file]
     #COMMANDS.append(' '.join(args))
 
     out_file = genemark_file + '.gff3'
 
     if os.path.isfile(out_file):
-        print((
+        sys.stdout.write((
             'GeneMark GFF3 file existed already: ' +
             out_file +
             ' --- skipping\n'))
@@ -69,9 +70,9 @@ def convert_genemark(genemark_file, wd):
     try:
         subprocess.check_call(args, stdout=out_f, stderr=log)
 
-        # print '> Genemark to GFF3 completed: ' + out_file + '\n'
+        # sys.stdout.write '> Genemark to GFF3 completed: ' + out_file + '\n'
     except:
-        # print ' Genemark to GFF3 failed'
+        # sys.stdout.write ' Genemark to GFF3 failed'
         raise NameError('')
 
     log.close()
@@ -95,7 +96,7 @@ def move_single_file(filename, key, evm_dir, new_file_d):
     true_filename = filename.split('/')[-1]
     out_file = evm_dir + true_filename
     if os.path.isfile(out_file):
-        print(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
         new_file_d[key] = out_file
         return new_file_d
 
@@ -104,7 +105,7 @@ def move_single_file(filename, key, evm_dir, new_file_d):
         new_file_d[key] = out_file
         return new_file_d
     except:
-        # print 'Could not move ' + filename
+        # sys.stdout.write 'Could not move ' + filename
         raise NameError('')
 
 
@@ -122,7 +123,7 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
 
     out_file = evm_dir + key + '.gff3'
     if os.path.isfile(out_file):
-        print(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
+        sys.stdout.write(('File in EVM_dir already: ' + out_file + ' --- skipping\n'))
         new_file_d[key] = out_file
         return new_file_d
 
@@ -133,7 +134,7 @@ def move_cat_files(file_list, key, evm_dir, new_file_d):
         file_.close()
         return new_file_d
     except:
-        print('Could not move ' + out_file)
+        sys.stdout.write('Could not move ' + out_file)
         raise NameError('')
 
 
@@ -145,7 +146,7 @@ def move_EVM_inputs(evm_dir, inputs):
     :param inputs:
     :return:
     """
-    print('\t###MOVING IMPORTANT FILES###\n')
+    sys.stdout.write('\t###MOVING IMPORTANT FILES###\n')
     new_files = {}
     for key, filename in list(inputs.items()):
         if isinstance(
@@ -155,7 +156,7 @@ def move_EVM_inputs(evm_dir, inputs):
         else:
             new_files = move_single_file(filename, key, evm_dir, new_files)
 
-    # print '> EVM input dir full of files: ' + evm_dir
+    # sys.stdout.write '> EVM input dir full of files: ' + evm_dir
     return new_files
 
 
@@ -170,7 +171,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     """
     # GENE PREDICTIONS
 
-    print('\t###CONCATENATING FILES###\n')
+    sys.stdout.write('\t###CONCATENATING FILES###\n')
 
     # GENE PREDICTION
     file_list = []
@@ -205,20 +206,20 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     pred_filename = evm_dir + 'gene_predictions.gff3'
 
     if os.path.isfile(pred_filename):
-        print(('Gene predictions GFF3 file existed already: ' +
+        sys.stdout.write(('Gene predictions GFF3 file existed already: ' +
                pred_filename + ' --- skipping\n'))
     else:
 
-        # print '\nCMD: ' + ' '.join(ab_initio_list) + '\n'
+        # sys.stdout.write '\nCMD: ' + ' '.join(ab_initio_list) + '\n'
         pred_file = open(pred_filename, 'w')
         try:
             subprocess.check_call(
                 ab_initio_list,
                 stdout=pred_file,
                 cwd=evm_dir)
-            # print '> Gene prediction concatenation completed'
+            # sys.stdout.write '> Gene prediction concatenation completed'
         except:
-            # print 'Gene prediction concatenation failed'
+            # sys.stdout.write 'Gene prediction concatenation failed'
             raise NameError('')
         pred_file.close()
 
@@ -273,7 +274,7 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_file = open(w_filename, 'w')
     for present_soft in list_match:
         if present_soft in evidence_dic:
-            #            print present_soft
+            #            sys.stdout.write present_soft
             w_file.write('\t'.join(
                 [evidence_dic[present_soft], present_soft, weights_dic[present_soft]]))
             w_file.write('\n')

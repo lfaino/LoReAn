@@ -103,7 +103,7 @@ def catTwoFasta(trinity, consens, allSeq, wd):
         allOutFasta = outFileFasta + ".long.clean"
         cat_con = ['cat', trinity, allSeq, consens]
         allOutFastafile = open(allOutFasta, "w")
-        # print (cat_con)
+        # sys.stdout.write (cat_con)
         cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
         outFileFasta = allOutFasta
@@ -111,8 +111,8 @@ def catTwoFasta(trinity, consens, allSeq, wd):
     else:
         allOutFastafile = open(outFileFasta, "w")
         cat_con = ['cat', trinity, allSeq, consens]
-        # print (cat_con)
-        # print ("in")
+        # sys.stdout.write (cat_con)
+        # sys.stdout.write ("in")
         cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
         cat_call.communicate()
         allOutFastafile.close()
