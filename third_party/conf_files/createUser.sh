@@ -10,7 +10,7 @@ mysql --user="root" --password="lorean" --execute="set global sql_mode='STRICT_T
 chown -R $name:$name /home/$name/.gm_key
 chown -R $name:$name /home/$name/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/$name/
-#chown -R $name:$name /opt/LoReAn/
 chmod -R 775 /opt/LoReAn
 chmod -R 775 /home/$name/augustus
+chown -R $name:$name /home/$name/augustus
 su $name
