@@ -87,6 +87,14 @@ def main():
         check_species = 'augustus --species=help'
         process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=1)
         outAugustus, errAugustus = process.communicate()
+        list_file =  [os.path.join(home,o) for o in os.listdir(home) if os.path.isfile(os.path.join(home,o)) and ".bashrc" == o]
+        with open(list_file[0]) as bashrc:
+            for path in bashrc:
+                if "AUGUSTUS_CONFIG_PATH" in path:
+                    augustus_specie_dir = path.split("=")[1].rsplit()[0] + "species"
+                    augustus_species = [d for d in os.listdir(augustus_specie_dir)]
+        #[d for d in os.listdir(augustus_conf_dir)] #x[0] for x in os.walk(augustus_conf_dir)]
+
         protein_loc = os.path.abspath(args.protein_evidence)
 
         if args.repeat_masked:
@@ -185,7 +193,7 @@ def main():
                                               args.threads, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
-            if args.species in (errAugustus.decode("utf-8")):
+            if args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:'  + now  + '\t###\n'))
                 queue = Queue()
@@ -238,7 +246,7 @@ def main():
                 genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
-        elif args.species in (errAugustus.decode("utf-8")):
+        elif args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:'  + now  + '\t###\n'))
             queue = Queue()

@@ -87,7 +87,8 @@ def augustus_call(all_augustus):
                 sys.stderr.write('Executing: %s\n' % cmd)
             augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
             augustus.communicate()
-            sys.stderr.write('Done: %s\n' % cmd)
+            if all_augustus[2]:
+                sys.stderr.write('Done: %s\n' % cmd)
         except:
             raise NameError('Augustus Failed')
         log.close()
@@ -150,6 +151,8 @@ def aat_call(all_aat):
             sys.stderr.write('Executing: %s\n' % cmd)
         aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=1)
         aat_process.communicate()
+        if all_aat[2]:
+            sys.stderr.write('Done: %s\n' % cmd)
         log.close()
         stdout_f.close()
 

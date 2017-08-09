@@ -1,5 +1,13 @@
 # LOREAN INSTALLATION
 
+LoReAn can be run on all systems using Docker.
+
+On Linux system, make sure that the user runnig docker is added as user in docker user group.
+
+On Windows system, before installing Docker **IT IS MANDATORY** to allow symbolic links. PASA makes symbolic during the run.
+The eisiest way to run docker is via Docker Toolbox. During the installation, set the size of the disk image to about 30Gb.
+After the installation run Docker Quickstart Terminal and follow the instruction below 
+
 # IMPORTANT
 LoReAn uses GeneMark-ES as ab-initio software which needs a license key to run. 
 

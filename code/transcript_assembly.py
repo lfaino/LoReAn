@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
+
 import os
 import subprocess
 import sys
-
-
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -28,10 +27,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     cmd = TRINITY % (bam_file, max_intron_length,  out_dir, threads)
     out_name = out_dir + 'Trinity-GG.fasta'
     if os.path.isfile(out_name):
-        sys.stdout.write((
-            'Trinity-GG file existed already: ' +
-            out_name +
-            ' --- skipping\n'))
+        sys.stdout.write(('Trinity-GG file existed already: ' + out_name + ' --- skipping\n'))
         return out_name
     log_name_err = wd + 'trinity.err.log'
     log_err = open(log_name_err, 'w')
@@ -51,9 +47,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
 
 def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose):
     '''Calls braker, may take a while'''
-    # perl ~/bin/BRAKER1/braker.pl --cores=3 --workingdir=/home/jose/mapper_testing/braker1_output/ --species=gmap_gff3
-    #--genome=/home/jose/Reference/JR2_Chr8/Verticillium_dahliaejr2.GCA_000400815.2.29.dna.chromosome.8.fa
-    #--bam=/home/jose/mapper_testing/gmap/gmap_Chr8_2Dall.sorted.bam
+
     sys.stdout.write ("\n###RUNNING BRAKER1 ###\n")
 
     if fungus:

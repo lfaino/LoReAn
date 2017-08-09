@@ -34,6 +34,10 @@ GT_GFF3_INTRON = 'gt gff3 -sort -addintrons -tidy %s'
 
 BEDTOOLS_INTERSECT = 'bedtools intersect -v -a %s -b %s'
 
+GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
+
+GT_GFF3TOGTF = 'gt gff3_to_gtf %'
+
 #======================================================================================================================
 
 def removeDiscrepancy(gff, evmFile, verbose):
@@ -310,10 +314,12 @@ def longest(gff_file, fasta, proc, wd, verbose):
     gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
     errorFile = gff_file + ".gt_err.log"
 
-    gt_com = ['gt', 'gff3_to_gtf', gff_file_out]
+    gt_com = GT_GFF3TOGTF % (gff_file_out)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
     gtf_file_outfile = open(gtf_file_out, "w")
     errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile)
+    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=1)
     gt_call.communicate()
     gtf_file_outfile.close()
     errorFilefile.close()
@@ -326,6 +332,8 @@ def longest(gff_file, fasta, proc, wd, verbose):
     errorFilefile = open(errorFile, "w")
     com = ['cufflinks_gtf_genome_to_cdna_fasta.pl',
            gtf_file_out, fasta]
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
     call.communicate()
     fasta_file_outfile.close()
@@ -336,6 +344,8 @@ def longest(gff_file, fasta, proc, wd, verbose):
     gff_file_outfile = open(gff_file_out_u, "w")
     errorFilefile = open(errorFile, "w")
     com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile)
     call.communicate()
     gff_file_outfile.close()
@@ -347,6 +357,8 @@ def longest(gff_file, fasta, proc, wd, verbose):
     gff_file_outfile = open(gff_file_out, "w")
     errorFilefile = open(errorFile, "w")
     com = ['TransDecoder.LongOrfs', '-m', '10', '-t', fasta_file_out]
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
     call.communicate()
     errorFilefile.close()
@@ -358,6 +370,8 @@ def longest(gff_file, fasta, proc, wd, verbose):
     errorFilefile = open(errorFile, "w")
     wd_fasta = fasta_file_out
     com = ['TransDecoder.Predict', '--single_best_orf', '--cpu', str(proc), '--retain_long_orfs', '10', '-t', wd_fasta]
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
     call.communicate()
     errorFilefile.close()
@@ -370,6 +384,8 @@ def longest(gff_file, fasta, proc, wd, verbose):
     wd_fasta = fasta_file_out
     com = ['cdna_alignment_orf_to_genome_orf.pl',
            wd_fasta + '.transdecoder.gff3', gff_file_out_u, wd_fasta]
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
     call.communicate()
     errorFilefile.close()
@@ -409,18 +425,23 @@ def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
 
     gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
     errorFile = gff_file1 + ".gt_err.log"
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file1]
+
+    gt_com = GT_RETAINID % (gff_file1)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
     file1 = open(gff_file1_out, 'w')
     err1 = open(errorFile, 'w')
-    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1)
+    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=1)
     gt_call.communicate()
 
     gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
     errorFile = gff_file2 + ".gt_err.log"
     file1 = open(gff_file2_out, 'w')
     err1 = open(errorFile, 'w')
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', '-retainids', gff_file2]
-    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1)
+    gt_com = GT_RETAINID % (gff_file2)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=1)
     gt_call.communicate()
 
     db1 = gffutils.create_db(gff_file1_out, ':memory:', merge_strategy='create_unique', keep_order=True)
