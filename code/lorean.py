@@ -91,8 +91,8 @@ def main():
         with open(list_file[0]) as bashrc:
             for path in bashrc:
                 if "AUGUSTUS_CONFIG_PATH" in path:
-                    augustus_specie_dir = path.split("=")[1].rsplit()[0] + "species"
-                    augustus_species = [d for d in os.listdir(augustus_specie_dir)]
+                    augustus_specie_dir = path.split("=~")[1].rsplit()[0]
+                    augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
         #[d for d in os.listdir(augustus_conf_dir)] #x[0] for x in os.walk(augustus_conf_dir)]
 
         protein_loc = os.path.abspath(args.protein_evidence)
