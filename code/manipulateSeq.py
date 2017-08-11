@@ -33,15 +33,6 @@ def to_int(seq, lEle, dEle2Int):
 def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
     """
     this function calculate the score and other results from the alignment
-    :param ssw: 
-    :param qProfile: 
-    :param rNum: 
-    :param nRLen: 
-    :param nOpen: 
-    :param nExt: 
-    :param nFlag: 
-    :param nMaskLen: 
-    :return: 
     """
     res = ssw.ssw_align(qProfile, rNum, ct.c_int32(nRLen), nOpen, nExt, nFlag, 0, 0, int(nMaskLen))
     nScore = res.contents.nScore
@@ -114,13 +105,13 @@ def align_call(elem):
     if res[0] == resRc[0]:
         next
     if res[0] > resRc[0]:
-        ressys.stdout.write = res
+        res = res
         strand = 0
-        outputAlign = [sRId , sQId, strand, ressys.stdout.write[0]]
+        outputAlign = [sRId , sQId, strand, res]
     elif res[0] < resRc[0]:
-        ressys.stdout.write = resRc
+        res = resRc
         strand = 1
-        outputAlign = [sRId , sQId, strand, ressys.stdout.write[0]]
+        outputAlign = [sRId , sQId, strand, res]
     ssw.init_destroy(qProfile)
     ssw.init_destroy(qRcProfile)
     return outputAlign
