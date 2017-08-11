@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import warnings
 from multiprocessing import Pool, Manager
@@ -36,7 +37,7 @@ BEDTOOLS_INTERSECT = 'bedtools intersect -v -a %s -b %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
 
-GT_GFF3TOGTF = 'gt gff3_to_gtf %'
+GT_GFF3TOGTF = 'gt gff3_to_gtf %s'
 
 #======================================================================================================================
 
@@ -139,32 +140,32 @@ def appendID(gff):
 
 def removeOverlap(gff, verbose):
     i = open(gff, 'r')
-    outFile = gff + '.RNA.gff'
-    o = open(outFile, 'w')
+    #outFile = gff + '.RNA.gff'
+    o = tempfile.NamedTemporaryFile(delete=False, mode='w') #open(outFile, 'w')
     for line in i:
         listLine = line.split('\t')
         if len(listLine) == 9:
             if "CDS" in listLine[2]:
                 o.write(line)
-    o.close()
     i.close()
-    bedout = outFile + '.bedtools.bed'
-    bedouffile = open(bedout, "w")
-    errorFile = outFile + ".bedtools_err.log"
-    errorFilefile = open(errorFile, "w")
-    bedsort = BEDTOOLS_SORT % (outFile)
+    bedouffile = tempfile.NamedTemporaryFile()
+    #errorFile = outFile + ".bedtools_err.log"
+    errorFilefile = tempfile.NamedTemporaryFile() #open(errorFile, "w")
+    bedsort = BEDTOOLS_SORT % (o.name)
     bedmerge = BEDTOOLS_MERGE
+    o.close()
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % bedsort)
         sys.stderr.write('Executing: %s\n\n' % bedmerge)
     bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
     bedmerge_call = subprocess.Popen(bedmerge, stdin=bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile, shell=1)
     bedmerge_call.communicate()
+    errorFilefile.close()
     listMultiple = []
     listUniq = []
     count = 0
     dictRNA = {}
-    i = open(bedout, 'r')
+    i = open(bedouffile.name, 'r')
     for a in i:
         listLine = a.split('\t')
         nameRNA = re.split(',|;', listLine[5])
@@ -181,6 +182,7 @@ def removeOverlap(gff, verbose):
             elif "Parent" in elm:
                 mRNAname = elm.split('=')[1]
                 listUniq.append(mRNAname)
+    bedouffile.close()
     listMultipleUniq = []
     listMultipleUniq = list(set(listMultiple))
     dictLength = {}
@@ -295,127 +297,6 @@ def newNames(oldname):
     return finalout
 
 
-def longest(gff_file, fasta, proc, wd, verbose):
-    outputFilename = wd + 'finalAnnotation.strand.gff3'
-    outputFilenameLeft = wd + 'finalAnnotation.Left.gff3'
-    gff_out = gffwriter.GFFWriter(outputFilenameLeft)
-    gff_file_out = gff_file + ".intron.tidy.sorted.gff"
-    errorFile = gff_file + ".gt_err.log"
-    gt_com = GT_GFF3_INTRON % (gff_file)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
-    gt_call.communicate()
-    gff_file_outfile.close()
-    errorFilefile.close()
-
-    gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
-    errorFile = gff_file + ".gt_err.log"
-
-    gt_com = GT_GFF3TOGTF % (gff_file_out)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gtf_file_outfile = open(gtf_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=1)
-    gt_call.communicate()
-    gtf_file_outfile.close()
-    errorFilefile.close()
-
-    db1 = gffutils.create_db(gff_file_out, ':memory:', merge_strategy='create_unique', keep_order=True)
-
-    fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
-    errorFile = gff_file + ".1.gt_err.log"
-    fasta_file_outfile = open(fasta_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['cufflinks_gtf_genome_to_cdna_fasta.pl',
-           gtf_file_out, fasta]
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
-    call.communicate()
-    fasta_file_outfile.close()
-    errorFilefile.close()
-
-    gff_file_out_u = gtf_file_out + ".gff3"
-    errorFile = gtf_file_out + ".2.gt_err.log"
-    gff_file_outfile = open(gff_file_out_u, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile)
-    call.communicate()
-    gff_file_outfile.close()
-    errorFilefile.close()
-    # /opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
-
-    errorFile = gtf_file_out + ".TrDec_err.2.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['TransDecoder.LongOrfs', '-m', '10', '-t', fasta_file_out]
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
-    call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
-
-    errorFile = gtf_file_out + ".TrDec_err.3.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    wd_fasta = fasta_file_out
-    com = ['TransDecoder.Predict', '--single_best_orf', '--cpu', str(proc), '--retain_long_orfs', '10', '-t', wd_fasta]
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
-    call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
-
-    errorFile = gtf_file_out + ".TrDec_err.4.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(outputFilename, "w")
-    errorFilefile = open(errorFile, "w")
-    wd_fasta = fasta_file_out
-    com = ['cdna_alignment_orf_to_genome_orf.pl',
-           wd_fasta + '.transdecoder.gff3', gff_file_out_u, wd_fasta]
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
-    call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
-
-    listErr = []
-    err_file = open(errorFile, "r")
-    for line in err_file:
-        if line.startswith("Warning"):
-            listErr.append(("mRNA" + line.split("::")[1]).split(".")[0])
-    listErrUniq = list(set(listErr))
-
-    for evm in listErrUniq:
-        for i in db1.children(evm, featuretype='CDS', order_by='start'):
-            gff_out.write_rec(i)
-        gff_out.write_rec(db1[evm])
-        for i in db1.parents(evm, featuretype='gene', order_by='start'):
-            gff_out.write_rec(i)
-        for i in db1.children(evm, featuretype='exon', order_by='start'):
-            gff_out.write_rec(i)
-
-    outputFilenameFinal = wd + 'finalAnnotation.Final.gff3'
-    outfile = open(outputFilenameFinal, "w")
-    com = ['cat', outputFilenameLeft, outputFilename]
-    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
-    call.communicate()
-    outfile.close()
-
-    return outputFilenameFinal
-
 
 def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
     outputFilename = wd + 'finalAnnotation.gff3'
@@ -529,11 +410,10 @@ def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
     gff_out.close()
     gff_out_s.close()
 
-    gffOrf = longest(outputFilenameGmap, fasta, proc, wd, verbose)
 
     outputFilenameFinal = wd + 'finalAnnotation.Final.Comb.gff3'
     outfile = open(outputFilenameFinal, "w")
-    com = ['cat', gffOrf, outputFilename]
+    com = ['cat', outputFilenameGmap, outputFilename]
     call = subprocess.Popen(com, stdout=outfile, cwd=wd)
     call.communicate()
     outfile.close()

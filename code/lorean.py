@@ -430,15 +430,12 @@ def main():
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
         strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose)
-        gffPasa = grs.appendID(strandMappedGFF3)
-        noOverl = grs.removeOverlap(gffPasa, args.verbose)
-        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3, args.verbose)
-        uniqGene = grs.newNames(noDisc)
+
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         
-        finalupdate3 = grs.genename(uniqGene, args.prefix_gene, args.verbose)
+        finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)

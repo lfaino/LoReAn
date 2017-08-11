@@ -178,14 +178,14 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                 seq_dict[aling_res[1]] = [record_dict[aling_res[1]], aling_res[2]]
                 score_dict[aling_res[1]] =  aling_res[3]
         for key in score_dict:
-            if score_dict[key] > max_score:
-                max_score = score_dict[key]
+            if score_dict[key][0] > max_score:
+                max_score = score_dict[key][0]
         value_optimal = max_score - (max_score/20)
         for key in score_dict:
-            if score_dict[key]  > value_optimal and seq_dict[key][1] == 0:
+            if score_dict[key][0] > value_optimal and seq_dict[key][1] == 0:
                 filter_count += 1
                 final_seq.append(seq_dict[key][0])
-            elif score_dict[key]  > value_optimal and seq_dict[key][1] == 1:
+            elif score_dict[key][0]  > value_optimal and seq_dict[key][1] == 1:
                 filter_count += 1
                 sequenze = reverse_complement(seq_dict[key][0].seq)
                 seq_dict[key][0].seq = sequenze
@@ -212,22 +212,22 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         max_score_second = 0
         for key in score_dict:
             score = score_dict[key]
-            if score[0] == listA_adapter[0] and score[1] > max_score_first:
-                max_score_first = score[1]
-            if score[2] == listA_adapter[0] and score[3] > max_score_first:
-                max_score_first = score[3]
-            if score[0] == listA_adapter[1] and score[1] > max_score_second:
-                max_score_second = score[1]
-            if score[2] == listA_adapter[1] and score[3] > max_score_second:
-                max_score_second = score[3]
+            if score[0] == listA_adapter[0] and score[1][0] > max_score_first:
+                max_score_first = score[1][0]
+            if score[2] == listA_adapter[0] and score[3][0] > max_score_first:
+                max_score_first = score[3][0]
+            if score[0] == listA_adapter[1] and score[1][0] > max_score_second:
+                max_score_second = score[1][0]
+            if score[2] == listA_adapter[1] and score[3][0] > max_score_second:
+                max_score_second = score[3][0]
         value_optimal_first = max_score_first - (max_score_first/30)
         value_optimal_second = max_score_second - (max_score_second/30)
         listReadsOverLimit = []
         for key in score_dict:
             score = score_dict[key]
-            if (score[0] == listA_adapter[0] and score[1] > value_optimal_first) and (score[2] == listA_adapter[1] and score[3] > value_optimal_second):
+            if (score[0] == listA_adapter[0] and score[1][0] > value_optimal_first) and (score[2] == listA_adapter[1] and score[3][0] > value_optimal_second):
                 listReadsOverLimit.append(key)
-            elif (score[2] == listA_adapter[0] and score[3] > value_optimal_first) and (score[0] == listA_adapter[1] and score[1] > value_optimal_second):
+            elif (score[2] == listA_adapter[0] and score[3][0] > value_optimal_first) and (score[0] == listA_adapter[1] and score[1][0] > value_optimal_second):
                 listReadsOverLimit.append(key)
         for key in listReadsOverLimit:
             if seq_dict[key][1] == 1 and seq_dict[key][3] == 0:
