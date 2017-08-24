@@ -413,23 +413,15 @@ def main():
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t"  + now + "\t###\n"))
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
-        consensusMappedGFF3 = mapping.gmap(
-            'cons',
-            genome_gmap,
-            mergedFastaFilename,
-            args.threads,
-            'gff3_gene',
-            args.min_intron_length,
-            args.max_intron_length,
-            args.end_exon,
-            gmap_wd, args.verbose,
-            Fflag=True)
+        consensusMappedGFF3 = mapping.gmap('cons', genome_gmap, mergedFastaFilename, args.threads, 'gff3_gene',
+                                           args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose,
+                                           Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t"  + now  + "\t###\n"))
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
-        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose)
+        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose, exonerate_wd)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
@@ -437,14 +429,14 @@ def main():
         
         finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
-        finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
+        #finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
+        #finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
         
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         
         finalupdate = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
-                                           finalupdate5, args.verbose)
+                                           finalupdate3, args.verbose)
         round_n += 1
         finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
                                             finalupdate, args.verbose)

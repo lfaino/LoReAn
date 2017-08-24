@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -226,9 +227,18 @@ def removeOverlap(gff, verbose):
 
 def genename(gff_filename, prefix, verbose):
     global parentname
-    errorFile = gff_filename + "error.log"
+
+    tmp_file = gff_filename + "tmp"
+    with open(tmp_file, "w") as fileout:
+        with open(gff_filename, "r") as filein:
+            for line in filein:
+                if not line.startswith('#'):
+                    fileout.write(line)
+
+
+    errorFile = tmp_file + "error.log"
     errorFilefile = open(errorFile, "w")
-    cmd = GT_GFF3 % (gff_filename)
+    cmd = GT_GFF3 % (tmp_file)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
     gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
@@ -298,10 +308,10 @@ def newNames(oldname):
 
 
 
-def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
-    outputFilename = wd + 'finalAnnotation.gff3'
+def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose, exonerate_wd):
+    outputFilename = gmap_wd + 'finalAnnotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilename)
-    outputFilenameGmap = wd + 'finalAnnotation.gmap.sing.gff3'
+    outputFilenameGmap = gmap_wd + 'finalAnnotation.gmap.sing.gff3'
     gff_out_s = gffwriter.GFFWriter(outputFilenameGmap)
 
     gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
@@ -410,13 +420,20 @@ def strand(gff_file1, gff_file2, fasta, proc, wd, verbose):
     gff_out.close()
     gff_out_s.close()
 
+    single_gff3 = exonerate(fasta, outputFilenameGmap, proc, exonerate_wd, verbose)
 
-    outputFilenameFinal = wd + 'finalAnnotation.Final.Comb.gff3'
-    outfile = open(outputFilenameFinal, "w")
-    com = ['cat', outputFilenameGmap, outputFilename]
-    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
-    call.communicate()
-    outfile.close()
+    outputFilenameFinal = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
+    #outfile = open(outputFilenameFinal, "w")
+    gff_files = [single_gff3, outputFilename]
+
+    with open(outputFilenameFinal, 'wb') as wfd:
+        for f in gff_files:
+            with open(f, 'rb') as fd:
+                shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
+
+    #call = subprocess.Popen(com, stdout=outfile, cwd=gmap_wd)
+    #call.communicate()
+    #outfile.close()
     return outputFilenameFinal
 
 
@@ -549,7 +566,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     listAsbent = sorted(set(list(set(listTotal) ^ set(listInGff))))
     listCompleteAll = listAsbent + listComplete
 
-    outputFilenameGff = wd + 'mRNA_complaete_gene_Annotation.gff3'
+    outputFilenameGff = wd + 'mRNA_complete_gene_Annotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilenameGff)
     db1 = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True)
     for evm in listCompleteAll:
@@ -565,7 +582,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     listGff3 = []
     for root, dirs, files, in os.walk(wd):
         for fileN in files:
-            if fileN.endswith('gff3') and fileN.startswith('mRNA'):
+            if (fileN.endswith('gff3') and fileN.startswith('mRNA')) or (fileN.endswith('gff3') and fileN.startswith('Gene')):
                 listGff3.append(os.path.join(root, fileN))
 
     orintedFIleN = wd + '/oriented.oldname.gff3'
