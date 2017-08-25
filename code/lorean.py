@@ -422,6 +422,7 @@ def main():
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
         strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose, exonerate_wd)
+        #finalupdate2 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS

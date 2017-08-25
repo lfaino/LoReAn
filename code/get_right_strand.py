@@ -228,21 +228,23 @@ def removeOverlap(gff, verbose):
 def genename(gff_filename, prefix, verbose):
     global parentname
 
-    tmp_file = gff_filename + "tmp"
-    with open(tmp_file, "w") as fileout:
+
+    with tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="rename") as fileout:
         with open(gff_filename, "r") as filein:
             for line in filein:
                 if not line.startswith('#'):
                     fileout.write(line)
 
 
-    errorFile = tmp_file + "error.log"
-    errorFilefile = open(errorFile, "w")
-    cmd = GT_GFF3 % (tmp_file)
+    #errorFile = tmp_file + "error.log"
+    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")# open(errorFile, "w")
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")
+    cmd = GT_GFF3 % (fileout.name)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
+        sys.stderr.write('Log file is: %s\n\n' % errorFilefile.name)
     gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
-    errorFilefile.close()
+    #errorFilefile.close()
     fields = []
     featureann = []
     chrold = ''
@@ -309,34 +311,37 @@ def newNames(oldname):
 
 
 def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose, exonerate_wd):
-    outputFilename = gmap_wd + 'finalAnnotation.gff3'
-    gff_out = gffwriter.GFFWriter(outputFilename)
-    outputFilenameGmap = gmap_wd + 'finalAnnotation.gmap.sing.gff3'
-    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap)
+    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
+    #outputFilename = gmap_wd + 'finalAnnotation.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilename.name)
+    #outputFilenameGmap = gmap_wd + 'finalAnnotation.gmap.sing.gff3'
+    outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
+    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
 
-    gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
-    errorFile = gff_file1 + ".gt_err.log"
+    #gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
+    #errorFile = gff_file1 + ".gt_err.log"
 
     gt_com = GT_RETAINID % (gff_file1)
+    file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(gff_file1_out, 'w')
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(errorFile, 'w')
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    file1 = open(gff_file1_out, 'w')
-    err1 = open(errorFile, 'w')
+        sys.stderr.write('Log file is: %s %s\n\n' % (file1.name, err1.name))
     gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=1)
     gt_call.communicate()
 
-    gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
-    errorFile = gff_file2 + ".gt_err.log"
-    file1 = open(gff_file2_out, 'w')
-    err1 = open(errorFile, 'w')
+    #gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
+    #errorFile = gff_file2 + ".gt_err.log"
+    file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(gff_file2_out, 'w')
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(errorFile, 'w')
     gt_com = GT_RETAINID % (gff_file2)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=1)
+    gt_call = subprocess.Popen(gt_com, stdout=file2, stderr=err1, shell=1)
     gt_call.communicate()
 
-    db1 = gffutils.create_db(gff_file1_out, ':memory:', merge_strategy='create_unique', keep_order=True)
-    db2 = gffutils.create_db(gff_file2_out, ':memory:', merge_strategy='create_unique', keep_order=True)
+    db1 = gffutils.create_db(file1.name, ':memory:', merge_strategy='create_unique', keep_order=True)
+    db2 = gffutils.create_db(file2.name, ':memory:', merge_strategy='create_unique', keep_order=True)
     listgene1 = []
     listgeneintrons = []
     listgenetotal = []
@@ -420,11 +425,12 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose, exonerate_wd):
     gff_out.close()
     gff_out_s.close()
 
-    single_gff3 = exonerate(fasta, outputFilenameGmap, proc, exonerate_wd, verbose)
+    single_gff3 = exonerate(fasta, outputFilenameGmap.name, proc, exonerate_wd, verbose)
 
     outputFilenameFinal = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
     #outfile = open(outputFilenameFinal, "w")
-    gff_files = [single_gff3, outputFilename]
+    gff_files = [single_gff3, outputFilename.name]
+    print (gff_files)
 
     with open(outputFilenameFinal, 'wb') as wfd:
         for f in gff_files:
