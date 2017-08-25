@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import os
 import re
 import shutil
 import subprocess
@@ -567,6 +566,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
             bar.update(size)
             time.sleep(1)
 
+    exonerate_files = results._value
 
     listInGff = listComplete + listShort
     listAsbent = sorted(set(list(set(listTotal) ^ set(listInGff))))
@@ -585,15 +585,9 @@ def exonerate(ref, gff_file, proc, wd, verbose):
             gff_out.write_rec(i)
     gff_out.close()
 
-    listGff3 = []
-    for root, dirs, files, in os.walk(wd):
-        for fileN in files:
-            if (fileN.endswith('gff3') and fileN.startswith('mRNA')) or (fileN.endswith('gff3') and fileN.startswith('Gene')):
-                listGff3.append(os.path.join(root, fileN))
-
     orintedFIleN = wd + '/oriented.oldname.gff3'
     dataGff3N = open(orintedFIleN, 'w')
-    for fname in listGff3:
+    for fname in exonerate_files:
         with open(fname) as f:
             for line in f.readlines():
                 dataGff3N.write(line)
@@ -661,4 +655,4 @@ def runExonerate(commandList):
                                 "Parent=" + nameGene[2] + ".mRNA"]
                     fileFinalGff.write(('\t'.join(exonList)) + "\n")
     fileFinalGff.close()
-
+    return protGff3

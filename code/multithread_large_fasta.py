@@ -138,7 +138,7 @@ def aat_call(all_aat):
     chr_fasta_name = all_aat[3].split("/")[-1]
     chr_name = chr_fasta_name.split(".")[0]
     prot_fasta_name = all_aat[1].split("/")[-1]
-    file_created = all_aat[0] + "/" +chr_name + "." + prot_fasta_name + ".nap.btab"
+    file_created = all_aat[0] + "/" + chr_name + "." + prot_fasta_name + ".nap.btab"
 
     if os.path.exists(file_created) and os.path.getsize(file_created) > 0:
         sys.stderr.write('Already executed: %s\n' % cmd)
