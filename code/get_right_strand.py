@@ -583,7 +583,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     for record in SeqIO.parse(prot_file_out, "fasta"):
         listTotal.append(record.id)
-        if record.seq.startswith("M") and record.seq.endswith("."):
+        if record.seq.startswith("M"):# and record.seq.endswith("."):
             listComplete.append(record.id)
         else:
             dictIncomplete[record.id] = record.id
