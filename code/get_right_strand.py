@@ -138,6 +138,115 @@ def appendID(gff):
     return outFile
 
 
+def longest(gff_file, fasta, proc, wd):
+    outputFilename = wd + 'finalAnnotation.strand.gff3'
+    outputFilenameLeft = wd + 'finalAnnotation.Left.gff3'
+    gff_out = gffwriter.GFFWriter(outputFilenameLeft)
+    gff_file_out = gff_file + ".intron.tidy.sorted.gff"
+    errorFile = gff_file + ".gt_err.log"
+
+    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', gff_file]
+    gff_file_outfile = open(gff_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile)
+    gt_call.communicate()
+    gff_file_outfile.close()
+    errorFilefile.close()
+
+    gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
+    errorFile = gff_file + ".gt_err.log"
+
+    gt_com = ['gt', 'gff3_to_gtf', gff_file_out]
+    gtf_file_outfile = open(gtf_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile)
+    gt_call.communicate()
+    gtf_file_outfile.close()
+    errorFilefile.close()
+
+    db1 = gffutils.create_db(gff_file_out, ':memory:', merge_strategy='create_unique', keep_order=True)
+
+    fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
+    errorFile = gff_file + ".1.gt_err.log"
+    fasta_file_outfile = open(fasta_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    com = ['cufflinks_gtf_genome_to_cdna_fasta.pl',
+           gtf_file_out, fasta]
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
+    call.communicate()
+    fasta_file_outfile.close()
+    errorFilefile.close()
+
+    gff_file_out_u = gtf_file_out + ".gff3"
+    errorFile = gtf_file_out + ".2.gt_err.log"
+    gff_file_outfile = open(gff_file_out_u, "w")
+    errorFilefile = open(errorFile, "w")
+    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile)
+    call.communicate()
+    gff_file_outfile.close()
+    errorFilefile.close()
+    # /opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
+
+    errorFile = gtf_file_out + ".TrDec_err.2.log"
+    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile = open(gff_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    com = ['TransDecoder.LongOrfs', '-m', '10', '-t', fasta_file_out]
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    call.communicate()
+    errorFilefile.close()
+    gff_file_outfile.close()
+
+    errorFile = gtf_file_out + ".TrDec_err.3.log"
+    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile = open(gff_file_out, "w")
+    errorFilefile = open(errorFile, "w")
+    wd_fasta = fasta_file_out
+    com = ['TransDecoder.Predict', '--single_best_orf', '--cpu', str(proc), '--retain_long_orfs', '10', '-t', wd_fasta]
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    call.communicate()
+    errorFilefile.close()
+    gff_file_outfile.close()
+
+    errorFile = gtf_file_out + ".TrDec_err.4.log"
+    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile = open(outputFilename, "w")
+    errorFilefile = open(errorFile, "w")
+    wd_fasta = fasta_file_out
+    com = ['cdna_alignment_orf_to_genome_orf.pl',
+           wd_fasta + '.transdecoder.gff3', gff_file_out_u, wd_fasta]
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    call.communicate()
+    errorFilefile.close()
+    gff_file_outfile.close()
+
+    listErr = []
+    err_file = open(errorFile, "r")
+    for line in err_file:
+        if line.startswith("Warning"):
+            listErr.append(("mRNA" + line.split("::")[1]).split(".")[0])
+    listErrUniq = list(set(listErr))
+
+    for evm in listErrUniq:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+
+    outputFilenameFinal = wd + 'finalAnnotation.Final.gff3'
+    outfile = open(outputFilenameFinal, "w")
+    com = ['cat', outputFilenameLeft, outputFilename]
+    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
+    call.communicate()
+    outfile.close()
+
+    return outputFilenameFinal
+
+
 def removeOverlap(gff, verbose):
     i = open(gff, 'r')
     #outFile = gff + '.RNA.gff'
@@ -308,8 +417,7 @@ def newNames(oldname):
     return finalout
 
 
-
-def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose, exonerate_wd):
+def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
     #outputFilename = gmap_wd + 'finalAnnotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilename.name)
@@ -424,12 +532,14 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose, exonerate_wd):
     gff_out.close()
     gff_out_s.close()
 
-    single_gff3 = exonerate(fasta, outputFilenameGmap.name, proc, exonerate_wd, verbose)
+    gffOrf = longest(outputFilenameGmap.name, fasta, proc, gmap_wd)
+
+    #single_gff3 = exonerate(fasta, outputFilenameGmap.name, proc, exonerate_wd, verbose)
 
     outputFilenameFinal = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
     #outfile = open(outputFilenameFinal, "w")
-    gff_files = [single_gff3, outputFilename.name]
-    print (gff_files)
+    gff_files = [gffOrf, outputFilename.name]
+#    print (gff_files)
 
     with open(outputFilenameFinal, 'wb') as wfd:
         for f in gff_files:
@@ -566,13 +676,14 @@ def exonerate(ref, gff_file, proc, wd, verbose):
             bar.update(size)
             time.sleep(1)
 
-    exonerate_files = results._value
+    outputFilenameGff = wd + 'mRNA_complete_gene_Annotation.gff3'
+    exonerate_files = results._value + [outputFilenameGff]
 
     listInGff = listComplete + listShort
     listAsbent = sorted(set(list(set(listTotal) ^ set(listInGff))))
     listCompleteAll = listAsbent + listComplete
 
-    outputFilenameGff = wd + 'mRNA_complete_gene_Annotation.gff3'
+
     gff_out = gffwriter.GFFWriter(outputFilenameGff)
     db1 = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True)
     for evm in listCompleteAll:
@@ -586,26 +697,35 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     gff_out.close()
 
     orintedFIleN = wd + '/oriented.oldname.gff3'
-    dataGff3N = open(orintedFIleN, 'w')
-    for fname in exonerate_files:
-        with open(fname) as f:
-            for line in f.readlines():
-                dataGff3N.write(line)
-    dataGff3N.close()
+    with open(orintedFIleN, 'wb') as wfd:
+        for f in exonerate_files:
+            with open(f, 'rb') as fd:
+                shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
 
-    orintedFIle = wd + '/oriented.gff3'
-    dataGff3 = open(orintedFIle, 'w')
-    orintedFIleErr = wd + '/oriented.gff3.error'
-    dataGff3Err = open(orintedFIleErr, 'w')
-    gt_com = GT_GFF3 % (orintedFIleN)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=1)
-    callgt.communicate()
-    dataGff3.close()
-    dataGff3Err.close()
 
-    return orintedFIle
+#    orintedFIleN = wd + '/oriented.oldname.gff3'
+#    dataGff3N = open(orintedFIleN, 'w')
+#    for fname in exonerate_files:
+#        with open(fname) as f:
+#            for line in f.readlines():
+#                dataGff3N.write(line)
+#    dataGff3N.close()
+
+
+
+#    orintedFIle = wd + '/oriented.gff3'
+#    dataGff3 = open(orintedFIle, 'w')
+#    orintedFIleErr = wd + '/oriented.gff3.error'
+#    dataGff3Err = open(orintedFIleErr, 'w')
+#    gt_com = GT_GFF3 % (orintedFIleN)
+#    if verbose:
+#        sys.stderr.write('Executing: %s\n\n' % gt_com)
+#    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=1)
+#    callgt.communicate()
+#    dataGff3.close()
+#    dataGff3Err.close()
+
+    return orintedFIleN
 
 
 def runExonerate(commandList):

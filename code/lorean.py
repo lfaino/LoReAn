@@ -421,14 +421,29 @@ def main():
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
-        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose, exonerate_wd)
+
+        #strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose, exonerate_wd)
+
+        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose)
+        gffPasa = grs.appendID(strandMappedGFF3)
+        noOverl = grs.removeOverlap(gffPasa, args.verbose)
+        ##simplified = grs.parseGff(finalOutput)
+        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3, args.verbose)
+        uniqGene = grs.newNames(noDisc)
+
+        finalupdate3 = grs.genename(uniqGene, args.prefix_gene, args.verbose)
+        print(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
+        finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
+        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
+
+
         #finalupdate2 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
         
-        finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
+#        finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
         #finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
         #finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
@@ -437,7 +452,7 @@ def main():
         round_n += 1
         
         finalupdate = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
-                                           finalupdate3, args.verbose)
+                                           finalupdate5, args.verbose)
         round_n += 1
         finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
                                             finalupdate, args.verbose)
