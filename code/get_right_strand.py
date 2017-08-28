@@ -138,91 +138,105 @@ def appendID(gff):
     return outFile
 
 
-def longest(gff_file, fasta, proc, wd):
+def longest(gff_file, fasta, proc, wd, verbose):
     outputFilename = wd + 'finalAnnotation.strand.gff3'
-    outputFilenameLeft = wd + 'finalAnnotation.Left.gff3'
-    gff_out = gffwriter.GFFWriter(outputFilenameLeft)
-    gff_file_out = gff_file + ".intron.tidy.sorted.gff"
-    errorFile = gff_file + ".gt_err.log"
+    outputFilenameLeft = tempfile.NamedTemporaryFile(delete=False, dir=wd, prefix="longest.")
+    gff_out = gffwriter.GFFWriter(outputFilenameLeft.name)
+    #gff_file_out = gff_file + ".intron.tidy.sorted.gff"
+    #errorFile = gff_file + ".gt_err.log"
 
-    gt_com = ['gt', 'gff3', '-sort', '-tidy', '-addintrons', gff_file]
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile)
+    gt_com = GT_GFF3_INTRON % (gff_file)
+    gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
+    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
     gt_call.communicate()
-    gff_file_outfile.close()
-    errorFilefile.close()
+    #gff_file_outfile.close()
+    #errorFilefile.close()
 
-    gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
-    errorFile = gff_file + ".gt_err.log"
+    #gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
+    #errorFile = gff_file + ".gt_err.log"
 
-    gt_com = ['gt', 'gff3_to_gtf', gff_file_out]
-    gtf_file_outfile = open(gtf_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile)
+    gt_com = GT_GFF3TOGTF % (gff_file_outfile.name)
+    gtf_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gtf_file_out, "w")
+    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=1)
     gt_call.communicate()
-    gtf_file_outfile.close()
-    errorFilefile.close()
+    #gtf_file_outfile.close()
+    #errorFilefile.close()
 
-    db1 = gffutils.create_db(gff_file_out, ':memory:', merge_strategy='create_unique', keep_order=True)
+    db1 = gffutils.create_db(gff_file_outfile.name, ':memory:', merge_strategy='create_unique', keep_order=True)
 
-    fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
-    errorFile = gff_file + ".1.gt_err.log"
-    fasta_file_outfile = open(fasta_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['cufflinks_gtf_genome_to_cdna_fasta.pl',
-           gtf_file_out, fasta]
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile)
+    #fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
+    #errorFile = gff_file + ".1.gt_err.log"
+    fasta_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(fasta_file_out, "w")
+    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    com = 'cufflinks_gtf_genome_to_cdna_fasta.pl %s %s' % (gtf_file_outfile.name, fasta)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=1)
     call.communicate()
-    fasta_file_outfile.close()
-    errorFilefile.close()
+    #fasta_file_outfile.close()
+    #errorFilefile.close()
 
-    gff_file_out_u = gtf_file_out + ".gff3"
-    errorFile = gtf_file_out + ".2.gt_err.log"
-    gff_file_outfile = open(gff_file_out_u, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['cufflinks_gtf_to_alignment_gff3.pl', gtf_file_out]
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile)
+    #gff_file_out_u = gtf_file_out + ".gff3"
+    #errorFile = gtf_file_out + ".2.gt_err.log"
+    gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out_u, "w")
+    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    com = 'cufflinks_gtf_to_alignment_gff3.pl %s' % (gtf_file_outfile.name)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
     call.communicate()
-    gff_file_outfile.close()
-    errorFilefile.close()
+    #gff_file_outfile.close()
+    #errorFilefile.close()
     # /opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
 
-    errorFile = gtf_file_out + ".TrDec_err.2.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    com = ['TransDecoder.LongOrfs', '-m', '10', '-t', fasta_file_out]
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    #errorFile = gtf_file_out + ".TrDec_err.2.log"
+    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
+    errorFilefile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    com = 'TransDecoder.LongOrfs -m 10 -t %s' % (fasta_file_outfile.name)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_1, stderr=errorFilefile_1, cwd=wd, shell=1)
     call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
+    #errorFilefile.close()
+    #gff_file_outfile.close()
 
-    errorFile = gtf_file_out + ".TrDec_err.3.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(gff_file_out, "w")
-    errorFilefile = open(errorFile, "w")
-    wd_fasta = fasta_file_out
-    com = ['TransDecoder.Predict', '--single_best_orf', '--cpu', str(proc), '--retain_long_orfs', '10', '-t', wd_fasta]
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    #errorFile = gtf_file_out + ".TrDec_err.3.log"
+    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile_2 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
+    errorFilefile_2 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
+    wd_fasta = fasta_file_outfile.name
+    com = 'TransDecoder.Predict --single_best_orf --cpu %s --retain_long_orfs 10 -t %s' % (proc, wd_fasta)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_2, stderr=errorFilefile_2, cwd=wd, shell=1)
     call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
+    #errorFilefile.close()
+    #gff_file_outfile.close()
 
-    errorFile = gtf_file_out + ".TrDec_err.4.log"
-    gff_file_out = gtf_file_out + ".TrDec_err.stdout"
-    gff_file_outfile = open(outputFilename, "w")
-    errorFilefile = open(errorFile, "w")
-    wd_fasta = fasta_file_out
-    com = ['cdna_alignment_orf_to_genome_orf.pl',
-           wd_fasta + '.transdecoder.gff3', gff_file_out_u, wd_fasta]
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, cwd=wd)
+    #errorFile = gtf_file_out + ".TrDec_err.4.log"
+    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
+    gff_file_outfile_3 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.") #open(outputFilename, "w")
+    errorFilefile_3 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.") #open(errorFile, "w")
+    transdecoder = tempfile.NamedTemporaryFile(delete=False)
+
+    com = 'cdna_alignment_orf_to_genome_orf.pl %s %s %s' % (wd_fasta + '.transdecoder.gff3', gff_file_outfile.name, wd_fasta)
+
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_3, stderr=errorFilefile_3, cwd=wd, shell=1)
     call.communicate()
-    errorFilefile.close()
-    gff_file_outfile.close()
+    #errorFilefile.close()
+    #gff_file_outfile.close()
 
     listErr = []
-    err_file = open(errorFile, "r")
+    err_file = open(errorFilefile.name, "r")
     for line in err_file:
         if line.startswith("Warning"):
             listErr.append(("mRNA" + line.split("::")[1]).split(".")[0])
@@ -237,12 +251,20 @@ def longest(gff_file, fasta, proc, wd):
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
 
-    outputFilenameFinal = wd + 'finalAnnotation.Final.gff3'
-    outfile = open(outputFilenameFinal, "w")
-    com = ['cat', outputFilenameLeft, outputFilename]
-    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
-    call.communicate()
-    outfile.close()
+    gff_files = [outputFilenameLeft.name, gff_file_outfile.name]
+    outputFilenameFinal = wd + 'finalAnnotation.Transdecoder.gff3'
+    #outfile = open(outputFilenameFinal, "w")
+
+
+    with open(outputFilenameFinal, 'wb') as wfd:
+        for f in gff_files:
+            with open(f, 'rb') as fd:
+                shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
+
+
+#    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
+#    call.communicate()
+#    outfile.close()
 
     return outputFilenameFinal
 
@@ -532,7 +554,7 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     gff_out.close()
     gff_out_s.close()
 
-    gffOrf = longest(outputFilenameGmap.name, fasta, proc, gmap_wd)
+    gffOrf = longest(outputFilenameGmap.name, fasta, proc, gmap_wd, verbose)
 
     #single_gff3 = exonerate(fasta, outputFilenameGmap.name, proc, exonerate_wd, verbose)
 
@@ -580,6 +602,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     longestProt = []
     listTotal = []
     listSingleExons = []
+    testDict= {}
 
     for record in SeqIO.parse(prot_file_out, "fasta"):
         listTotal.append(record.id)
@@ -592,7 +615,8 @@ def exonerate(ref, gff_file, proc, wd, verbose):
         for elem in listFields:
             if elem.startswith('exons'):
                 exonNumber = elem.split(",")
-                if (len(exonNumber)) == 1:
+                ## changed here for all genes
+                if (len(exonNumber)) > 0:
                     listSingleExons.append(record.id)
                     if record.id in dictIncomplete:
                         newrecord = record.reverse_complement()

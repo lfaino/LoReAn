@@ -31,7 +31,7 @@ def setting():
                         action='store_true')
     parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
-                        action='store_true')
+                        action='store_false')
     parser.add_argument("-s","--short_reads",
                         nargs="?",
                         default="",
@@ -64,9 +64,8 @@ def setting():
                         default="species",
                         help="Prefix to add to the final Gff3 gene name [specie]")
     parser.add_argument("-w","--working_dir",
-                        "--working_dir",
                         nargs="?",
-                        default="annotation",
+                        default="",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument("-t","--threads",
                         nargs="?", default="3",

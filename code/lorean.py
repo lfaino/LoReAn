@@ -11,9 +11,9 @@
 
 import datetime
 import os
-import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from os.path import expanduser
 from queue import Queue
@@ -49,8 +49,13 @@ def main():
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         # Useful variables for later
-        wd_base = os.path.abspath(args.working_dir) + '/'
-        wd = wd_base + 'run/'
+        root = os.getcwd()
+
+        if args.working_dir == "":
+            temp_dir = tempfile.TemporaryDirectory(dir=root, prefix='annotation_')
+            wd = os.path.join(temp_dir.name, 'run/')
+        else:
+            wd = os.path.join(root , args.working_dir, 'run/')
         ref = os.path.abspath(args.ref)
 
         gmap_name = args.ref + '_GMAPindex'
@@ -354,11 +359,9 @@ def main():
         # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(
-                        long_sorted_bam, updatedGff3, fileName)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(
-                        long_sorted_bam, evm_gff3, fileName)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t"  + now  + "\t###\n"))
 
@@ -367,8 +370,8 @@ def main():
                 gffreadFastaFile = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
-                long_fasta, filter_count = mseq.filterLongReads(
-                    gffreadFastaFile, args.assembly_overlapLength, args.max_long_read, consensus_wd,  fake, args.threads, a = False)
+                long_fasta, filter_count = mseq.filterLongReads(gffreadFastaFile, args.assembly_overlapLength,
+                                                                args.max_long_read, consensus_wd,  fake, args.threads, a = False)
 
                 gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -388,13 +391,8 @@ def main():
                 if os.path.isfile(tmp_assembly_file):
                     sys.stdout.write('No assembly')
                 else:
-                    consensus.generate_fasta(
-                        cluster_list,
-                        gffreadDict,
-                        args.cluster_min_evidence,
-                        args.cluster_max_evidence,
-                        args.assembly_overlapLength,
-                        tmp_wd)
+                    consensus.generate_fasta(cluster_list, gffreadDict, args.cluster_min_evidence,
+                                             args.cluster_max_evidence, args.assembly_overlapLength, tmp_wd)
                     consensus.assembly(args.assembly_overlapLength, args.assembly_percentIdentity, args.threads, tmp_wd, args.verbose)
                     utrs.lengthSupport(tmp_wd, args.threads)
 
@@ -403,7 +401,7 @@ def main():
         # THE FULL PIPELINE
         # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLWCT ONLY SEQUENCE
         # THAT PASS THE FILTER
-        evm_nosupport = collect.parse_only(args.assembly_readThreshold, wd)
+#        evm_nosupport = collect.parse_only(args.assembly_readThreshold, wd)
         tmp_assembly = collect.catAssembled(wd)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
@@ -422,12 +420,9 @@ def main():
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
 
-        #strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose, exonerate_wd)
-
         strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, args.threads, gmap_wd, args.verbose)
         gffPasa = grs.appendID(strandMappedGFF3)
         noOverl = grs.removeOverlap(gffPasa, args.verbose)
-        ##simplified = grs.parseGff(finalOutput)
         noDisc = grs.removeDiscrepancy(noOverl, evm_gff3, args.verbose)
         uniqGene = grs.newNames(noDisc)
 
@@ -436,18 +431,11 @@ def main():
         finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
 
-
-        #finalupdate2 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
-
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
-        
-#        finalupdate3 = grs.genename(strandMappedGFF3, args.prefix_gene, args.verbose)
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t"  + now  + "\t###\n"))
-        #finalupdate4 = grs.exonerate(ref, finalupdate3, args.threads, exonerate_wd, args.verbose)
-        #finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
-        
+
         fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
         
@@ -462,7 +450,7 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t'  + now  + '\t###\n'))
 
-        final_output_dir = wd_base + 'output/'
+        final_output_dir = os.path.join(root, 'output/')
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t"  + now  + "\t###\n"))
@@ -472,11 +460,8 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-        if args.keep_tmp:
-            dirs_list = ['/PASA/', 'augustus/', 'gmes/', 'AAT/', 'split/']
-            for dirs in dirs_list:
-                dest = wd + dirs
-                shutil.rmtree(dest, ignore_errors=True)
+        if not args.keep_tmp and args.working_dir == '':
+            temp_dir.cleanup()
 
     else:
         sys.stdout.write('Key for GeneMark-ES not found.  Please, place the GeneMark-ES key in the folder where you have your data.')
