@@ -26,19 +26,22 @@ RUN git clone https://github.com/lfaino/LoReAn.git && git clone https://github.c
 
 WORKDIR /opt/LoReAn/third_party/software/
 
-RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean && sudo ./configure --prefix=$PWD && sudo make && sudo make install 
+RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
+ sudo ./configure --prefix=$PWD && sudo make && sudo make install
 
 RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
 
 RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && tar -zxvf v2.1.0.tar.gz && rm v2.1.0.tar.gz &&\
     mv PASApipeline-2.1.0 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
-    cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ && chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok
+    cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ &&\
+    chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
     
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
     tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
 
-RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.tar.gz && tar -zxvf Trinity-v2.4.0.tar.gz && mv trinityrnaseq-Trinity-v2.4.0 Trinity && \
+RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.tar.gz && tar -zxvf Trinity-v2.4.0.tar.gz && \
+    mv trinityrnaseq-Trinity-v2.4.0 Trinity && \
     rm Trinity-v2.4.0.tar.gz && cd Trinity && make && make plugins
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\

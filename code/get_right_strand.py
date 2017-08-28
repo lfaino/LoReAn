@@ -340,8 +340,11 @@ def removeOverlap(gff, verbose):
         mRNAnew = mRNA.strip('\n')
         if mRNAnew not in listUniqNew:
             listUniqNew.append(mRNAnew)
-    outputFilename = gff + '.uniq.gff3'
-    gff_out = gffwriter.GFFWriter(outputFilename)
+#     = gff + '.uniq.gff3'
+    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.")
+
+    gff_out = gffwriter.GFFWriter(outputFilename.name)
+
     db1 = gffutils.create_db(gff, ':memory:', merge_strategy='create_unique', keep_order=True)
     for evm in listUniqNew:
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
@@ -352,7 +355,7 @@ def removeOverlap(gff, verbose):
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
 
-    return outputFilename
+    return outputFilename.name
 
 
 def genename(gff_filename, prefix, verbose):
