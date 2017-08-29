@@ -76,7 +76,7 @@ main: {
 		&process_cmd($cmd);
 	}
 
-	
+
 	## run GMAP
 
     my $num_gmap_top_hits = $number_top_hits;

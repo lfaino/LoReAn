@@ -401,7 +401,7 @@ def main():
         # THE FULL PIPELINE
         # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLWCT ONLY SEQUENCE
         # THAT PASS THE FILTER
-#        evm_nosupport = collect.parse_only(args.assembly_readThreshold, wd)
+        collect.parse_only(args.assembly_readThreshold, wd)
         tmp_assembly = collect.catAssembled(wd)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
