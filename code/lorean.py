@@ -444,8 +444,8 @@ def main():
         round_n += 1
         finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref, fastaAll,
                                             finalupdate, args.verbose)
-        finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
-        FinalFiles.append(finalUpdate)
+        #finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
+        FinalFiles.append(finalupdate2)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t'  + now  + '\t###\n'))

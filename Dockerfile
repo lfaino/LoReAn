@@ -40,9 +40,9 @@ RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && t
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
     tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
 
-RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.4.0.tar.gz && tar -zxvf Trinity-v2.4.0.tar.gz && \
-    mv trinityrnaseq-Trinity-v2.4.0 Trinity && \
-    rm Trinity-v2.4.0.tar.gz && cd Trinity && make && make plugins
+RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz && tar -zxvf v2.2.0.tar.gz && \
+    mv trinityrnaseq-2.2.0 Trinity && \
+    rm v2.2.0.tar.gz && cd Trinity && make && make plugins
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive
