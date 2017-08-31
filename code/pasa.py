@@ -99,7 +99,8 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
             update_file = filename
 
     new_filename = pasa_dir + 'FinalAnnotationLorean' + '.gff3'
-    shutil.move(update_file, new_filename)
+    root = os.path.join(pasa_dir, update_file)
+    shutil.move(root, new_filename)
 
     return new_filename
 

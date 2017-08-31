@@ -90,8 +90,7 @@ def parse_contigs(outputAssembly, threshold_float):
         outputFile = open(output_filename, 'w')
         for iden, write_iden in list(real_contigs.items()):
             if iden in contigDict:
-                outputFile.write('>' + write_iden + '\n' +
-                                 str(contigDict[iden].seq) + '\n')
+                outputFile.write('>' + write_iden + '\n' + str(contigDict[iden].seq) + '\n')
         contigSeq.close()
         outputFile.close()
     return
@@ -109,7 +108,6 @@ def catAssembled(wd):
     for root, dirs, files in os.walk(wd_tmp):
         for name in files:
             wd_fasta = os.path.join(root, name)
-
             if 'assembled.fasta' in wd_fasta:
                 t_file = open(wd_fasta, 'r')
                 for line in t_file:

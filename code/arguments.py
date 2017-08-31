@@ -145,8 +145,8 @@ def setting():
     parser.add_argument("-nc","--no_consensus",
                         help="Do not run the long reads consensus pipeline [FALSE]",
                         action='store_true')
-    parser.add_argument("-nu","--no_update",
-                        help="Do not run the PASA update[FALSE]",
+    parser.add_argument("-u","--update",
+                        help="Update a GFF3 file using long reads",
                         action='store_true')
     parser.add_argument("-co","--collect_only",
                         help="Collect only assebmled transcripts [FALSE]",

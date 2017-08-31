@@ -55,10 +55,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     for record in single_fasta_list:
         single_command = augustus + [record]
         all_augustus.append(single_command)
-    sys.stdout.write ("\n###RUNNING AUGUSTUS ###\n")
-
-
-
+    sys.stdout.write ("\t###RUNNING AUGUSTUS ###\n")
     with Pool(int(threads)) as pool:
         pool.map(augustus_call, all_augustus)
 
@@ -72,8 +69,6 @@ def augustus_call(all_augustus):
     cmd = AUGUSTUS % (all_augustus[1], all_augustus[3])
     chromo = all_augustus[3].split('/')[-1]
     wd_augu = all_augustus[0] + '/' + chromo + '.augustus.gff'
-
-
     if os.path.exists(wd_augu) and os.path.getsize(wd_augu) > 0:
         sys.stderr.write('Already executed: %s\n' % cmd)
         pass
@@ -121,7 +116,7 @@ def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
     for record in single_fasta_list:
         single_command = aat + [record]
         all_aat.append(single_command)
-    sys.stdout.write ("\n###RUNNING AAT ###\n")
+    sys.stdout.write ("\t###RUNNING AAT ###\n")
     with Pool(int(threads)) as p:
         p.map(aat_call, all_aat)
     parseAAT(wd)
@@ -129,8 +124,7 @@ def aat_multi(threads, protein_evidence, single_fasta_list, wd, verbose):
 
 
 def aat_call(all_aat):
-    '''Calls genome guided trinity on the BAM file to generate
-    assembled transcripts'''
+    '''Calls genome guided trinity on the BAM file to generate assembled transcripts'''
 
 
     cmd = AAT % (all_aat[3], all_aat[1] )

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import datetime
 import math
 import os
 import subprocess
@@ -232,6 +233,9 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     First builds the gmap database index with gmap_build(),
     then uses gmap_map() to map'''
     # Build the reference
+    fmtdate = '%H:%M:%S %d-%m'
+    now = datetime.datetime.now().strftime(fmtdate)
+    sys.stdout.write('\n###GMAP MAPPING  STARTED AT:\t' + now + '\t###\n')
     sys.stdout.write('\t###BUILD INDEX###\n')
     reference_db = gmap_build(reference, wd, verbose)
     # Mapping

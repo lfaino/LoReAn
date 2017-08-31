@@ -50,7 +50,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
 def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose):
     '''Calls braker, may take a while'''
 
-    sys.stdout.write ("\n###RUNNING BRAKER1 ###\n")
+    sys.stdout.write ("\t###RUNNING BRAKER1 ###\n")
 
     if fungus:
         cmd = BRAKER_FU % (threads, species_name, wd, reference, bam_file)
@@ -72,6 +72,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     log_err.close()
     return
 
+
 def gmes_call(wd, ref, fungus, threads, verbose):
 
 
@@ -92,7 +93,7 @@ def gmes_call(wd, ref, fungus, threads, verbose):
         log = open(log_name, 'w')
         log_name_err = wd + 'gm_es.err.log'
         log_e = open(log_name_err, 'w')
-        sys.stdout.write("\n###RUNNING GENEMARK ###\n")
+        sys.stdout.write("\t###RUNNING GENEMARK ###\n")
         try:
             if verbose:
                 sys.stderr.write('Executing: %s\n' % cmd)
