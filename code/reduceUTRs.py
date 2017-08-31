@@ -59,16 +59,7 @@ def modify(outputDir):
                 coverage.write(
                     line[2] + '\t' + line[6] + '\t' + line[7] + '\n')
         coverage.close()
-        BTcov = [
-            'bedtools',
-            'genomecov',
-            '-bg',
-            '-i',
-            outputDir +
-            'coverage.bed',
-            '-g',
-            outputDir +
-            'genome.txt']
+        BTcov = ['bedtools', 'genomecov', '-bg', '-i', outputDir + 'coverage.bed', '-g', outputDir + 'genome.txt']
         BTcov_call = subprocess.check_output(BTcov)
         bedFile = BTcov_call.splitlines()
         bed = open(outputDir + 'assembly.cov', 'w')
