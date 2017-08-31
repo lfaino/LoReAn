@@ -71,7 +71,7 @@ def evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, seg
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        evm_call = subprocess.Popen(cmd, stdout=stdout_f, stderr=log, cwd=evm_output, shell=1)
+        evm_call = subprocess.Popen(cmd, stdout=stdout_f, stderr=log, cwd=evm_output, shell=True)
         evm_call.communicate()
     except:
         raise NameError( cmd + 'not working')
@@ -95,7 +95,7 @@ def evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        evm_call = subprocess.Popen(cmd, stdout=command, stderr=log, cwd=evm_output, shell=1)
+        evm_call = subprocess.Popen(cmd, stdout=command, stderr=log, cwd=evm_output, shell=True)
         evm_call.communicate()
     except:
         raise NameError('')

@@ -38,7 +38,7 @@ SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
 def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference
     Out_format can be samse of gff3 (2)'''
-    global filename
+
     if out_format == 'samse':
         filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':
@@ -63,7 +63,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             try:
                 if verbose:
                     sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=1)
+                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
                 gmapmap.communicate()
                 # sys.stdout.write '>GMAP worked. Output is: ' + filename +'\n'
             except:
@@ -74,7 +74,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             try:
                 if verbose:
                     sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=1)
+                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
                 gmapmap.communicate()
                 # sys.stdout.write '>GMAP worked. Output is: ' + filename +'\n'
             except:
@@ -122,7 +122,7 @@ def star_build(reference, genome_dir, threads, wd, verbose):
         try:
             if verbose:
                 sys.stderr.write('Executing: %s\n\n' % cmd)
-            star_build = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1, cwd=wd)
+            star_build = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=True, cwd=wd)
             star_build.communicate()
         except:
             sys.stdout.write('STAR build failed')
@@ -136,15 +136,8 @@ def star_build(reference, genome_dir, threads, wd, verbose):
 def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
     '''
     mapping short reads using STAR
-    :param reads:
-    :param threads:
-    :param genome_dir:
-    :param max_intron_length:
-    :param wd:
-    :return:
     '''
 
-    global args
     prefix = 'STAR_shortreads'
     if isinstance(reads, str):  # Only one file
         cmd = STAR_SINGLE % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads) # '--limitGenomeGenerateRAM', '1100000000',
@@ -167,7 +160,7 @@ def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        star = subprocess.Popen(cmd, stdout=log, stderr=log,  shell=1, cwd=wd)
+        star = subprocess.Popen(cmd, stdout=log, stderr=log,  shell=True, cwd=wd)
         star.communicate()
         # sys.stdout.write '>STAR worked. Output is: ' + filename +'\n'
     except:
@@ -202,6 +195,7 @@ def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
 def gmap_build(reference, working_dir, verbose):
     """
     Build the GMAP indexed reference from the fasta reference file
+    :param verbose:
     :param reference:
     :param working_dir:
     :return:
@@ -267,7 +261,7 @@ def samtools_view(sam_file, wd, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        samtools = subprocess.Popen(cmd, stderr=log, shell=1)
+        samtools = subprocess.Popen(cmd, stderr=log, shell=True)
         samtools.communicate()
     except:
         raise NameError('')
@@ -279,6 +273,7 @@ def samtools_view(sam_file, wd, verbose):
 def samtools_sort(bam_file, threads, wd, verbose):
     '''
     run a sorting of a bam file
+    :param verbose:
     :param bam_file:
     :param threads:
     :param wd:
@@ -298,7 +293,7 @@ def samtools_sort(bam_file, threads, wd, verbose):
         try:
             if verbose:
                 sys.stderr.write('Executing: %s\n' % cmd)
-            samtools = subprocess.Popen(cmd, stderr=log, shell=1)
+            samtools = subprocess.Popen(cmd, stderr=log, shell=True)
             samtools.communicate()
         except:
             raise NameError('')

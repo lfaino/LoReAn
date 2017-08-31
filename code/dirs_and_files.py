@@ -55,16 +55,16 @@ def catTwoBeds(gmap, evm, outFilename):
     bed12_evm = evm + ".bed12"
     bed12file = open(bed12_evm, "w")
     gtffile = open(gtf, "w")
-    gffread_con = GFFREAD % (evm)
-    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=1)
+    gffread_con = GFFREAD % evm
+    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=True)
     gffread_call.communicate()
-    gft2bed = GTF2BED % (gtf)
-    evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=1)
+    gft2bed = GTF2BED % gtf
+    evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
     evm_call.communicate()
     bed12_gmap = gmap + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
-    bedtools = BEDTOOLS %(gmap)
-    bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, shell=1)
+    bedtools = BEDTOOLS % gmap
+    bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, shell=True)
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
     inFile2 = open(bed12_evm, 'r')

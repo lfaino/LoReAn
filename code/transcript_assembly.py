@@ -38,7 +38,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1, cwd = wd)
+        trinity_call = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=True, cwd = wd)
         trinity_call.communicate()
     except:
         sys.stdout.write('Trinity did not work properly\n')
@@ -64,7 +64,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        braker_ex = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=1)
+        braker_ex = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=True)
         braker_ex.communicate()
     except:
         raise NameError('')
@@ -96,7 +96,7 @@ def gmes_call(wd, ref, fungus, threads, verbose):
         try:
             if verbose:
                 sys.stderr.write('Executing: %s\n' % cmd)
-            genemarks = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=wd, shell=1)
+            genemarks = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=wd, shell=True)
             genemarks.communicate()
         except:
             raise NameError('')

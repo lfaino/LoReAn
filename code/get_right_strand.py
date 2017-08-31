@@ -43,10 +43,10 @@ GT_GFF3TOGTF = 'gt gff3_to_gtf %s'
 
 def removeDiscrepancy(gff, evmFile, verbose):
     badName = []
-    comm = PASA_VAL % (gff)
+    comm = PASA_VAL % gff
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % comm)
-    gffVal_call = subprocess.Popen(comm, stdout=subprocess.PIPE, shell=1)
+    gffVal_call = subprocess.Popen(comm, stdout=subprocess.PIPE, shell=True)
     for ln in gffVal_call.stdout.readlines():
         name = re.split(' |\.CDS', (ln.decode("utf-8")))
         if len(name) > 3 and "ERROR" in name[0]:
@@ -77,7 +77,7 @@ def removeDiscrepancy(gff, evmFile, verbose):
     cmd = BEDTOOLS_INTERSECT % (evmFile, gff)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
-    bedtools_call = subprocess.Popen(cmd , stdout=subprocess.PIPE, shell=1)
+    bedtools_call = subprocess.Popen(cmd , stdout=subprocess.PIPE, shell=True)
     evm_mRNA = []
     for ln in bedtools_call.stdout.readlines():
         lne = ln.decode("utf-8")
@@ -145,12 +145,12 @@ def longest(gff_file, fasta, proc, wd, verbose):
     #gff_file_out = gff_file + ".intron.tidy.sorted.gff"
     #errorFile = gff_file + ".gt_err.log"
 
-    gt_com = GT_GFF3_INTRON % (gff_file)
+    gt_com = GT_GFF3_INTRON % gff_file
     gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
+    gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=True)
     gt_call.communicate()
     #gff_file_outfile.close()
     #errorFilefile.close()
@@ -158,12 +158,12 @@ def longest(gff_file, fasta, proc, wd, verbose):
     #gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
     #errorFile = gff_file + ".gt_err.log"
 
-    gt_com = GT_GFF3TOGTF % (gff_file_outfile.name)
+    gt_com = GT_GFF3TOGTF % gff_file_outfile.name
     gtf_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gtf_file_out, "w")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=1)
+    gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=True)
     gt_call.communicate()
     #gtf_file_outfile.close()
     #errorFilefile.close()
@@ -177,7 +177,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
     com = 'cufflinks_gtf_genome_to_cdna_fasta.pl %s %s' % (gtf_file_outfile.name, fasta)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=1)
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
     #fasta_file_outfile.close()
     #errorFilefile.close()
@@ -186,10 +186,10 @@ def longest(gff_file, fasta, proc, wd, verbose):
     #errorFile = gtf_file_out + ".2.gt_err.log"
     gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out_u, "w")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
-    com = 'cufflinks_gtf_to_alignment_gff3.pl %s' % (gtf_file_outfile.name)
+    com = 'cufflinks_gtf_to_alignment_gff3.pl %s' % gtf_file_outfile.name
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, shell=1)
+    call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
     #gff_file_outfile.close()
     #errorFilefile.close()
@@ -199,10 +199,10 @@ def longest(gff_file, fasta, proc, wd, verbose):
     #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
     errorFilefile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
-    com = 'TransDecoder.LongOrfs -m 10 -t %s' % (fasta_file_outfile.name)
+    com = 'TransDecoder.LongOrfs -m 10 -t %s' % fasta_file_outfile.name
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile_1, stderr=errorFilefile_1, cwd=wd, shell=1)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_1, stderr=errorFilefile_1, cwd=wd, shell=True)
     call.communicate()
     #errorFilefile.close()
     #gff_file_outfile.close()
@@ -215,7 +215,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
     com = 'TransDecoder.Predict --single_best_orf --cpu %s --retain_long_orfs 10 -t %s' % (proc, wd_fasta)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile_2, stderr=errorFilefile_2, cwd=wd, shell=1)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_2, stderr=errorFilefile_2, cwd=wd, shell=True)
     call.communicate()
     #errorFilefile.close()
     #gff_file_outfile.close()
@@ -230,7 +230,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
 
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=gff_file_outfile_3, stderr=errorFilefile_3, cwd=wd, shell=1)
+    call = subprocess.Popen(com, stdout=gff_file_outfile_3, stderr=errorFilefile_3, cwd=wd, shell=True)
     call.communicate()
     #errorFilefile.close()
     #gff_file_outfile.close()
@@ -282,14 +282,14 @@ def removeOverlap(gff, verbose):
     bedouffile = tempfile.NamedTemporaryFile()
     #errorFile = outFile + ".bedtools_err.log"
     errorFilefile = tempfile.NamedTemporaryFile() #open(errorFile, "w")
-    bedsort = BEDTOOLS_SORT % (o.name)
+    bedsort = BEDTOOLS_SORT % o.name
     bedmerge = BEDTOOLS_MERGE
     o.close()
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % bedsort)
         sys.stderr.write('Executing: %s\n\n' % bedmerge)
-    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
-    bedmerge_call = subprocess.Popen(bedmerge, stdin=bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile, shell=1)
+    bedsort_call = subprocess.Popen(bedsort, stdout=subprocess.PIPE, stderr=errorFilefile, shell=True)
+    bedmerge_call = subprocess.Popen(bedmerge, stdin=bedsort_call.stdout, stdout=bedouffile, stderr=errorFilefile, shell=True)
     bedmerge_call.communicate()
     errorFilefile.close()
     listMultiple = []
@@ -356,7 +356,6 @@ def removeOverlap(gff, verbose):
 
 
 def genename(gff_filename, prefix, verbose):
-    global parentname
 
 
     with tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="rename") as fileout:
@@ -369,11 +368,11 @@ def genename(gff_filename, prefix, verbose):
     #errorFile = tmp_file + "error.log"
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")# open(errorFile, "w")
     tmp_file = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")
-    cmd = GT_GFF3 % (fileout.name)
+    cmd = GT_GFF3 % fileout.name
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
         sys.stderr.write('Log file is: %s\n\n' % errorFilefile.name)
-    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=1)
+    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=True)
     #errorFilefile.close()
     fields = []
     featureann = []
@@ -431,8 +430,8 @@ def newNames(oldname):
     errorFile = oldname + ".gt_err.log"
     finaloutfile = open(finalout, "w")
     errorFilefile = open(errorFile, "w")
-    gt_com = GT_GFF3 % (oldname)
-    gt_call = subprocess.Popen(gt_com, stdout=finaloutfile, stderr=errorFilefile, shell=1)
+    gt_com = GT_GFF3 % oldname
+    gt_call = subprocess.Popen(gt_com, stdout=finaloutfile, stderr=errorFilefile, shell=True)
     gt_call.communicate()
     finaloutfile.close()
     errorFilefile.close()
@@ -450,23 +449,23 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     #gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
     #errorFile = gff_file1 + ".gt_err.log"
 
-    gt_com = GT_RETAINID % (gff_file1)
+    gt_com = GT_RETAINID % gff_file1
     file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(gff_file1_out, 'w')
     err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(errorFile, 'w')
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
         sys.stderr.write('Log file is: %s %s\n\n' % (file1.name, err1.name))
-    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=1)
+    gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=True)
     gt_call.communicate()
 
     #gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
     #errorFile = gff_file2 + ".gt_err.log"
     file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(gff_file2_out, 'w')
     err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(errorFile, 'w')
-    gt_com = GT_RETAINID % (gff_file2)
+    gt_com = GT_RETAINID % gff_file2
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=file2, stderr=err1, shell=1)
+    gt_call = subprocess.Popen(gt_com, stdout=file2, stderr=err1, shell=True)
     gt_call.communicate()
 
     db1 = gffutils.create_db(file1.name, ':memory:', merge_strategy='create_unique', keep_order=True)
@@ -575,7 +574,6 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
 
 
 def exonerate(ref, gff_file, proc, wd, verbose):
-    global combList
 
     ##THIS removes the warning. the check of the longest protein was giving a warining. if Biopython change, this could be a problem
 
@@ -591,7 +589,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     errorFilefile = open(errorFile, "w")
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=1)
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
     fasta_file_outfile.close()
     errorFilefile.close()
@@ -685,7 +683,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                     com = BEDTOOLS_GET_FASTA % (ref, bedFile, outputFilename)
                     if verbose:
                         sys.stderr.write('Executing: %s\n\n' % com)
-                    call = subprocess.Popen(com, shell=1)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
+                    call = subprocess.Popen(com, shell=True)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
                     call.communicate()
                     combList = [outputFilenameProt, outputFilename, verbose, queue]
             commandList.append(combList)
@@ -744,7 +742,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 #    gt_com = GT_GFF3 % (orintedFIleN)
 #    if verbose:
 #        sys.stderr.write('Executing: %s\n\n' % gt_com)
-#    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=1)
+#    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=True)
 #    callgt.communicate()
 #    dataGff3.close()
 #    dataGff3Err.close()
@@ -764,7 +762,7 @@ def runExonerate(commandList):
     commandList[3].put(com)
     if commandList[2]:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile, shell=1)
+    call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
     fileGff = open(protGff, "r")
     protGff3 = protGff + ".gff3"

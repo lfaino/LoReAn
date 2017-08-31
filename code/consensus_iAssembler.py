@@ -40,7 +40,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        bedtools = subprocess.Popen(cmd, shell=1)
+        bedtools = subprocess.Popen(cmd, shell=True)
         bedtools.communicate()
     except:
         raise NameError('')
@@ -51,7 +51,7 @@ def cluster_pipeline(gff3_file, merge_distance, strand):
     here the clusters of sequence from the same locus are prepared
     """
 
-    cat = CAT %(gff3_file)
+    cat = CAT % gff3_file
     btsort1 = BEDTOOLS_SORT
 
     dist = '-' + str(merge_distance)
@@ -97,7 +97,7 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     fasta file to retrieve the sequence
     """
 
-    global idents, end, start, chrm
+
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
         chrm, start, end, strand, number, idents = (
@@ -199,7 +199,7 @@ def iAssembler(new_commands):
     try:
         if new_commands[4]:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        assembly = subprocess.Popen(cmd, cwd=new_commands[3], stderr = log, stdout = log, shell=1)
+        assembly = subprocess.Popen(cmd, cwd=new_commands[3], stderr = log, stdout = log, shell=True)
         assembly.communicate()
     except:
         return False

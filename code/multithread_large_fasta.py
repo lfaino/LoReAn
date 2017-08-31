@@ -85,7 +85,7 @@ def augustus_call(all_augustus):
         try:
             if all_augustus[2]:
                 sys.stderr.write('Executing: %s\n' % cmd)
-            augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=1)
+            augustus = subprocess.Popen(cmd, stderr=log_e, stdout=log, cwd=all_augustus[0], shell=True)
             augustus.communicate()
             if all_augustus[2]:
                 sys.stderr.write('Done: %s\n' % cmd)
@@ -149,7 +149,7 @@ def aat_call(all_aat):
         stdout_f = open(all_aat[3] + 'AAT.stdout', 'w')
         if all_aat[2]:
             sys.stderr.write('Executing: %s\n' % cmd)
-        aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=1)
+        aat_process = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=all_aat[0], shell=True)
         aat_process.communicate()
         if all_aat[2]:
             sys.stderr.write('Done: %s\n' % cmd)

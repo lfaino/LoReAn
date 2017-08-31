@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 
@@ -52,7 +53,7 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        load = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=pasa_dir, shell=1)
+        load = subprocess.Popen(cmd, stderr=log, stdout=stdout_f, cwd=pasa_dir, shell=True)
         load.communicate()
         processID = load.pid
         # sys.stdout.write '> GFF3 loaded to PASA DB \n'
@@ -75,7 +76,7 @@ def annot_comparison(processID, pasa_dir, annot_conf_file, reference, transcript
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        pasa_call = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=1)
+        pasa_call = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=True)
         pasa_call.communicate()
     except:
         raise NameError('')
@@ -85,7 +86,6 @@ def annot_comparison(processID, pasa_dir, annot_conf_file, reference, transcript
 def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
     '''Parses through the files in the PASA directory, finds the update file and
     renames it and returns it'''
-    global update_file
     pasa_files = os.listdir(pasa_dir)
 
     pattern_build = '^' + pasa_db + \
@@ -98,15 +98,9 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
         if match:
             update_file = filename
 
-    new_filename = pasa_dir + \
-                   'FinalAnnotationLorean' + '.gff3'
-    cmd = ['mv', update_file, new_filename]
+    new_filename = pasa_dir + 'FinalAnnotationLorean' + '.gff3'
+    shutil.move(update_file, new_filename)
 
-    try:
-        mv_call = subprocess.Popen(cmd, cwd=pasa_dir)
-        mv_call.communicate()
-    except:
-        raise NameError('')
     return new_filename
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file, verbose):
@@ -159,7 +153,7 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        pasa = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=1)
+        pasa = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=True)
         pasa.communicate()
     except:
         sys.stdout.write('PASA failed')
