@@ -7,6 +7,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y build-essential ap
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
+
 RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
 RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
 
