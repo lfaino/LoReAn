@@ -1,4 +1,3 @@
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.830396.svg)](https://doi.org/10.5281/zenodo.830396)
 
 
 # LoReAn (Long-Read Annotation) for automated eukaryotic genome annotation incorporating long-reads
