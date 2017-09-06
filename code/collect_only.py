@@ -9,12 +9,12 @@ count_sequences = 0
 length_cluster = 0
 
 
-def parse_only(threshold_float, tmp_wd):
+def parse_only(threshold_float, wd):
     """
     to join the assembly and the parsing process
     """
     evm_list = []
-    wd = tmp_wd + 'consensus/tmp/'
+
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
             if 'output' in direc:
@@ -102,7 +102,7 @@ def catAssembled(wd):
     """
     sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     '''C at all the assembled single fasta files in to a uniq file'''
-    wd_tmp = wd + 'consensus/tmp/'
+    wd_tmp = wd
     fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
     for root, dirs, files in os.walk(wd_tmp):

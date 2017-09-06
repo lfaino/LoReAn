@@ -51,6 +51,11 @@ def setting():
                         default="",
                         help="GFF or GFF3 or GTF or BED file containing repeats coordinates []",
                         metavar='GFF_file')
+    parser.add_argument("-u","--update",
+                        nargs="?",
+                        default="",
+                        help="GFF or GFF3 or GTF or BED file containing repeats coordinates []",
+                        metavar='GFF_file')
     parser.add_argument("-m","--max_long_read",
                         nargs="?",
                         default=20000,
@@ -144,9 +149,6 @@ def setting():
                         action='store_true')
     parser.add_argument("-nc","--no_consensus",
                         help="Do not run the long reads consensus pipeline [FALSE]",
-                        action='store_true')
-    parser.add_argument("-u","--update",
-                        help="Update a GFF3 file using long reads",
                         action='store_true')
     parser.add_argument("-co","--collect_only",
                         help="Collect only assebmled transcripts [FALSE]",

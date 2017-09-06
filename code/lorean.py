@@ -34,6 +34,7 @@ import pasa as pasa
 import prepare_evm_inputs as inputEvm
 import reduceUTRs as utrs
 import transcript_assembly as transcripts
+import update as update
 
 
 ###############
@@ -42,10 +43,11 @@ import transcript_assembly as transcripts
 
 def main():
     home = expanduser("~")
+    args = arguments.setting()
     if os.path.isfile(home + "/.gm_key"):
         '''Core of the program'''
         # Parse the arguments
-        args = arguments.setting()
+
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         # Useful variables for later
@@ -87,6 +89,9 @@ def main():
         logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
         logistic.check_create_dir(exonerate_wd)
+        if args.long_reads:
+            consensus_wd = (wd + 'consensus/')
+            logistic.check_create_dir(consensus_wd)
 
         check_species = 'augustus --species=help'
         process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -98,14 +103,15 @@ def main():
                 if "AUGUSTUS_CONFIG_PATH" in path:
                     augustus_specie_dir = path.split("=~")[1].rsplit()[0]
                     augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
-        # [d for d in os.listdir(augustus_conf_dir)] #x[0] for x in os.walk(augustus_conf_dir)]
-
         protein_loc = os.path.abspath(args.protein_evidence)
 
         if args.repeat_masked:
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
         else:
             genome_gmap = ref
+
+        if args.update:
+            update.update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref)
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         list_fasta_names = multiple.single_fasta(ref, wd)
@@ -188,8 +194,7 @@ def main():
                 trinity_cpu = int(args.threads)
             trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
             trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, args.threads, 'gff3_gene',
-                                       args.min_intron_length,
-                                       args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
+                                       args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
             trinity_path = trinityGFF3
 
             # PASA Pipeline
@@ -354,15 +359,10 @@ def main():
             if args.long_reads:
                 # Means there are long reads to map and user wants to run
                 # this pipeline
-
-                consensus_wd = (wd + 'consensus/')
-                logistic.check_create_dir(consensus_wd)
-                # HERE WE MAP THE READS ON THE GENOME USING GMAP
-
                 if not long_sorted_bam:
                     long_sam = mapping.gmap('sam', genome_gmap, long_fasta, args.threads, 'samse',
-                                            args.min_intron_length,
-                                            args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=False)
+                                            args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                            args.verbose, Fflag=False)
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, args.threads, wd, args.verbose)
 
                     # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
@@ -372,9 +372,9 @@ def main():
                 # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -414,10 +414,11 @@ def main():
         # WITH THE ELSE, WE ALLOW THE USER TO DECIDE TO CHANGE THE ASSEMBLY
         # PARAMETERS AND COLLECT DIFFERENT ASSEMBLED SEQUENCES WITHOT RUNNING
         # THE FULL PIPELINE
-        # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLWCT ONLY SEQUENCE
+        # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLECT ONLY SEQUENCE
         # THAT PASS THE FILTER
-        collect.parse_only(args.assembly_readThreshold, wd)
-        tmp_assembly = collect.catAssembled(wd)
+        tmp_consensus = os.path.join(consensus_wd , 'tmp/')
+        collect.parse_only(args.assembly_readThreshold, tmp_consensus)
+        tmp_assembly = collect.catAssembled(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
         mergedFastaFilename = consensus_wd + 'assembly.wEVM.fasta'
@@ -469,7 +470,7 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        final_output_dir = os.path.join(root, 'output/')
+        final_output_dir = os.path.join(root, 'output_annotation/')
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))

@@ -2,7 +2,12 @@
 
 import errno
 import os
+import re
 import subprocess
+import tempfile
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -49,8 +54,41 @@ def copy_file(in_file, directory):
         raise NameError('')
 
 
-def catTwoBeds(gmap, evm, outFilename):
+def catTwoBeds(gmap, evm_orig, outFilename, update):
     '''convert in to bed12 and concatenates the two bed12 files'''
+
+    if update:
+        listID = []
+        openfile = open(evm_orig, "r")
+        for line in openfile:
+            fields = line.split("\t")
+            if len(fields) == 9 and "mRNA" in fields[2]:
+                id = re.split(';|=', fields[8])[1]
+                listID.append(id)
+
+        db1 = gffutils.create_db(evm_orig, ':memory:', merge_strategy='create_unique', keep_order=True)
+
+        outputfilename = tempfile.NamedTemporaryFile(prefix="evm.", delete=False)
+        gff_out = gffwriter.GFFWriter(outputfilename.name)
+        count = 0
+        for mrna in listID:
+            count += 1
+            for i in db1.children(mrna, featuretype='CDS', order_by='start'):
+                i.attributes._d["Parent"] = ['.'.join(["evm.model", fields[0], str(count)])]
+                gff_out.write_rec(i)
+            i = (db1[mrna])
+            i.attributes._d["Parent"] = ['.'.join(["evm.TU", fields[0], str(count)])]
+            i.attributes._d["ID"] = ['.'.join(["evm.model", fields[0], str(count)])]
+            gff_out.write_rec(i)
+            for i in db1.parents(mrna, featuretype='gene', order_by='start'):
+                i.attributes._d["ID"] = ['.'.join(["evm.TU", fields[0], str(count)])]
+                gff_out.write_rec(i)
+            for i in db1.children(mrna, featuretype='exon', order_by='start'):
+                i.attributes._d["Parent"] = ['.'.join(["evm.model", fields[0], str(count)])]
+                gff_out.write_rec(i)
+        evm = outputfilename.name
+    else:
+        evm = evm_orig
     gtf = evm + ".gtf"
     bed12_evm = evm + ".bed12"
     bed12file = open(bed12_evm, "w")
@@ -61,6 +99,7 @@ def catTwoBeds(gmap, evm, outFilename):
     gft2bed = GTF2BED % gtf
     evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
     evm_call.communicate()
+    bed12_evm = tmp.name
     bed12_gmap = gmap + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap
