@@ -26,6 +26,7 @@ RUN git clone https://github.com/lfaino/LoReAn.git && git clone https://github.c
 
 WORKDIR /opt/LoReAn/third_party/software/
 
+
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
  sudo ./configure --prefix=$PWD && sudo make && sudo make install
 
