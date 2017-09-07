@@ -257,6 +257,7 @@ def maskedgenome(wd, ref , gff3):
     """
     this module is used to mask the genome when a gff or bed file is provided
     """
+
     if '/' in ref:
         out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
     else:

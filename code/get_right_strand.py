@@ -41,6 +41,7 @@ GT_GFF3TOGTF = 'gt gff3_to_gtf %s'
 
 #======================================================================================================================
 
+
 def removeDiscrepancy(gff, evmFile, verbose):
     badName = []
     comm = PASA_VAL % gff
