@@ -99,7 +99,7 @@ def catTwoBeds(gmap, evm_orig, outFilename, update):
     gft2bed = GTF2BED % gtf
     evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
     evm_call.communicate()
-    bed12_evm = tmp.name
+    #bed12_evm = tmp.name
     bed12_gmap = gmap + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap
