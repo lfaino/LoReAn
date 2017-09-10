@@ -12,6 +12,7 @@
 import datetime
 import multiprocessing
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -318,13 +319,11 @@ def main():
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
             evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
-                                                 transcript_file,
-                                                 protein_file, args.segmentSize, args.overlapSize, args.verbose)
+                                                 transcript_file, protein_file, args.segmentSize, args.overlapSize, args.verbose)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
             evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
-                                                 transcript_file,
-                                                 protein_file, args.segmentSize, args.overlapSize)
+                                                 transcript_file, protein_file, args.segmentSize, args.overlapSize, args.verbose)
         # KEEP THIS OUTPUT
         FinalFiles.append(evm_gff3)
         if not args.short_reads and not args.long_reads:
@@ -479,7 +478,11 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        final_output_dir = os.path.join(root, 'output_annotation/')
+        if temp_dir:
+            final_output_dir = os.path.join(root, 'output_', temp_dir.name )
+        else:
+            final_output_dir = os.path.join(root, 'output_', args.working_dir)
+
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
@@ -491,6 +494,8 @@ def main():
                 os.system(cmdstring)
         if not args.keep_tmp and args.working_dir == '':
             temp_dir.cleanup()
+        elif not args.keep_tmp:
+            shutil.rmtree(wd, ignore_errors=True)
 
     else:
         sys.stdout.write(
