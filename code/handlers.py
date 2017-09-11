@@ -19,7 +19,7 @@ def BrakerAAT(queue,ref, bamFile, species_name, protein_evidence, threads, fungu
         if dummy == 1:
             multiple.aat_multi(use, protein_evidence, list_fasta_names, aat_wd, verbose)
         queue.task_done()
-    return
+
 
 
 def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
@@ -40,4 +40,4 @@ def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_f
         if dummy == 2:
             transcripts.gmes_call(gmes_wd, ref, fungus, use_gmes, verbose)
         queue.task_done()
-    return
+

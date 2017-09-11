@@ -40,7 +40,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        bedtools = subprocess.Popen(cmd, shell=True)
+        bedtools = subprocess.Popen(cmd, shell=True, cwd=working_dir)
         bedtools.communicate()
     except:
         raise NameError('')
@@ -66,12 +66,12 @@ def cluster_pipeline(gff3_file, merge_distance, strand):
     btsort2 = BEDTOOLS_SORT
 
     # Sort the GFF3 file
-    cat_call = subprocess.Popen(cat, stdout=subprocess.PIPE, shell =1)
-    btsort1_call = subprocess.Popen(btsort1, stdin=cat_call.stdout, stdout=subprocess.PIPE, shell =1)
+    cat_call = subprocess.Popen(cat, stdout=subprocess.PIPE, shell=True)
+    btsort1_call = subprocess.Popen(btsort1, stdin=cat_call.stdout, stdout=subprocess.PIPE, shell=True)
     # Merge the BED entries, count number of reads on each merged entry
-    btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE, shell =1)
+    btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE, shell=True)
     # NSort it again and returns
-    btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE, shell =1)
+    btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE, shell=True)
     outputBT = btsort2_call.communicate()[0]
     final_output = outputBT.splitlines()
     return final_output
@@ -96,8 +96,6 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     From the output list of the pipeline, recovers the ID and goes back to the
     fasta file to retrieve the sequence
     """
-
-
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
         chrm, start, end, strand, number, idents = (
@@ -154,14 +152,7 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
     cluster_counter = 1
     for record in clusterList:
         # Write fasta for each cluster
-        write_fastas(
-            cluster_counter,
-            record,
-            fasta_dict,
-            overlap_length,
-            min_evidence,
-            max_evidence,
-            wd)
+        write_fastas(cluster_counter, record, fasta_dict, overlap_length, min_evidence, max_evidence, wd)
         cluster_counter += 1
 
 def assembly(overlap_length, percent_identity, threads, wd, verbose):

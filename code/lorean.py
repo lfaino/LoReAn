@@ -5,8 +5,6 @@
 ###############
 
 # LIBRARIES
-# TODO
-# check for strand on single exon gene based on reads mapping
 
 
 import datetime
@@ -58,8 +56,11 @@ def main():
         if args.working_dir == "":
             temp_dir = tempfile.TemporaryDirectory(dir=root, prefix='annotation_')
             wd = os.path.join(temp_dir.name, 'run/')
+            temp_dir_set = True
         else:
             wd = os.path.join(root, args.working_dir, 'run/')
+            temp_dir_set = False
+
         ref = os.path.abspath(args.ref)
 
         max_threads = multiprocessing.cpu_count()
@@ -68,7 +69,6 @@ def main():
             sys.stdout.write(('\n### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
         else:
             threads_use = args.threads
-        
 
         gmap_name = args.ref + '_GMAPindex'
         pasa_name = 'assembler-' + args.pasa_db
@@ -214,8 +214,7 @@ def main():
             align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
             pasa_gff3 = pasa.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out,
-                                       args.max_intron_length,
-                                       threads_use, args.verbose)
+                                       args.max_intron_length, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
@@ -478,10 +477,8 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        if temp_dir:
-            final_output_dir = os.path.join(root, 'output_', temp_dir.name )
-        else:
-            final_output_dir = os.path.join(root, 'output_', args.working_dir)
+
+        final_output_dir = os.path.join(root,  args.species + '_output' )
 
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
