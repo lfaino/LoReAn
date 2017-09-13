@@ -68,7 +68,7 @@ def setting():
                         help="Prefix to add to the final Gff3 gene name [specie]")
     parser.add_argument("-w","--working_dir",
                         nargs="?",
-                        default="",
+                        default="annotation",
                         help="Working directory (will create if not present) [./]")
     parser.add_argument("-t","--threads",
                         nargs="?", default="3",

@@ -43,8 +43,7 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.
     tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
 
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz && tar -zxvf v2.2.0.tar.gz && \
-    mv trinityrnaseq-2.2.0 Trinity && \
-    rm v2.2.0.tar.gz && cd Trinity && make && make plugins
+    mv trinityrnaseq-2.2.0 Trinity &&rm v2.2.0.tar.gz && cd Trinity && make && make plugins
 
 RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
     cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive
@@ -76,8 +75,9 @@ RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
-RUN chmod -R 775 /opt/LoReAn
+#RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/skel/.bashrc /etc/profile.d/pathToExport.sh  > /etc/skel/.bashrc_new && \
+#    sudo mv /etc/skel/.bashrc_new /etc/skel/.bashrc
 
 WORKDIR /data/
 
-ENTRYPOINT [¨/opt/LoReAn/code/lorean.py¨]
+#ENTRYPOINT lorean.py

@@ -10,10 +10,8 @@
 import datetime
 import multiprocessing
 import os
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from os.path import expanduser
 from queue import Queue
@@ -53,13 +51,14 @@ def main():
         # Useful variables for later
         root = os.getcwd()
 
-        if args.working_dir == "":
-            temp_dir = tempfile.TemporaryDirectory(dir=root, prefix='annotation_')
-            wd = os.path.join(temp_dir.name, 'run/')
-            temp_dir_set = True
-        else:
-            wd = os.path.join(root, args.working_dir, 'run/')
-            temp_dir_set = False
+        output_dir = os.path.join(root, args.working_dir)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        #temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
+        #wd = temp_dir.name
+        wd = os.path.join(output_dir, "run/" )
+        if not os.path.exists(wd):
+            os.makedirs(wd)
 
         ref = os.path.abspath(args.ref)
 
@@ -477,8 +476,7 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-
-        final_output_dir = os.path.join(root,  args.species + '_output' )
+        final_output_dir = os.path.join(output_dir,  args.species + '_output' )
 
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
@@ -489,10 +487,8 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-        if not args.keep_tmp and args.working_dir == '':
-            temp_dir.cleanup()
-        elif not args.keep_tmp:
-            shutil.rmtree(wd, ignore_errors=True)
+        #if not args.keep_tmp:
+        #    temp_dir.cleanup()
 
     else:
         sys.stdout.write(
