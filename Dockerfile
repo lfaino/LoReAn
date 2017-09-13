@@ -38,7 +38,6 @@ RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && t
     cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ &&\
     chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
-    
 RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
     tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
 
@@ -75,9 +74,9 @@ RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
-#RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/skel/.bashrc /etc/profile.d/pathToExport.sh  > /etc/skel/.bashrc_new && \
-#    sudo mv /etc/skel/.bashrc_new /etc/skel/.bashrc
+RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/skel/.bashrc /etc/profile.d/pathToExport.sh  > /etc/skel/.bashrc_new && \
+    sudo mv /etc/skel/.bashrc_new /etc/skel/.bashrc
 
 WORKDIR /data/
 
-#ENTRYPOINT lorean.py
+ENTRYPOINT lorean.py
