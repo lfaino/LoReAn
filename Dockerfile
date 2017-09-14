@@ -79,4 +79,4 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/skel/.bashrc /etc/profi
 
 WORKDIR /data/
 
-ENTRYPOINT lorean.py
+#ENTRYPOINT lorean.py

@@ -51,7 +51,7 @@ def main():
         # Useful variables for later
         root = os.getcwd()
 
-        output_dir = os.path.join(root, args.working_dir)
+        output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         #temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
