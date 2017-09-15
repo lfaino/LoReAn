@@ -3,7 +3,9 @@
 import errno
 import os
 import re
+import shutil
 import subprocess
+import sys
 import tempfile
 
 import gffutils
@@ -54,7 +56,7 @@ def copy_file(in_file, directory):
         raise NameError('')
 
 
-def catTwoBeds(gmap, evm_orig, outFilename, update):
+def catTwoBeds(gmap, evm_orig, outFilename, update, verbose):
     '''convert in to bed12 and concatenates the two bed12 files'''
 
     if update:
@@ -94,15 +96,21 @@ def catTwoBeds(gmap, evm_orig, outFilename, update):
     bed12file = open(bed12_evm, "w")
     gtffile = open(gtf, "w")
     gffread_con = GFFREAD % evm
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gffread_con)
     gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=True)
     gffread_call.communicate()
     gft2bed = GTF2BED % gtf
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gft2bed)
     evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
     evm_call.communicate()
     #bed12_evm = tmp.name
     bed12_gmap = gmap + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % bedtools)
     bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, shell=True)
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
@@ -134,26 +142,14 @@ def catTwoBeds(gmap, evm_orig, outFilename, update):
     return outNameNew
 
 
-def catTwoFasta(trinity, consens, allSeq, wd):
+def catTwoFasta(trinity, consens, wd):
     '''Concatenates the two fasta file into one output'''
+    fastas = [trinity, consens]
     outFileFasta = wd + "/allFasta.fasta.clean"
-    if os.path.isfile(outFileFasta):
+    with open(outFileFasta, 'wb') as outfile:
+        for fasta in fastas:
+            with open(fasta, 'rb') as fd:
+                shutil.copyfileobj(fd, outfile, 1024*1024*10)
 
-        allOutFasta = outFileFasta + ".long.clean"
-        cat_con = ['cat', trinity, allSeq, consens]
-        allOutFastafile = open(allOutFasta, "w")
-        # sys.stdout.write (cat_con)
-        cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
-        cat_call.communicate()
-        outFileFasta = allOutFasta
-        allOutFastafile.close()
-    else:
-        allOutFastafile = open(outFileFasta, "w")
-        cat_con = ['cat', trinity, allSeq, consens]
-        # sys.stdout.write (cat_con)
-        # sys.stdout.write ("in")
-        cat_call = subprocess.Popen(cat_con, stdout=allOutFastafile)
-        cat_call.communicate()
-        allOutFastafile.close()
 
     return outFileFasta
