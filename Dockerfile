@@ -74,9 +74,9 @@ RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
-RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/skel/.bashrc /etc/profile.d/pathToExport.sh  > /etc/skel/.bashrc_new && \
-    sudo mv /etc/skel/.bashrc_new /etc/skel/.bashrc
+RUN sudo chmod -R 775 /opt/LoReAn/code/ && sudo cat /etc/bash.bashrc /etc/profile.d/pathToExport.sh  > /etc/bash.bashrc_1 && \
+    sudo mv /etc/bash.bashrc_1 /etc/bash.bashrc
 
 WORKDIR /data/
 
-#ENTRYPOINT lorean.py
+ENTRYPOINT /opt/LoReAn/code/lorean.py

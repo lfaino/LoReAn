@@ -16,11 +16,11 @@ def setting():
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Luigi Faino - March 2017')
     parser.add_argument("protein_evidence",
-                        help="Path to protein sequences FASTA file []")
+                        help="Path to protein sequences FASTA file []", default="")
     parser.add_argument("ref",
-                        help="Path to reference file")
+                        help="Path to reference file", default="")
     parser.add_argument("species",
-                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder")
+                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder", default="")
     parser.add_argument("-d","--stranded",
                         help="Run LoReAn on stranded mode [FALSE]",
                         action='store_true')
