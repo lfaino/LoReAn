@@ -12,6 +12,7 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from os.path import expanduser
 from queue import Queue
@@ -54,11 +55,11 @@ def main():
         output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        #temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
-        #wd = temp_dir.name
-        wd = os.path.join(output_dir, "run/" )
-        if not os.path.exists(wd):
-            os.makedirs(wd)
+        temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/" )
+        wd = temp_dir.name
+        #wd = os.path.join(output_dir, "run/" )
+        #if not os.path.exists(wd):
+        #    os.makedirs(wd)
 
         ref = os.path.abspath(args.ref)
 
@@ -485,8 +486,8 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-        #if not args.keep_tmp:
-        #    temp_dir.cleanup()
+        if not args.keep_tmp:
+            temp_dir.cleanup()
 
     else:
         sys.stdout.write(
