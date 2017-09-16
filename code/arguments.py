@@ -12,14 +12,16 @@ def setting():
 
     parser = argparse.ArgumentParser(
         prog='lorean',
-        usage='%(prog)s [options] protein_sequences reference species_name',
+        usage='%(prog)s [options] reference',
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Luigi Faino - March 2017')
-    parser.add_argument("protein_evidence",
+    parser.add_argument("-p", "--proteins",
+                        nargs="?",
                         help="Path to protein sequences FASTA file []", default="")
-    parser.add_argument("ref",
-                        help="Path to reference file", default="")
-    parser.add_argument("species",
+    parser.add_argument("reference",
+                        help="Path to reference file")
+    parser.add_argument("-s", "--specie",
+                        nargs="?",
                         help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder", default="")
     parser.add_argument("-d","--stranded",
                         help="Run LoReAn on stranded mode [FALSE]",
@@ -30,12 +32,12 @@ def setting():
     parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
                         action='store_false')
-    parser.add_argument("-s","--short_reads",
+    parser.add_argument("-sr","--short_reads",
                         nargs="?",
                         default="",
                         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []",
                         metavar='FASTQ_file')
-    parser.add_argument("-l","--long_reads",
+    parser.add_argument("-lr","--long_reads",
                         nargs="?", default="",
                         help="Path to long reads FASTQ []",
                         metavar='FASTQ_file')
@@ -44,7 +46,7 @@ def setting():
                         default="",
                         help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []",
                         metavar='FASTA_file')
-    parser.add_argument("-r","--repeat_masked",
+    parser.add_argument("-rp","--repeat_masked",
                         nargs="?",
                         default="",
                         help="GFF or GFF3 or GTF or BED file containing repeats coordinates []",
@@ -59,7 +61,7 @@ def setting():
                         default=20000,
                         help="Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]",
                         type=int)
-    parser.add_argument("-p","--pasa_db",
+    parser.add_argument("-pasa","--pasa_db",
                         nargs="?", default="annotation",
                         help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene",
