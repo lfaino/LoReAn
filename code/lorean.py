@@ -54,11 +54,11 @@ def main():
         output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        #temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
-        #wd = temp_dir.name
-        wd = os.path.join(output_dir, "run/" )
-        if not os.path.exists(wd):
-            os.makedirs(wd)
+        temp_dir = tempfile.mkdtemp(prefix='run_', dir=output_dir, suffix="/", )
+        wd = temp_dir.name
+        #wd = os.path.join(output_dir, "run/" )
+        #if not os.path.exists(wd):
+        #    os.makedirs(wd)
 
         ref = os.path.abspath(args.ref)
 
