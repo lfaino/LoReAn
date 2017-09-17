@@ -12,7 +12,6 @@ import multiprocessing
 import os
 import subprocess
 import sys
-import tempfile
 import time
 from os.path import expanduser
 from queue import Queue
@@ -55,14 +54,14 @@ def main():
         output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/" )
-        wd = temp_dir.name
-        #wd = os.path.join(output_dir, "run/" )
-        #if not os.path.exists(wd):
-        #    os.makedirs(wd)
+        #temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
+        #wd = temp_dir.name
+        wd = os.path.join(output_dir, "run/" )
+        if not os.path.exists(wd):
+            os.makedirs(wd)
 
-        ref = os.path.abspath(args.reference)
-        print (ref)
+        ref = os.path.abspath(args.ref)
+
         max_threads = multiprocessing.cpu_count()
         if int(args.threads) > max_threads:
             threads_use = str(max_threads)
@@ -70,7 +69,7 @@ def main():
         else:
             threads_use = args.threads
 
-        gmap_name = args.reference + '_GMAPindex'
+        gmap_name = args.ref + '_GMAPindex'
         pasa_name = 'assembler-' + args.pasa_db
 
         if args.short_reads == '' and args.long_reads == '':
@@ -89,7 +88,7 @@ def main():
         star_out = wd + '/STAR/'
         trin_dir = wd + 'Trinity/'
         evm_inputs_dir = wd + 'evm_inputs/'
-        braker_out = wd + 'braker/' + args.specie + '/'
+        braker_out = wd + 'braker/' + args.species + '/'
         evm_output_dir = wd + 'evm_output/'
 
         logistic.check_create_dir(evm_inputs_dir)
@@ -113,7 +112,7 @@ def main():
                 if "AUGUSTUS_CONFIG_PATH" in path:
                     augustus_specie_dir = path.split("=~")[1].rsplit()[0]
                     augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
-        protein_loc = os.path.abspath(args.proteins)
+        protein_loc = os.path.abspath(args.protein_evidence)
 
         if args.repeat_masked:
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
@@ -122,14 +121,6 @@ def main():
 
         if args.update:
             update.update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref)
-        elif not args.proteins:
-            sys.exit("#####FOR FULL GENOME ANNOTATION, PROTEIN FILE IS REQUIRED!!! LOREAN STOPED AT\t" + now + "\t#####\n")
-        elif not args.specie:
-            sys.exit("#####FOR FULL GENOME ANNOTATION, SPECIES NAME IS REQUIRED!!! LOREAN STOPED AT\t" + now + "\t#####\n")
-        else:
-            next
-
-
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         list_fasta_names = multiple.single_fasta(ref, wd)
@@ -225,14 +216,14 @@ def main():
                                        args.max_intron_length, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
-            if args.specie in (errAugustus.decode("utf-8")) or args.specie in augustus_species:
+            if args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:' + now + '\t###\n'))
                 queue = Queue()
                 for software in range(3):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(3):
-                        t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.specie, protein_loc,
+                        t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.species, protein_loc,
                                                                        threads_use, args.fungus, list_fasta_names, wd,
                                                                        args.verbose))
                         t.daemon = True
@@ -251,7 +242,7 @@ def main():
                 for software in range(2):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
-                        t = Thread(target=handler.BrakerAAT, args=(queue, ref, default_bam, args.specie, protein_loc,
+                        t = Thread(target=handler.BrakerAAT, args=(queue, ref, default_bam, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                    args.verbose))
                         t.daemon = True
@@ -271,7 +262,7 @@ def main():
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
                         t = Thread(target=handler.BrakerAAT,
-                                   args=(queue, ref, long_sorted_bam, args.specie, protein_loc,
+                                   args=(queue, ref, long_sorted_bam, args.species, protein_loc,
                                          threads_use, args.fungus, list_fasta_names, wd, args.verbose))
                         t.daemon = True
                         t.start()
@@ -281,14 +272,14 @@ def main():
                 genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 mergedProtGFF3 = wd + 'AAT/protein_evidence.gff3'
-        elif args.specie in (errAugustus.decode("utf-8")) or args.specie in augustus_species:
+        elif args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:' + now + '\t###\n'))
             queue = Queue()
             for software in range(3):
                 queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                 for software in range(3):
-                    t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.specie, protein_loc,
+                    t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                    args.verbose))
                     t.daemon = True
@@ -387,9 +378,9 @@ def main():
                 # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update, args.verbose)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update, args.verbose)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -468,14 +459,16 @@ def main():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir, args.verbose)
+        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                           long_fasta, finalupdate5, args.verbose)
+                                           fastaAll,
+                                           finalupdate5, args.verbose)
         round_n += 1
         finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                            fastaAll, finalupdate, args.verbose)
+                                            fastaAll,
+                                            finalupdate, args.verbose)
         finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
         FinalFiles.append(finalUpdate)
@@ -483,7 +476,7 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        final_output_dir = os.path.join(output_dir,  args.specie + '_output' )
+        final_output_dir = os.path.join(output_dir,  args.species + '_output' )
 
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
@@ -494,8 +487,8 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-        if not args.keep_tmp:
-            temp_dir.cleanup()
+        #if not args.keep_tmp:
+        #    temp_dir.cleanup()
 
     else:
         sys.stdout.write(

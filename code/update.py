@@ -5,6 +5,8 @@
 ###############
 
 # LIBRARIES
+# TODO
+# check for strand on single exon gene based on reads mapping
 
 
 import datetime
@@ -57,7 +59,7 @@ def update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref):
     # ORIGINAL FILE
     if os.path.isfile(updatedGff3):
         # HERE WE MERGE THE TWO FILES
-        mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, args.update, args.verbose)
+        mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, args.update)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -130,17 +132,18 @@ def update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref):
     # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
     # PASA TO CORRECT SMALL ERRORS
 
-
     sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-    fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir, args.verbose)
+    fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
     round_n += 1
 
-    finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                       long_fasta, finalupdate5, args.verbose)
+    finalupdate = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+                                       fastaAll,
+                                       finalupdate5, args.verbose)
     round_n += 1
-    finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                        fastaAll, finalupdate, args.verbose)
+    finalupdate2 = pasa.update_database(args.threads, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+                                        fastaAll,
+                                        finalupdate, args.verbose)
     finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
     FinalFiles.append(finalUpdate)
@@ -160,5 +163,3 @@ def update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref):
             os.system(cmdstring)
     if not args.keep_tmp and args.working_dir == '':
         temp_dir.cleanup()
-
-    sys.exit("#####UPDATE IS FINISHED!!! LOREAN STOPPED AT\t" + now + "\t#####\n")
