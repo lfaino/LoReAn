@@ -12,6 +12,7 @@ import multiprocessing
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from os.path import expanduser
 from queue import Queue
