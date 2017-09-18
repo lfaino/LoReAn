@@ -111,7 +111,7 @@ def main():
                 if "AUGUSTUS_CONFIG_PATH" in path:
                     augustus_specie_dir = path.split("=~")[1].rsplit()[0]
                     augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
-        protein_loc = os.path.abspath(args.protein_evidence)
+        protein_loc = os.path.abspath(args.proteins)
 
         if args.repeat_masked:
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)

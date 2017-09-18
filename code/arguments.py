@@ -20,7 +20,7 @@ def setting():
                         help="Path to protein sequences FASTA file []", default="")
     parser.add_argument("reference",
                         help="Path to reference file")
-    parser.add_argument("-s", "--specie",
+    parser.add_argument("-s", "--species",
                         nargs="?",
                         help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder", default="")
     parser.add_argument("-d","--stranded",
