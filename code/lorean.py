@@ -377,9 +377,9 @@ def main():
                 # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update, args.verbose)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update, args.verbose)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -458,16 +458,14 @@ def main():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
+        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, pasa_dir)
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                           fastaAll,
-                                           finalupdate5, args.verbose)
+                                           long_fasta, finalupdate5, args.verbose)
         round_n += 1
         finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                            fastaAll,
-                                            finalupdate, args.verbose)
+                                            fastaAll, finalupdate, args.verbose)
         finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
         FinalFiles.append(finalUpdate)
