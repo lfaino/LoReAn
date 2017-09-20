@@ -44,8 +44,7 @@ RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/v2.2.0.tar.gz && tar -zxvf v2.2.0.tar.gz && \
     mv trinityrnaseq-2.2.0 Trinity &&rm v2.2.0.tar.gz && cd Trinity && make && make plugins
 
-RUN wget https://github.com/alexdobin/STAR/archive/2.5.2b.tar.gz && tar -xzf 2.5.2b.tar.gz && rm 2.5.2b.tar.gz &&\
-    cd STAR-2.5.2b/source && make STAR && git submodule update --init --recursive
+RUN git clone https://github.com/alexdobin/STAR.git && cd STAR/source && make STAR && git submodule update --init --recursive
 
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
     cd TransDecoder-3.0.1 && make
