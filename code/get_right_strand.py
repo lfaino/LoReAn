@@ -590,7 +590,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     errorFilefile = open(errorFile, "w")
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=True)
+    call = subprocess.Popen(com, stdout=fasta_file_outfile, cwd = wd, stderr=errorFilefile, shell=True)
     call.communicate()
     fasta_file_outfile.close()
     errorFilefile.close()
@@ -684,7 +684,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                     com = BEDTOOLS_GET_FASTA % (ref, bedFile, outputFilename)
                     if verbose:
                         sys.stderr.write('Executing: %s\n\n' % com)
-                    call = subprocess.Popen(com, shell=True)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
+                    call = subprocess.Popen(com, cwd = wd, shell=True)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
                     call.communicate()
                     combList = [outputFilenameProt, outputFilename, verbose, queue]
             commandList.append(combList)
@@ -726,33 +726,10 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                 shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
 
 
-#    orintedFIleN = wd + '/oriented.oldname.gff3'
-#    dataGff3N = open(orintedFIleN, 'w')
-#    for fname in exonerate_files:
-#        with open(fname) as f:
-#            for line in f.readlines():
-#                dataGff3N.write(line)
-#    dataGff3N.close()
-
-
-
-#    orintedFIle = wd + '/oriented.gff3'
-#    dataGff3 = open(orintedFIle, 'w')
-#    orintedFIleErr = wd + '/oriented.gff3.error'
-#    dataGff3Err = open(orintedFIleErr, 'w')
-#    gt_com = GT_GFF3 % (orintedFIleN)
-#    if verbose:
-#        sys.stderr.write('Executing: %s\n\n' % gt_com)
-#    callgt = subprocess.Popen(gt_com, stdout=dataGff3, stderr=dataGff3Err, shell=True)
-#    callgt.communicate()
-#    dataGff3.close()
-#    dataGff3Err.close()
-
     return orintedFIleN
 
 
 def runExonerate(commandList):
-    # sys.stdout.write (commandList)
     outputFilenameProt = commandList[0]
     outputFilename = commandList[1]
     protGff = outputFilenameProt + ".exonOut"

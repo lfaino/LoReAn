@@ -40,7 +40,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        bedtools = subprocess.Popen(cmd, shell=True, cwd=working_dir)
+        bedtools = subprocess.Popen(cmd, cwd=working_dir, shell=True )
         bedtools.communicate()
     except:
         raise NameError('')
