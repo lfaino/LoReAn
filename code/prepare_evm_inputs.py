@@ -142,16 +142,12 @@ def move_EVM_inputs(evm_dir, inputs):
     """
     Takes a dictionary with files that are inputs for EVM and groups them in
     the same directory
-    :param evm_dir:
-    :param inputs:
-    :return:
+
     """
     sys.stdout.write('\t###MOVING IMPORTANT FILES###\n')
     new_files = {}
     for key, filename in list(inputs.items()):
-        if isinstance(
-                filename,
-                list):  # FOR THE GFF3 alignment files in case of short & long reads
+        if isinstance(filename, list):  # FOR THE GFF3 alignment files in case of short & long reads
             new_files = move_cat_files(filename, key, evm_dir, new_files)
         else:
             new_files = move_single_file(filename, key, evm_dir, new_files)
@@ -202,6 +198,9 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
             elif 'trinity' in name:
                 ab_initio_list.append(os.path.join(root, name))
                 list_soft.append('gmap')
+            elif 'update' in name:
+                ab_initio_list.append(os.path.join(root, name))
+                list_soft.append('update')
 
     pred_filename = evm_dir + 'gene_predictions.gff3'
 
@@ -213,10 +212,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
         # sys.stdout.write '\nCMD: ' + ' '.join(ab_initio_list) + '\n'
         pred_file = open(pred_filename, 'w')
         try:
-            subprocess.check_call(
-                ab_initio_list,
-                stdout=pred_file,
-                cwd=evm_dir)
+            subprocess.check_call(ab_initio_list, stdout=pred_file, cwd=evm_dir)
             # sys.stdout.write '> Gene prediction concatenation completed'
         except:
             # sys.stdout.write 'Gene prediction concatenation failed'
@@ -229,28 +225,17 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
 def group_EVM_inputs(evm_dir, inputs):
     """
     Moves all the inputs to EVM directory and concatenates them
-    in the same file
-    :param evm_dir:
-    :param inputs:
-    :return:
-    """
+    in the same file"""
     # Move
     new_inputs = move_EVM_inputs(evm_dir, inputs)
     # Concatenate
-    list_soft, pred_file, transcript_file, protein_file = cat_EVM_inputs(
-        evm_dir)
+    list_soft, pred_file, transcript_file, protein_file = cat_EVM_inputs(evm_dir)
     return list_soft, pred_file, transcript_file, protein_file
 
 
 def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     """
     Writes a weight file "weights.txt" on evm_dir
-    :param evm_dir:
-    :param weights_dic:
-    :param evidences:
-    :param pasa_name:
-    :param gmap_name:
-    :return:
     """
     w_filename = evm_dir + 'weights.txt'
     list_match = []
@@ -260,11 +245,13 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
         'Augustus': 'ABINITIO_PREDICTION',
         'AAT': 'PROTEIN',
         pasa_name: 'TRANSCRIPT',
-        gmap_name: 'ABINITIO_PREDICTION'}
+        gmap_name: 'ABINITIO_PREDICTION',
+        'update': 'ABINITIO_PREDICTION'}
     software_links = {
         'genemark': 'GeneMark.hmm',
         'augustus': 'Augustus',
         'aat': 'AAT',
+        'update': 'update',
         'pasa': pasa_name,
         'gmap': gmap_name}
 

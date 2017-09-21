@@ -10,7 +10,6 @@
 import datetime
 import multiprocessing
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -71,12 +70,21 @@ def main():
         gmap_name = ref + '_GMAPindex'
         pasa_name = 'assembler-' + args.pasa_db
 
-        if args.short_reads == '' and args.long_reads == '':
-            weights_dic = {'Augustus': args.augustus, 'GeneMark.hmm': args.genemark, 'AAT': args.AAT}
 
+        if args.short_reads == '' and args.long_reads == '':
+            if args.update == '':
+                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
+            else:
+                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
+                               'update': args.update_weigth}
         elif args.short_reads != '' or args.long_reads != '':
-            weights_dic = {'Augustus': args.augustus, pasa_name: args.pasa, 'GeneMark.hmm': args.genemark,
-                           'AAT': args.AAT, gmap_name: args.trinity}
+            if args.update == '':
+                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
+                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
+            else:
+                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
+                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth, 'update': args.update_weigth}
+
         FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
 
         logistic.check_create_dir(wd)
@@ -298,11 +306,19 @@ def main():
         # HERE WE CONVERT FILES FOR EVM AND PLACE THEM IN INPUT FOLDER
 
         if not args.short_reads and not args.long_reads:
-            evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
+            if not args.update:
+                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
+            else:
+                update_gff3 = os.path(args.update)
+                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3, 'update': update_gff3}
         elif args.short_reads or args.long_reads:
-            evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
-                          'AAT': mergedProtGFF3,
-                          'gmap': trinity_path}
+            if not args.update:
+                evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
+                              'AAT': mergedProtGFF3, 'gmap': trinity_path}
+            else:
+                update_gff3 = os.path(args.update)
+                evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
+                              'AAT': mergedProtGFF3, 'gmap': trinity_path, 'update': update_gff3}
 
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE
@@ -377,9 +393,9 @@ def main():
                 # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update, args.verbose)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, args.verbose)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update, args.verbose)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, args.verbose)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -484,8 +500,8 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-        if not args.keep_tmp:
-            shutil.rmtree(wd, ignore_errors=True)
+#        if not args.keep_tmp:
+#            shutil.rmtree(wd, ignore_errors=True)
 
     else:
         sys.stdout.write(

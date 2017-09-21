@@ -15,12 +15,12 @@ def setting():
         usage='%(prog)s [options] reference',
         description='LoReAn - Automated genome annotation pipeline that integrates long reads',
         epilog='Luigi Faino - March 2017')
-    parser.add_argument("-p", "--proteins",
+    parser.add_argument("-pr", "--proteins",
                         nargs="?",
                         help="Path to protein sequences FASTA file []", default="")
     parser.add_argument("reference",
                         help="Path to reference file")
-    parser.add_argument("-s", "--species",
+    parser.add_argument("-sp", "--species",
                         nargs="?",
                         help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder", default="")
     parser.add_argument("-d","--stranded",
@@ -31,7 +31,7 @@ def setting():
                         action='store_true')
     parser.add_argument("-k","--keep_tmp",
                         help="Keep temporary files [FALSE]",
-                        action='store_false')
+                        action='store_true')
     parser.add_argument("-sr","--short_reads",
                         nargs="?",
                         default="",
@@ -76,26 +76,26 @@ def setting():
                         nargs="?", default="3",
                         help="Number of threads [1]",
                         metavar='N')
-    parser.add_argument("-cw","--augustus",
+    parser.add_argument("-cw","--augustus_weigth",
                         nargs="?",
                         default="1",
                         help="Weight assigned to AUGUSTUS evidence for EVM [1]",
                         metavar='N')
-    parser.add_argument("-gw","--genemark",
+    parser.add_argument("-gw","--genemark_weigth",
                         nargs="?",
                         default="1",
                         help="Weight assigned to GENEMARK evidence for EVM [1]",
                         metavar='N')
-    parser.add_argument("-tw","--trinity",
+    parser.add_argument("-tw","--trinity_weigth",
                         nargs="?",
                         default="1",
                         help="Weight assigned to Trinity mapped with GMAP evidence for EVM [1]",
                         metavar='N')
-    parser.add_argument("-pw","--pasa",
+    parser.add_argument("-pw","--pasa_weigth",
                         nargs="?", default="5",
                         help="Weight assigned to PASA evidence for EVM [5]",
                         metavar='N')
-    parser.add_argument("-aw","--AAT",
+    parser.add_argument("-aw","--AAT_weigth",
                         nargs="?",
                         default="1",
                         help="Weight assigned to AAT protein evidence for EVM [1]",
@@ -144,15 +144,6 @@ def setting():
                         default="0.3",
                         help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]",
                         metavar='F')
-    parser.add_argument("-ne","--no_EVM",
-                        help="Run until the preparation of EVM inputs [FALSE]",
-                        action='store_true')
-    parser.add_argument("-nc","--no_consensus",
-                        help="Do not run the long reads consensus pipeline [FALSE]",
-                        action='store_true')
-    parser.add_argument("-co","--collect_only",
-                        help="Collect only assebmled transcripts [FALSE]",
-                        action='store_true')
     parser.add_argument("-v","--verbose",
                         help="Prints out the commands used in LoReAn[FALSE]",
                         action='store_true')
