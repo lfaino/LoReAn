@@ -17,7 +17,7 @@ def lengthSupport(tmp_wd, threads):
             if 'output' in direc or 'Assembly' in direc:
                 outputDir = wd + '/' + direc + '/'
                 listoutputDir.append(outputDir)
-    with Pool(int(threads)) as p:
+    with Pool(processes=int(threads), maxtasksperchild=1000) as p:
         p.map(modify, listoutputDir)
     return
 

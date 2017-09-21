@@ -658,7 +658,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     manage = Manager()
     queue = manage.Queue()
-    pool = Pool(int(proc))
+    pool = Pool(processes=int(proc), maxtasksperchild=10000)
 
     commandList = []
     listShort = []

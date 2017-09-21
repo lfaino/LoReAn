@@ -160,14 +160,13 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     manage = Manager()
     queue = manage.Queue()
-    pool = Pool(int(threads))
+    pool = Pool(processes=int(threads), maxtasksperchild=1000)
 
     new_commands = []
     for root, dirs, file in os.walk(wd):
         for fasta_file in file:
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
             new_commands.append(complete_data)
-    #with Pool(int(threads)) as pool:
     results = pool.map_async(iAssembler, new_commands)
     with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
         while not results.ready():

@@ -169,7 +169,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         for key in record_dict:
             for adpter in list_seq_adap:
                 list_command.append([record_dict[key], adpter])
-        with Pool(int(threads)) as p:
+        with Pool(processes=int(threads), maxtasksperchild=10000) as p:
             align_resul = p.map(align_call, list_command)
         for aling_res in align_resul:
             if len(aling_res) == 0:
@@ -197,7 +197,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         for key in record_dict:
             for adpter in list_seq_adap:
                 list_command.append([record_dict[key], adpter])
-        with Pool(int(threads)) as p:
+        with Pool(processes=int(threads), maxtasksperchild=10000) as p:
             align_resul = p.map(align_call, list_command)
         for aling_res in align_resul:
             if len(aling_res) == 0:
