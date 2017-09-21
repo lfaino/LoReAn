@@ -32,7 +32,9 @@ import pasa as pasa
 import prepare_evm_inputs as inputEvm
 import reduceUTRs as utrs
 import transcript_assembly as transcripts
-import update as update
+
+
+#import update as update
 
 
 ###############
@@ -60,33 +62,6 @@ def main():
 
         ref = os.path.abspath(args.reference)
 
-        max_threads = multiprocessing.cpu_count()
-        if int(args.threads) > max_threads:
-            threads_use = str(max_threads)
-            sys.stdout.write(('\n### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
-        else:
-            threads_use = args.threads
-
-        gmap_name = ref + '_GMAPindex'
-        pasa_name = 'assembler-' + args.pasa_db
-
-
-        if args.short_reads == '' and args.long_reads == '':
-            if args.update == '':
-                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
-            else:
-                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
-                               'update': args.update_weigth}
-        elif args.short_reads != '' or args.long_reads != '':
-            if args.update == '':
-                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
-                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
-            else:
-                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
-                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth, 'update': args.update_weigth}
-
-        FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
-
         logistic.check_create_dir(wd)
         logistic.check_file(ref)
         gmap_wd = wd + '/gmap_output/'
@@ -109,6 +84,38 @@ def main():
             consensus_wd = (wd + 'consensus/')
             logistic.check_create_dir(consensus_wd)
 
+
+        max_threads = multiprocessing.cpu_count()
+        if int(args.threads) > max_threads:
+            threads_use = str(max_threads)
+            sys.stdout.write(('\n### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
+        else:
+            threads_use = args.threads
+
+        gmap_name = ref + '_GMAPindex'
+        pasa_name = 'assembler-' + args.pasa_db
+
+        if args.update:
+            update_file = logistic.change_ids(args.update, gmap_wd, args.verbose)
+
+        if args.short_reads == '' and args.long_reads == '':
+            if args.update == '':
+                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
+            else:
+                weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
+                               'update': args.update_weigth}
+        elif args.short_reads != '' or args.long_reads != '':
+            if args.update == '':
+                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
+                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
+            else:
+                weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
+                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth, 'update': args.update_weigth}
+
+        FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
+
+
+
         check_species = 'augustus --species=help'
         process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         outAugustus, errAugustus = process.communicate()
@@ -126,8 +133,8 @@ def main():
         else:
             genome_gmap = ref
 
-        if args.update:
-            update.update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref)
+#        if args.update:
+#            update.update(args, consensus_wd, fmtdate, genome_gmap, gmap_wd, ref)
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
         list_fasta_names = multiple.single_fasta(ref, wd)
@@ -309,16 +316,14 @@ def main():
             if not args.update:
                 evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3}
             else:
-                update_gff3 = os.path(args.update)
-                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3, 'update': update_gff3}
+                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': mergedProtGFF3, 'update': update_file}
         elif args.short_reads or args.long_reads:
             if not args.update:
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
                               'AAT': mergedProtGFF3, 'gmap': trinity_path}
             else:
-                update_gff3 = os.path(args.update)
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
-                              'AAT': mergedProtGFF3, 'gmap': trinity_path, 'update': update_gff3}
+                              'AAT': mergedProtGFF3, 'gmap': trinity_path, 'update': update_file}
 
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE

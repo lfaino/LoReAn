@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -14,6 +15,8 @@ GFFREAD = 'gffread -o- -T %s'
 GTF2BED = 'gtf2bed.py transcript %s'
 
 BEDTOOLS = 'bedtools bamtobed -split -bed12 -i %s'
+
+GT_CHANGE_NAME = 'gt gff3 -setsource update -sort -tidy %s'
 
 #==========================================================================================================
 
@@ -49,6 +52,17 @@ def copy_file(in_file, directory):
         subprocess.check_call(args)
     except:
         raise NameError('')
+
+def change_ids(update, wd, verbose):
+    new_name_update = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="update.", suffix=".gff") #open(errorFile, "w")
+    new_name_update_err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="update.", suffix=".gff.err") #open(errorFile, "w")
+
+    gt_con = GT_CHANGE_NAME % update
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_con)
+    gffread_call = subprocess.Popen(gt_con, stdout=new_name_update,stderr=new_name_update_err, shell=True)
+    gffread_call.communicate()
+    return (new_name_update.name)
 
 
 def catTwoBeds(gmap, evm_orig, outFilename, verbose):
