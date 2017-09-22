@@ -26,20 +26,11 @@ where user_name is the name of the user that runs LoReAn on the host machine
 To install Docker, please refer to:
 https://docs.docker.com/engine/installation/
 
-After Docker installation, you can download LoReAn by using:
+After Docker installation, you can download and run LoReAn by using:
 ```bash
-docker pull lfaino/lorean
+docker run -it --rm -v $PWD:/data lfaino/lorean createUser.sh user_name uid_user
 ```
 
-Subsequently, from the folder where you input files are, LoReAn can be launched using:
-```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean bash
-```
-
-Once inside the container, you can create an user with the same credential of the host retrieved before using:
-```bash
-createUser.sh user_name uid_user
-```
 At this point, run
 
 ```bash
