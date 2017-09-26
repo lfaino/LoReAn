@@ -29,7 +29,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     if (int(virtual_memory().total/2e9)) > 10:
         cmd = TRINITY % (bam_file, max_intron_length, str(int(virtual_memory().total/2e9)), out_dir, threads)
     else:
-        cmd = TRINITY % (bam_file, max_intron_length, '10', out_dir, threads)
+        cmd = TRINITY % (bam_file, max_intron_length, '5', out_dir, threads)
     out_name = out_dir + 'Trinity-GG.fasta'
     if os.path.isfile(out_name):
         sys.stdout.write(('Trinity-GG file existed already: ' + out_name + ' --- skipping\n'))
