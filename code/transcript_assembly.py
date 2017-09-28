@@ -9,7 +9,7 @@ from psutil import virtual_memory
 #==========================================================================================================
 # COMMANDS LIST
 
-TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --max_memory %sG --output %s --CPU %s --full_cleanup'
+TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --grid_node_max_memory %sG --max_memory %sG --output %s --CPU %s --full_cleanup'
 
 GMES_FU = 'gmes_petap.pl --ES --fungus --core %s --sequence %s'
 
@@ -26,10 +26,11 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     """Calls genome guided trinity on the BAM file to generate
     assembled transcripts"""
     out_dir = wd + 'trinity_out_dir/'
-    if (int(virtual_memory().total/2e9)) > 10:
-        cmd = TRINITY % (bam_file, max_intron_length, str(int(virtual_memory().total/2e9)), out_dir, threads)
+    mem_single_proc = (int(virtual_memory().total/2e9))/int(threads)
+    if mem_single_proc > 2 :
+        cmd = TRINITY % (bam_file, max_intron_length, str(mem_single_proc), '10', out_dir, threads)
     else:
-        cmd = TRINITY % (bam_file, max_intron_length, '5', out_dir, threads)
+        cmd = TRINITY % (bam_file, max_intron_length, '4','10', out_dir, threads)
     out_name = out_dir + 'Trinity-GG.fasta'
     if os.path.isfile(out_name):
         sys.stdout.write(('Trinity-GG file existed already: ' + out_name + ' --- skipping\n'))
