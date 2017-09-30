@@ -84,20 +84,16 @@ def main():
             consensus_wd = (wd + 'consensus/')
             logistic.check_create_dir(consensus_wd)
 
-
         max_threads = multiprocessing.cpu_count()
         if int(args.threads) > max_threads:
             threads_use = str(max_threads)
             sys.stdout.write(('\n### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
         else:
             threads_use = args.threads
-
         gmap_name = ref + '_GMAPindex'
         pasa_name = 'assembler-' + args.pasa_db
-
         if args.update:
             update_file = logistic.change_ids(args.update, gmap_wd, args.verbose)
-
         if args.short_reads == '' and args.long_reads == '':
             if args.update == '':
                 weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}

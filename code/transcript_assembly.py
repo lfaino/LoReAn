@@ -4,8 +4,6 @@ import os
 import subprocess
 import sys
 
-from psutil import virtual_memory
-
 #==========================================================================================================
 # COMMANDS LIST
 
@@ -26,11 +24,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     """Calls genome guided trinity on the BAM file to generate
     assembled transcripts"""
     out_dir = wd + 'trinity_out_dir/'
-    mem_single_proc = (int(virtual_memory().total/2e9))/int(threads)
-    if mem_single_proc > 2 :
-        cmd = TRINITY % (bam_file, max_intron_length, str(mem_single_proc), '10', out_dir, threads)
-    else:
-        cmd = TRINITY % (bam_file, max_intron_length, '4','10', out_dir, threads)
+    cmd = TRINITY % (bam_file, max_intron_length, '3','10', out_dir, threads)
     out_name = out_dir + 'Trinity-GG.fasta'
     if os.path.isfile(out_name):
         sys.stdout.write(('Trinity-GG file existed already: ' + out_name + ' --- skipping\n'))

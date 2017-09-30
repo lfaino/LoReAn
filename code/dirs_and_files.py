@@ -53,10 +53,10 @@ def copy_file(in_file, directory):
     except:
         raise NameError('')
 
+
 def change_ids(update, wd, verbose):
     new_name_update = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="update.", suffix=".gff") #open(errorFile, "w")
     new_name_update_err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="update.", suffix=".gff.err") #open(errorFile, "w")
-
     gt_con = GT_CHANGE_NAME % update
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_con)
