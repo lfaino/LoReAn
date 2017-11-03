@@ -21,7 +21,6 @@ def BrakerAAT(queue,ref, bamFile, species_name, protein_evidence, threads, fungu
         queue.task_done()
 
 
-
 def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
     use = (round(int(threads) / 3)-1)
     use_gmes = str(use)
