@@ -1,135 +1,81 @@
 # Minimal options are:
-```bash
-lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
-```
 
-## The specie name used in LoReAn needs to be in the AUGUSTUS database. However, if RNA-seq is supplied,the tool will calculate the best AUGUSTUS sets using Braker1 software
+## lorean.py -pr <protein.fasta> -sp \<species> \<genome.fasta>
 
--d or --stranded: 
-    
+### The specie name used in LoReAn needs to be in the AUGUSTUS database. 
+### However, if RNA-seq is supplied, the tool will calculate the best AUGUSTUS sets using BRAKER1 software
+
+### Other options are:
+
+#### -h, --help
+     show help message and exit
+#### -pr [PROTEINS], --proteins [PROTEINS]
+    Path to protein sequences FASTA file []
+#### -sp [SPECIES], --species [SPECIES]
+    Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS config folder
+#### -d, --stranded        
     Run LoReAn on stranded mode [FALSE]
-    
--f or --fungus: 
-    
-    Use this option for fungal species (used in Gene Mark-ES)  [FALSE]
-    
--u or --only_unitigs: 
-    
-    Removes gene models that are not supported by long reads [FALSE]
-    
--k or --keep_tmp: 
-    
+#### -f, --fungus
+    Use this option for fungal species (used in Gene Mark-ES) [FALSE]
+#### -k, --keep_tmp
     Keep temporary files [FALSE]
-    
--s or --short_reads: 
-    
-    Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []
-    
--a or --adapter:
-    
-    FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same adapter need to be used in the file []
-    
--l or --long_reads: 
-    
+#### -sr [FASTQ_file], --short_reads [FASTQ_file]
+    Path to short reads FASTQ. If paired end, comma- separated (1-1.fq,1-2.fq). BAM sorted files are
+    allowed; the extension of the file should be filename.sorted.bam []
+#### -lr [FASTQ_file], --long_reads [FASTQ_file]
     Path to long reads FASTQ []
-    
--m or --max_long_read: 
-    
-    Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]
-    
--p or --pasa_db: 
-    
+#### -a [FASTA_file], --adapter [FASTA_file]
+    FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain of the same
+    adapter need to be used in the file []
+#### -rp [GFF_file], --repeat_masked [GFF_file]
+    GFF or GFF3 or GTF or BED file containing repeats
+    coordinates []
+#### -u [GFF_file], --update [GFF_file]
+    GFF or GFF3 or GTF or BED file containing repeats
+    coordinates []
+#### -m [MAX_LONG_READ], --max_long_read [MAX_LONG_READ]
+    Filter out long reads longer than this value (longer
+    reads may affect mapping and assembling) [20000]
+#### -pasa [PASA_DB], --pasa_db [PASA_DB]
     PASA database name [pipeline_run]
-    
--n or --prefix_gene: 
-    
+#### -n [PREFIX_GENE], --prefix_gene [PREFIX_GENE]
     Prefix to add to the final Gff3 gene name [specie]
-    
--w or --working_dir: 
-    
-    Working directory (will create if not present) [./annotation]
-    
--t or --threads: 
-    
-    Number of threads [1]
-    
--b or --overhang: 
-    
-    CAP3 max overhang percent length; this value should be > 3 [20]
-    
--cw or --augustus: 
-    
+#### -w [WORKING_DIR], --working_dir [WORKING_DIR]
+    Working directory (will create if not present) [./]
+#### -t, --threads
+    Number of threads [3]
+#### -cw N, --augustus_weigth N
     Weight assigned to AUGUSTUS evidence for EVM [1]
-    
--gw or --genemark: 
-    
+#### -uw N, --update_weigth N
+    Weight assigned to GFF3 file to update for EVM [1]
+#### -gw, --genemark_weigth
     Weight assigned to GENEMARK evidence for EVM [1]
-    
--tw or --trinity: 
-    
+#### -tw, --trinity_weigth
     Weight assigned to Trinity mapped with GMAP evidence for EVM [1]
-    
--pw or --pasa: 
-    
+#### -pw, --pasa_weigth
     Weight assigned to PASA evidence for EVM [5]
-    
--aw or --AAT:
-    
+#### -aw, --AAT_weigth
     Weight assigned to AAT protein evidence for EVM [1]
-    
--c or --segmentSize:
-    
+#### -c, --segmentSize
     Segment size for EVM partitions [100000]
-    
--e or --overlapSize:
-    
+#### -e, --overlapSize
     Overlap size for EVM partitions [10000]
-    
--g or --min_intron_length:
-    
+#### -g, --min_intron_length
     Minimal intron length for GMAP [9]
-    
--q or --max_intron_length:
-    
+#### -q, --max_intron_length
     Maximal intron length for GMAP, STAR and TRINITY [1000]
-    
--ee or --end_exon:
-    
+#### -ee, --end_exon
     Minimal length for end exon with GMAP [20]
-    
--cme or --cluster_min_evidence: 
-    
+#### -cme, --cluster_min_evidence
     Minimal evidence needed to form a cluster [5]
-    
--cMe or --cluster_max_evidence: 
-    
-    Maximal evidence to form a cluster. Prevents the clustering or rRNA genes i.e. [5000]
-    
--aol or --assembly_overlapLength: 
-    
+#### -cMe, --cluster_max_evidence
+    Maximal evidence to form a cluster.Prevents the
+    clustering or rRNA genes i.e. [5000]
+#### -aol, --assembly_overlapLength
     Minimal length (in nt) of overlap for ASSEMBLY [200]
-    
--api or --assembly_percentIdentity: 
-    
+#### -api, --assembly_percentIdentity
     Minimal identity for the ASSEMBLY (95-100) [97]
-    
--art or --assembly_readThreshold: 
-    
+#### -art, --assembly_readThreshold
     Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]
-    
--ne or --no_EVM: 
-    
-    Run until the preparation of EVM inputs [FALSE]
-    
--nc or --no_consensus: 
-    
-    Do not run the long reads consensus pipeline [FALSE]
-    
--nu or --no_update: 
-    
-    Do not run the PASA update[FALSE]
-    
--co or --collect_only: 
-    
-    Collect only assebmled transcripts [FALSE]
-
+#### -v, --verbose
+    Prints out the commands used in LoReAn[FALSE]
