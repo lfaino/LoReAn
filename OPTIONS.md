@@ -20,8 +20,7 @@
 #### -k, --keep_tmp
     Keep temporary files [FALSE]
 #### -sr [FASTQ_file], --short_reads [FASTQ_file]
-    Path to short reads FASTQ. If paired end, comma- separated (1-1.fq,1-2.fq). BAM sorted files are
-    allowed; the extension of the file should be filename.sorted.bam []
+    Path to short reads FASTQ. If paired end, comma- separated (1-1.fq,1-2.fq). BAM sorted files are allowed; the extension of the file should be filename.sorted.bam []
 #### -lr [FASTQ_file], --long_reads [FASTQ_file]
     Path to long reads FASTQ []
 #### -a [FASTA_file], --adapter [FASTA_file]
@@ -34,8 +33,7 @@
     GFF or GFF3 or GTF or BED file containing repeats
     coordinates []
 #### -m [MAX_LONG_READ], --max_long_read [MAX_LONG_READ]
-    Filter out long reads longer than this value (longer
-    reads may affect mapping and assembling) [20000]
+    Filter out long reads longer than this value (longer reads may affect mapping and assembling) [20000]
 #### -pasa [PASA_DB], --pasa_db [PASA_DB]
     PASA database name [pipeline_run]
 #### -n [PREFIX_GENE], --prefix_gene [PREFIX_GENE]
@@ -69,8 +67,7 @@
 #### -cme, --cluster_min_evidence
     Minimal evidence needed to form a cluster [5]
 #### -cMe, --cluster_max_evidence
-    Maximal evidence to form a cluster.Prevents the
-    clustering or rRNA genes i.e. [5000]
+    Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]
 #### -aol, --assembly_overlapLength
     Minimal length (in nt) of overlap for ASSEMBLY [200]
 #### -api, --assembly_percentIdentity
