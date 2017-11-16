@@ -19,7 +19,6 @@ RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7
 
 WORKDIR /opt/
 
-
 RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
@@ -65,10 +64,9 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
-RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
-     tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
-RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
+#RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
@@ -78,4 +76,4 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 
 WORKDIR /data/
 
-CMD /usr/local/bin/createUser.sh
+CMD /opt/LoReAn/code/createUser.sh
