@@ -37,7 +37,7 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 ## SOFTWARE USED IN THE PIPELINE
 
 
-- TransDecoder-3.0.1 && make
+- TransDecoder-3.0.1
 - samtools v0.1.19-96b5f2294a
 - bedtools v2.25.0
 - bowtie  v1.1.2
