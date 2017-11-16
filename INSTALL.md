@@ -39,7 +39,8 @@ lorean.py -help
 
 ## Run LoReAn in standard bash
 
-
+It is possible to run LoReAn using bash only if all the tools listed in the Dockerfile are installed, the specific file removed and
+each tool is correctly installed. After the installation is complete, LoReAn can be run  
 
 
 ### KNOWN PROBLEMS 
