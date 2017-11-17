@@ -51,7 +51,7 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 - STAR v2.5.3a
 - gmap-gsnap v2017-11-15
 - fasta v36.3.8e
-- BRAKER v1.11
+- BRAKER v2.0
 - EVidenceModeler v1.1.1
 - gffread  v0.9.9
 - genometools v1.5.9
