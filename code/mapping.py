@@ -14,10 +14,10 @@ from Bio import SeqIO
 
 GMAP_BULD  = 'gmap_build -k 13 -d %s -D %s %s'
 
-GMAP_GFF = 'gmapl -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
+GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
 --microexon-spliceprob 1 -F -K  %s -t %s -f %s %s'
 
-GMAP_SAM = 'gmapl -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
+GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
 --microexon-spliceprob 1 -K  %s -t %s -f %s %s'
 
 STAR_SINGLE = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s ' \
