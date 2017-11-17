@@ -66,7 +66,7 @@ RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
-#RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
+RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
@@ -76,4 +76,4 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 
 WORKDIR /data/
 
-CMD /opt/LoReAn/code/createUser.sh
+CMD /usr/local/bin/createUser.sh
