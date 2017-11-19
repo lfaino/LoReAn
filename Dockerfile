@@ -67,6 +67,8 @@ RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genome
 
 RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
 
+RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
+
 RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
