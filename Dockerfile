@@ -1,6 +1,5 @@
 FROM ubuntu:16.04
 
-
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
     python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
@@ -8,8 +7,8 @@ RUN apt-get clean all && apt-get update && apt-get install -y build-essential ap
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
-
 RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
+
 RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
