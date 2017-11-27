@@ -48,8 +48,8 @@ RUN git clone https://github.com/alexdobin/STAR.git
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
     cd TransDecoder-3.0.1 && make
 
-RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz &&\
-    mv gmap-2017-11-15/ gmap && cd gmap/  && ./configure && make && sudo make install
+RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz && \
+    mv gmap-2017-06-20/ gmap && cd gmap/ && ./configure && make && sudo make install
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
