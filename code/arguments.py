@@ -2,7 +2,6 @@
 
 import argparse
 
-
 ###############
 ###FUNCTIONS###
 ###############
