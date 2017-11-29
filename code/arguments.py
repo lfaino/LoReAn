@@ -2,7 +2,6 @@
 
 import argparse
 
-
 ###############
 ###FUNCTIONS###
 ###############
@@ -12,7 +11,7 @@ def setting():
 
     parser = argparse.ArgumentParser(prog='lorean', usage='%(prog)s [options] reference',
                                      description='LoReAn - Automated genome annotation pipeline that integrates long reads',
-                                     epilog='Luigi Faino - March 2017')
+                                     epilog='Luigi Faino - October 2017')
     parser.add_argument("reference", help="Path to reference file")
     parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []", required=True)
     parser.add_argument("-sp", "--species", nargs="?", required=True,

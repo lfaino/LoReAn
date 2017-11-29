@@ -1,6 +1,5 @@
 FROM ubuntu:16.04
 
-
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
     python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
@@ -8,8 +7,8 @@ RUN apt-get clean all && apt-get update && apt-get install -y build-essential ap
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
-
 RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
+
 RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
@@ -19,12 +18,11 @@ RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7
 
 WORKDIR /opt/
 
-
 RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
-RUN git clone -b entry_2 --single-branch https://github.com/lfaino/LoReAn.git && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
+RUN git clone -b master --single-branch https://github.com/lfaino/LoReAn.git  && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
     mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/
 
 WORKDIR /opt/LoReAn/third_party/software/
@@ -50,8 +48,8 @@ RUN git clone https://github.com/alexdobin/STAR.git
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
     cd TransDecoder-3.0.1 && make
 
-RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz &&\
-    mv gmap-2017-11-15/ gmap && cd gmap/  && ./configure && make && sudo make install
+RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz && \
+    mv gmap-2017-06-20/ gmap && cd gmap/ && ./configure && make && sudo make install
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
@@ -65,12 +63,13 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
-RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && \
-     tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
 RUN cp ../conf_files/createUser.sh /usr/local/bin && chmod 775 /usr/local/bin/createUser.sh
 
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
+
+RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 

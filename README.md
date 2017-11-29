@@ -36,6 +36,8 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 ## SOFTWARE USED IN THE PIPELINE
 
+
+- TransDecoder-3.0.1
 - samtools v0.1.19-96b5f2294a
 - bedtools v2.25.0
 - bowtie  v1.1.2
@@ -45,11 +47,11 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 - gm_et_linux_64 (THIS SOFTWARE IS NOT FREE FOR EVERYONE)
 - PASApipeline v2.1.0 
 - augustus v3.3
-- trinityrnaseq v2.4.0
-- STAR v2.5.2b
-- gmap-gsnap v2017-06-20
+- trinityrnaseq v2.2.0
+- STAR v2.5.3a
+- gmap-gsnap v2017-11-15
 - fasta v36.3.8e
-- BRAKER v1.11
+- BRAKER v2.0
 - EVidenceModeler v1.1.1
 - gffread  v0.9.9
 - genometools v1.5.9

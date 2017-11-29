@@ -1,4 +1,5 @@
 export AUGUSTUS_CONFIG_PATH=~/augustus/config/
+export AUGUSTUS_BIN_PATH=~/augustus/bin
 export PATH=$PATH:~/augustus/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/LoReAn/
 export PATH=$PATH:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1
@@ -16,7 +17,7 @@ export PATH=$PATH:/opt/LoReAn/code
 export PATH=$PATH:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64
 export PATH=$PATH:/opt/LoReAn/third_party/software/PASApipeline/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/genometools-1.5.9/bin
-export PATH=$PATH:/opt/LoReAn/third_party/software/BRAKER1_v1.11
+export PATH=$PATH:/opt/LoReAn/third_party/software/BRAKER_v2.0
 export PATH=$PATH:/opt/LoReAn/third_party/software/TransDecoder-3.0.1
 export PATH=$PATH:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util
 export PATH=$PATH:/opt/LoReAn/third_party/conf_files

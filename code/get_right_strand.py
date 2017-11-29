@@ -441,14 +441,11 @@ def newNames(oldname):
 
 def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
-    #outputFilename = gmap_wd + 'finalAnnotation.gff3'
     gff_out = gffwriter.GFFWriter(outputFilename.name)
-    #outputFilenameGmap = gmap_wd + 'finalAnnotation.gmap.sing.gff3'
     outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
     gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
 
-    #gff_file1_out = gff_file1 + ".intron.tidy.sorted.gff"
-    #errorFile = gff_file1 + ".gt_err.log"
+
 
     gt_com = GT_RETAINID % gff_file1
     file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(gff_file1_out, 'w')
@@ -459,8 +456,6 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=True)
     gt_call.communicate()
 
-    #gff_file2_out = gff_file2 + ".intron.tidy.sorted.gff"
-    #errorFile = gff_file2 + ".gt_err.log"
     file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(gff_file2_out, 'w')
     err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(errorFile, 'w')
     gt_com = GT_RETAINID % gff_file2
