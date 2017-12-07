@@ -17,7 +17,6 @@ To install the software:
 
 Please see the [installation instructions](INSTALL.md) for details. 
 
-
 The software can be run after installing by:
 ```bash
 lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
