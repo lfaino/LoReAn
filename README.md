@@ -1,5 +1,3 @@
-
-
 # LoReAn (Long-Read Annotation) for automated eukaryotic genome annotation incorporating long-reads
 
 The LoReAn software is an automated annotation pipeline designed for eukaryotic genome annotation. It is built using previously defined annotation rationale and programs, but the key improvement is the incorporation of single-molecule cDNA sequencing data, such as that produced from [Oxford Nanopore](https://nanoporetech.com/) and from [PacBio](http://www.pacb.com/applications/rna-sequencing/). We find this significantly improves automated annotations and reduces the requirments for time-consuming manual annotation. 
