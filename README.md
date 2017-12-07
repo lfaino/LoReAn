@@ -41,7 +41,7 @@ To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 - bamtools v2.4.1
 - AATpackage r03052011 
 - iAssembler v1.3.2.x64
-- gm_et_linux_64 (THIS SOFTWARE IS NOT FREE FOR EVERYONE)
+- gm_et_linux_64 **(THIS SOFTWARE IS NOT FREE FOR EVERYONE)**
 - PASApipeline v2.1.0 
 - augustus v3.3
 - trinityrnaseq v2.2.0
