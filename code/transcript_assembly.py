@@ -70,7 +70,6 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     log_err.close()
     return
 
-
 def gmes_call(wd, ref, fungus, threads, verbose):
 
 
