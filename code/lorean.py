@@ -44,9 +44,16 @@ import transcript_assembly as transcripts
 def main():
     home = expanduser("~")
     args = arguments.setting()
+
+
     if os.path.isfile(home + "/.gm_key"):
         '''Core of the program'''
         # Parse the arguments
+
+        if args.fungus and args.max_intron_length == "10000":
+            intron_max = "1000"
+        else:
+            intron_max = args.max_intron_length
 
         format_date = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(format_date)
@@ -160,7 +167,7 @@ def main():
                 else:
                     short_reads_file = os.path.abspath(args.short_reads)
                 # Map with STAR
-                short_bam = mapping.star(ref, short_reads_file, threads_use, args.max_intron_length, star_out,
+                short_bam = mapping.star(ref, short_reads_file, threads_use, intron_max, star_out,
                                          args.verbose)
                 short_sorted_bam = mapping.samtools_sort(short_bam, threads_use, wd, args.verbose)
                 # Keep the output
@@ -199,7 +206,7 @@ def main():
                     sys.stdout.write(('\n###GMAP\t' + now + 't###\n'))
                     long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, 'samse',
                                             args.min_intron_length,
-                                            args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=False)
+                                            intron_max, args.end_exon, gmap_wd, args.verbose, Fflag=False)
                     # Convert to sorted BAM
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
 
@@ -224,9 +231,9 @@ def main():
                 trinity_cpu = int(int(threads_use) / int(2))
             else:
                 trinity_cpu = int(threads_use)
-            trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+            trinity_out = transcripts.trinity(default_bam, trin_dir, intron_max, trinity_cpu, args.verbose)
             trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, threads_use, 'gff3_gene',
-                                       args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
+                                       args.min_intron_length, intron_max, args.end_exon, gmap_wd, args.verbose, Fflag=True)
             trinity_path = trinityGFF3
 
             # PASA Pipeline
@@ -236,7 +243,7 @@ def main():
             align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
             pasa_gff3 = pasa.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out,
-                                       args.max_intron_length, threads_use, args.verbose)
+                                       intron_max, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.species in (errAugustus.decode("utf-8")) or args.species in augustus_species:
@@ -396,7 +403,7 @@ def main():
                 # this pipeline
                 if not long_sorted_bam:
                     long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, 'samse',
-                                            args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                            args.min_intron_length, intron_max, args.end_exon, gmap_wd,
                                             args.verbose, Fflag=False)
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
 
@@ -463,7 +470,7 @@ def main():
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
         consensusMappedGFF3 = mapping.gmap('cons', genome_gmap, mergedFastaFilename, threads_use, 'gff3_gene',
-                                           args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                           args.min_intron_length, intron_max, args.end_exon, gmap_wd,
                                            args.verbose,
                                            Fflag=True)
         now = datetime.datetime.now().strftime(format_date)

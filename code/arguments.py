@@ -54,7 +54,7 @@ def setting():
                         metavar='N')
     parser.add_argument("-g","--min_intron_length", nargs="?", default="9", help="Minimal intron length for GMAP [9]",
                         metavar='N')
-    parser.add_argument("-q","--max_intron_length", nargs="?", default="1000", help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
+    parser.add_argument("-q","--max_intron_length", nargs="?", default="10000", help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
                         metavar='N')
     parser.add_argument("-ee", "--end_exon", nargs="?", default="20", help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
