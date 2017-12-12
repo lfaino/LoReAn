@@ -6,7 +6,6 @@
 
 # LIBRARIES
 
-
 import datetime
 import multiprocessing
 import os
@@ -504,7 +503,7 @@ def main():
         now = datetime.datetime.now().strftime(format_date)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        final_output_dir = os.path.join(output_dir,  args.species + '_output' )
+        final_output_dir = os.path.join(root_path,  'LoReAn_output' )
 
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(format_date)
@@ -515,8 +514,6 @@ def main():
                 logistic.copy_file(filename, final_output_dir)
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
-#        if not args.keep_tmp:
-#            shutil.rmtree(wd, ignore_errors=True)
 
     else:
         sys.stdout.write(
