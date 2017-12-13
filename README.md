@@ -32,18 +32,16 @@ The full list of options can be found at [option instructions](OPTIONS.md) or by
 lorean.py --help
 ```
 
-LoReAn can run BRAKER1 to improve Augustus gene prediction;
+LoReAn can run BRAKER to improve Augustus gene prediction;
 
 To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 
 ## EXAMPLE DATASET
 
 We made available two datasets that can be used to test LoReAn. The 1st dataset is from Nanopore data of *Verticillium dahliae* 
-strain JR2 while the second is from PacBio data of *Plicaturopsis crispa*.
+strain JR2 while the second is from PacBio data of *Plicaturopsis crispa*. Both datasets can be dowloaded from 
+[LoReAn Examples ](https://github.com/lfaino/LoReAn_Example)
 
-[*V. dahliae* dataset](https://github.com/lfaino/LoReAn_Example)
-
-[*Plicaturopsis crispa* dataset](https://www.dropbox.com/sh/wrhwymp58f2gs1l/AAAEtwrErbdtJPkWAQLymBRFa?dl=0)
 
 ## SOFTWARE USED IN THE PIPELINE
 
