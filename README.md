@@ -7,7 +7,7 @@ We find this significantly improves automated annotations and reduces the requir
 
 We are working to improve LoReAn documentation. Meanwhile, some more LoReAn information can be found at 
 [bioRxiv](https://www.biorxiv.org/content/early/2017/12/08/230359). For those familar with the annotation process and 
-with docker, there should be enough infomation to run the program. Otherwise, contact [Luigi Faino](luigi.faino@gmail.com) or open an issue.
+with docker, there should be enough infomation to run the program. If you have problems, please open an issue.
 
 This is how LoReAn works: [LoReAn schematic view](https://github.com/lfaino/LoReAn/wiki)
 
