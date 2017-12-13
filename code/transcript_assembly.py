@@ -102,3 +102,17 @@ def gmes_call(wd, ref, fungus, threads, verbose):
         log_e.close()
 
     return wd
+
+def find_species(home):
+    augustus_species_cmd = 'augustus --species=help'
+    process = subprocess.Popen(augustus_species_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    out_augustus, err_augustus = process.communicate()
+    list_file = [os.path.join(home, folder) for folder in os.listdir(home) if os.path.isfile(os.path.join(home, folder))
+                 and ".bashrc" == folder]
+    with open(list_file[0]) as bashrc:
+        for path in bashrc:
+            if "AUGUSTUS_CONFIG_PATH" in path:
+                augustus_specie_dir = path.split("=~")[1].rsplit()[0]
+                augustus_species = [species for species in os.listdir(home + augustus_specie_dir + "species")]
+
+    return augustus_species, err_augustus

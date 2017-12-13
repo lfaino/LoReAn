@@ -143,8 +143,6 @@ def longest(gff_file, fasta, proc, wd, verbose):
     outputFilename = wd + 'finalAnnotation.strand.gff3'
     outputFilenameLeft = tempfile.NamedTemporaryFile(delete=False, dir=wd, prefix="longest.")
     gff_out = gffwriter.GFFWriter(outputFilenameLeft.name)
-    #gff_file_out = gff_file + ".intron.tidy.sorted.gff"
-    #errorFile = gff_file + ".gt_err.log"
 
     gt_com = GT_GFF3_INTRON % gff_file
     gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
@@ -153,11 +151,6 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % gt_com)
     gt_call = subprocess.Popen(gt_com, stdout=gff_file_outfile, stderr=errorFilefile, shell=True)
     gt_call.communicate()
-    #gff_file_outfile.close()
-    #errorFilefile.close()
-
-    #gtf_file_out = gff_file + ".intron.tidy.sorted.gtf"
-    #errorFile = gff_file + ".gt_err.log"
 
     gt_com = GT_GFF3TOGTF % gff_file_outfile.name
     gtf_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gtf_file_out, "w")

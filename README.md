@@ -1,8 +1,13 @@
-# LoReAn (Long-Read Annotation) for automated eukaryotic genome annotation incorporating long-reads
+# LoReAn (Long Read Annotation) for automated eukaryotic genome annotation incorporating long-reads
 
-The LoReAn software is an automated annotation pipeline designed for eukaryotic genome annotation. It is built using previously defined annotation rationale and programs, but the key improvement is the incorporation of single-molecule cDNA sequencing data, such as that produced from [Oxford Nanopore](https://nanoporetech.com/) and from [PacBio](http://www.pacb.com/applications/rna-sequencing/). We find this significantly improves automated annotations and reduces the requirments for time-consuming manual annotation. 
+The LoReAn software is an automated annotation pipeline designed for eukaryotic genome annotation. It is built using previously 
+defined annotation rationale and programs, but the key improvement is the incorporation of single-molecule cDNA sequencing data, 
+such as that produced from [Oxford Nanopore](https://nanoporetech.com/) and from [PacBio](http://www.pacb.com/applications/rna-sequencing/). 
+We find this significantly improves automated annotations and reduces the requirments for time-consuming manual annotation. 
 
-We are working to improve LoReAn documentation and getting a paper into bioRxiv. For those familar with the annotation process and with docker, there should be enough infomation to run the program. Otherwise, check back soon ...
+We are working to improve LoReAn documentation. Meanwhile, some more LoReAn information can be found at 
+[bioRxiv](https://www.biorxiv.org/content/early/2017/12/08/230359). For those familar with the annotation process and 
+with docker, there should be enough infomation to run the program. Otherwise, contact [Luigi Faino](luigi.faino@gmail.com) or open an issue.
 
 This is how LoReAn works: [LoReAn schematic view](https://github.com/lfaino/LoReAn/wiki)
 
@@ -19,7 +24,7 @@ Please see the [installation instructions](INSTALL.md) for details.
 
 The software can be run after installing by:
 ```bash
-lorean.py <protein.fasta> <genome.fasta> <species name for augustus>
+lorean.py -pr protein.fasta -sp spacies genome.fasta 
 ```
 The full list of options can be found at [option instructions](OPTIONS.md) or by:
 
@@ -30,6 +35,15 @@ lorean.py --help
 LoReAn can run BRAKER1 to improve Augustus gene prediction;
 
 To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
+
+## EXAMPLE DATASET
+
+We made available two datasets that can be used to test LoReAn. The 1st dataset is from Nanopore data of *Verticillium dahliae* 
+strain JR2 while the second is from PacBio data of *Plicaturopsis crispa*.
+
+[*V. dahliae* dataset](https://github.com/lfaino/LoReAn_Example)
+
+[*Plicaturopsis crispa* dataset](https://www.dropbox.com/sh/wrhwymp58f2gs1l/AAAEtwrErbdtJPkWAQLymBRFa?dl=0)
 
 ## SOFTWARE USED IN THE PIPELINE
 

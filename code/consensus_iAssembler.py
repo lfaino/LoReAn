@@ -46,7 +46,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
         raise NameError('')
     return out_name
 
-def cluster_pipeline(gff3_file, merge_distance, strand):
+def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     """
     here the clusters of sequence from the same locus are prepared
     """
@@ -64,14 +64,21 @@ def cluster_pipeline(gff3_file, merge_distance, strand):
         sys.stdout.write("\t###CLUSTERING IN NON-STRANDED MODE###\n")
 
     btsort2 = BEDTOOLS_SORT
-
     # Sort the GFF3 file
     cat_call = subprocess.Popen(cat, stdout=subprocess.PIPE, shell=True)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % cat)
     btsort1_call = subprocess.Popen(btsort1, stdin=cat_call.stdout, stdout=subprocess.PIPE, shell=True)
     # Merge the BED entries, count number of reads on each merged entry
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % btsort1)
     btmerge1_call = subprocess.Popen(btmerge1, stdin=btsort1_call.stdout, stdout=subprocess.PIPE, shell=True)
     # NSort it again and returns
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % btmerge1)
     btsort2_call = subprocess.Popen(btsort2, stdin=btmerge1_call.stdout, stdout=subprocess.PIPE, shell=True)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % btsort2)
     outputBT = btsort2_call.communicate()[0]
     final_output = outputBT.splitlines()
     return final_output
@@ -105,8 +112,7 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
             line[0], line[1], line[2], line[3], line[4])
 
     ids_short = []
-    if len(idents.split(',')) > int(min_evidence) and len(
-            idents.split(',')) < int(max_evidence):
+    if len(idents.split(',')) > int(min_evidence) and len(idents.split(',')) < int(max_evidence):
         for element in re.split(',|;', idents):
             # if 'ID=' in element:
             # We keep read.mrna and evm.model records
@@ -115,36 +121,35 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
         return False
 
     unique_ids = list(set(ids_short))
-    clusterFilename = wd + \
-                      '_'.join([chrm, start, end]) + '_' + str(count) + '.fasta'
-    clusterFile = open(clusterFilename, 'w')
+    cluster_filename = wd + '_'.join([chrm, start, end]) + '_' + str(count) + '.fasta'
+    cluster_file = open(cluster_filename, 'w')
     read_count = 1
 
     for iden in unique_ids:
         if iden in fasta_dict:
             if len(str(fasta_dict[iden])) > int(min_length):
                 if len(iden) < 40:
-                    clusterFile.write('>' + iden + '\n' +
+                    cluster_file.write('>' + iden + '\n' +
                                       str(fasta_dict[iden]) + '\n')
                 else:
-                    clusterFile.write('>' + str(read_count) +
+                    cluster_file.write('>' + str(read_count) +
                                       '\n' + str(fasta_dict[iden]) + '\n')
                     read_count += 1
                 del fasta_dict[iden]
             else:
                 del fasta_dict[iden]
 
-    clusterFile.close()
-    clusterFile = open(clusterFilename, 'r')
+    cluster_file.close()
+    cluster_file = open(cluster_filename, 'r')
     nlines = 0
-    for line in clusterFile:
+    for line in cluster_file:
         if line.startswith('>'):
             nlines += 1
     if nlines < int(min_evidence) or nlines > int(max_evidence):
         return False
 
-    clusterFile.close()
-    return clusterFilename
+    cluster_file.close()
+    return cluster_filename
 
 def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, wd):
     """write fasta clusters
@@ -160,7 +165,7 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     manage = Manager()
     queue = manage.Queue()
-    pool = Pool(processes=int(threads), maxtasksperchild=1000)
+    pool = Pool(processes=int(threads), maxtasksperchild=10)
 
     new_commands = []
     for root, dirs, file in os.walk(wd):

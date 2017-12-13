@@ -62,11 +62,11 @@ def setting():
                         metavar='N')
     parser.add_argument("-cMe","--cluster_max_evidence", nargs="?", default="5000", metavar='N',
                         help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]")
-    parser.add_argument("-aol","--assembly_overlapLength", nargs="?", default="200", metavar='N',
+    parser.add_argument("-aol","--assembly_overlap_length", nargs="?", default="200", metavar='N',
                         help="Minimal length (in nt) of overlap for ASSEMBLY [200]")
-    parser.add_argument("-api","--assembly_percentIdentity", nargs="?", default="97", help="Minimal identity for the ASSEMBLY (95-100) [97]",
+    parser.add_argument("-api","--assembly_percent_identity", nargs="?", default="97", help="Minimal identity for the ASSEMBLY (95-100) [97]",
                         metavar='N')
-    parser.add_argument("-art","--assembly_readThreshold", nargs="?", default="0.3",metavar='F',
+    parser.add_argument("-art","--assembly_read_threshold", nargs="?", default="0.3",metavar='F',
                         help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]")
     parser.add_argument("-v","--verbose", help="Prints out the commands used in LoReAn[FALSE]", action='store_true')
 

@@ -9,18 +9,19 @@ count_sequences = 0
 length_cluster = 0
 
 
-def parse_only(threshold_float, wd):
+def parse_only(threshold_float, wd, verbose):
     """
     to join the assembly and the parsing process
     """
     evm_list = []
-
+    if verbose:
+        sys.stderr.write('Executing: Parse assembled consensus and EVM\n')
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
             if 'output' in direc:
                 outputDir = wd + direc + '/'
                 if outputDir:
-                    parse_contigs(outputDir, threshold_float)
+                    parse_contigs(outputDir, threshold_float, verbose)
             try:
                 t_filename = root + direc + '/contig_member'
                 t_file = open(t_filename, 'r')
@@ -39,10 +40,13 @@ def parse_only(threshold_float, wd):
     return evm_list
 
 
-def parse_contigs(outputAssembly, threshold_float):
+def parse_contigs(outputAssembly, threshold_float, verbose):
     """
     Parses the output from iAssembler, to a single FASTA file
     """
+
+    if verbose:
+        sys.stderr.write('Executing: Parse assembled consensus\n')
     fname = outputAssembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
     if fname_exists:
@@ -96,7 +100,7 @@ def parse_contigs(outputAssembly, threshold_float):
     return
 
 
-def catAssembled(wd):
+def cat_assembled(wd):
     """
     collect the assembled contigs and generate a multifasta file
     """
@@ -118,7 +122,7 @@ def catAssembled(wd):
     return fileName
 
 
-def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
+def add_EVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     """
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
@@ -153,27 +157,3 @@ def addEVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     outFasta.close()
     outputMerged.close()
 
-
-def getEVMnoUnitig(target_wd):
-    """
-    this module change the name of the assembled contigs in evm names and replace the unigene identifiers
-
-    """
-    sys.stdout.write('\t###EXTRACT EVM NAME FROM ASSEMBLED CONTIGS###\n')
-    '''Gets the name of evm prediction in the assembly that do not have support'''
-    evm_list = []
-    for root, dirs, _ in os.walk(target_wd):
-        for direc in dirs:
-            t_filename = root + direc + '/contig_member'
-            try:
-                t_file = open(t_filename, 'r')
-                for line in t_file:
-                    line = line.strip()
-                    elements = line.split('\t')
-                    for el in elements:
-                        if 'evm' in el:
-                            evm_list.append(el)
-                t_file.close()
-            except IOError:
-                continue
-    return evm_list
