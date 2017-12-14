@@ -1,12 +1,11 @@
 #! /usr/bin/env python3
 
-import getpass
+
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from pwd import getpwnam
 
 
 ###############
@@ -15,14 +14,14 @@ from pwd import getpwnam
 
 
 def create_user():
-    name_user = (getpass.getuser())
-    uid_user = getpwnam(name_user).pw_uid
 
-    sys.stderr.write('CREATING USER %s WITH UID %s\n\n' % (name_user, uid_user))
+    name_user = sys.argv[1]
+    uid_user = sys.argv[2]
+
     root = os.getcwd()
     sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n') % (name_user, uid_user))
 
-    if len(sys.argv) > 1:
+    if "--verbose" in sys.argv[3] or "-v" in sys.argv[3]:
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
     else:
