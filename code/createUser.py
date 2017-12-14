@@ -19,7 +19,6 @@ def create_user():
     uid_user = getpwnam(name_user).pw_uid
 
     sys.stderr.write('CREATING USER %s WITH UID %s\n\n' % (name_user, uid_user))
-
     root = os.getcwd()
     sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n') % (name_user, uid_user))
 
