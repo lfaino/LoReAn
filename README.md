@@ -53,12 +53,12 @@ strain JR2 while the second is from PacBio data of *Plicaturopsis crispa*. Both 
 - bamtools v2.4.1
 - AATpackage r03052011 
 - iAssembler v1.3.2.x64
-- gm_et_linux_64 **(THIS SOFTWARE IS NOT FREE FOR EVERYONE, check installation instruction)** 
+- GeneMark-ES/ET v.4.33 64bit **(THIS SOFTWARE IS NOT FREE FOR EVERYONE, check installation instruction)** 
 - PASApipeline v2.1.0 
 - augustus v3.3
 - trinityrnaseq v2.2.0
 - STAR v2.5.3a
-- gmap-gsnap v2017-11-15
+- gmap-gsnap v2017-06-20
 - fasta v36.3.8e
 - BRAKER v2.0
 - EVidenceModeler v1.1.1
