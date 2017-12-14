@@ -80,7 +80,7 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    os.system("su %s >> %s" % (name_user, log.name))
+    os.system("su %s" % (name_user))
 
 
 if __name__ == '__main__':
