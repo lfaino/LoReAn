@@ -21,7 +21,7 @@ def create_user():
     root = os.getcwd()
     sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n') % (name_user, uid_user))
 
-    if "--verbose" in sys.argv[3] or "-v" in sys.argv[3]:
+    if len(sys.argv) > 3 and "--verbose" in sys.argv[3] or len(sys.argv) > 3 and "-v" in sys.argv[3]:
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
     else:
