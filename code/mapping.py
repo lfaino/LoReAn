@@ -201,6 +201,8 @@ def gmap_build(reference, working_dir, verbose):
     :param working_dir:
     :return:
     """
+
+
     if '/' in reference:
         refer = reference.split('/')[-1] + '_GMAPindex'
     else:
@@ -210,8 +212,7 @@ def gmap_build(reference, working_dir, verbose):
     # If the ref is there do not build it again
     refer_path = working_dir + refer
     if os.path.isdir(refer_path):
-        sys.stdout.write(('GMAP database existed already: ' +
-               refer_path + ' --- skipping'))
+        sys.stdout.write(('GMAP database existed already: ' + refer_path + ' --- skipping'))
         return refer
     log_name = working_dir + 'gmap_build.log'
     log = open(log_name, 'w')
@@ -289,8 +290,7 @@ def samtools_sort(bam_file, threads, wd, verbose):
         cmd = SAMTOOLS_SORT % (threads, bam_file, s_bam_filename)
         s_bam_filename = s_bam_filename
         if os.path.isfile(s_bam_filename):
-            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename +
-                   '.bam --- skipping\n'))
+            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename + '.bam --- skipping\n'))
             return s_bam_filename
         log_name = wd + 'samtools_sort.log'
         log = open(log_name, 'w')

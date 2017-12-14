@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from multiprocessing import Pool, Manager
 
@@ -40,7 +41,13 @@ def gffread(gff3_file, reference, working_dir, verbose):
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        bedtools = subprocess.Popen(cmd, cwd=working_dir, shell=True )
+            log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir, prefix="startUser.", suffix=".out")
+            err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir, prefix="startUser.", suffix=".out")
+        else:
+            log = tempfile.NamedTemporaryFile(mode='w', dir=working_dir, prefix="startUser.", suffix=".out")
+            err = tempfile.NamedTemporaryFile(mode='w', dir=working_dir, prefix="startUser.", suffix=".out")
+
+        bedtools = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         bedtools.communicate()
     except:
         raise NameError('')

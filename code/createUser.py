@@ -4,7 +4,6 @@
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -19,14 +18,12 @@ def create_user():
     uid_user = sys.argv[2]
 
     root = os.getcwd()
-    sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n') % (name_user, uid_user))
+    sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
 
-    if len(sys.argv) > 3 and "--verbose" in sys.argv[3] or len(sys.argv) > 3 and "-v" in sys.argv[3]:
-        log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
-        err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=root, prefix="startUser.", suffix=".out")
-    else:
-        log = tempfile.NamedTemporaryFile(mode='w', dir=root, prefix="startUser.", suffix=".out")
-        err = tempfile.NamedTemporaryFile(mode='w', dir=root, prefix="startUser.", suffix=".out")
+    log_file = os.path.join(root, "log.txt")
+    err_file = os.path.join(root, "err.txt")
+    log = open(log_file, 'w')
+    err = open(err_file, 'w')
 
     com = "adduser --disabled-password --uid %s --gecos '' %s && adduser %s sudo && echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers" % (uid_user, name_user, name_user, "%s")
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
@@ -80,7 +77,7 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    os.system("su %s" % (name_user))
+    subprocess.run(["su", name_user], stdout= log)
 
 
 if __name__ == '__main__':
