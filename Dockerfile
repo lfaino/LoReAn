@@ -77,4 +77,4 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 
 WORKDIR /data/
 
-CMD /usr/local/bin/createUser.py
+#CMD /usr/local/bin/createUser.py
