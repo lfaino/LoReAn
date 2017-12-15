@@ -2,6 +2,7 @@
 
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +21,8 @@ def create_user():
     root = os.getcwd()
     sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
 
-    log_file = os.path.join(root, "log.txt")
-    err_file = os.path.join(root, "err.txt")
+    log_file = os.path.join(root, "CreateUser.log.txt")
+    err_file = os.path.join(root, "CreateUser.err.txt")
     log = open(log_file, 'w')
     err = open(err_file, 'w')
 
@@ -77,7 +78,10 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    subprocess.run(["su", name_user], stdout= log)
+    shutil.chown(log_file, user=name_user, group=name_user)
+    shutil.chown(err_file, user=name_user, group=name_user)
+
+    subprocess.run(["su", name_user])
 
 
 if __name__ == '__main__':
