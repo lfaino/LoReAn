@@ -11,7 +11,7 @@ def setting():
 
     parser = argparse.ArgumentParser(prog='lorean', usage='%(prog)s [options] reference',
                                      description='LoReAn - Automated genome annotation pipeline that integrates long reads',
-                                     epilog='Luigi Faino - October 2017')
+                                     epilog='Luigi Faino - luigi.faino@gmail.com; luigi.faino@uniroma1.it - October 2017')
     parser.add_argument("reference", help="Path to reference file")
     parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []", required=True)
     parser.add_argument("-sp", "--species", nargs="?", required=True,
@@ -54,7 +54,7 @@ def setting():
                         metavar='N')
     parser.add_argument("-g","--min_intron_length", nargs="?", default="9", help="Minimal intron length for GMAP [9]",
                         metavar='N')
-    parser.add_argument("-q","--max_intron_length", nargs="?", default="1000", help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
+    parser.add_argument("-q","--max_intron_length", nargs="?", default="10000", help="Maximal intron length for GMAP, STAR and TRINITY [1000]",
                         metavar='N')
     parser.add_argument("-ee", "--end_exon", nargs="?", default="20", help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
@@ -62,11 +62,11 @@ def setting():
                         metavar='N')
     parser.add_argument("-cMe","--cluster_max_evidence", nargs="?", default="5000", metavar='N',
                         help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]")
-    parser.add_argument("-aol","--assembly_overlapLength", nargs="?", default="200", metavar='N',
+    parser.add_argument("-aol","--assembly_overlap_length", nargs="?", default="200", metavar='N',
                         help="Minimal length (in nt) of overlap for ASSEMBLY [200]")
-    parser.add_argument("-api","--assembly_percentIdentity", nargs="?", default="97", help="Minimal identity for the ASSEMBLY (95-100) [97]",
+    parser.add_argument("-api","--assembly_percent_identity", nargs="?", default="97", help="Minimal identity for the ASSEMBLY (95-100) [97]",
                         metavar='N')
-    parser.add_argument("-art","--assembly_readThreshold", nargs="?", default="0.3",metavar='F',
+    parser.add_argument("-art","--assembly_read_threshold", nargs="?", default="0.3",metavar='F',
                         help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]")
     parser.add_argument("-v","--verbose", help="Prints out the commands used in LoReAn[FALSE]", action='store_true')
 

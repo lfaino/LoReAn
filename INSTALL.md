@@ -17,18 +17,13 @@ the folder together with your data.
 The best way to use LoReAn is by installing and running the software by Docker
 We used Docker because the pipeline uses a lot of software which maybe difficult to install independently.
 
-Before installing Docker, please check your UID:
-```bash
-id user_name
-```
-where user_name is the name of the user that runs LoReAn on the host machine
 
 To install Docker, please refer to:
 https://docs.docker.com/engine/installation/
 
-After Docker installation, you can download and run LoReAn by using:
+After Docker installation, you can download  LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean createUser.sh user_name uid_user
+docker run -it --rm -v $PWD:/data lfaino/lorean createUser.sh $USER $UID 
 ```
 
 At this point, run

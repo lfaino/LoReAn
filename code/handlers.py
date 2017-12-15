@@ -5,7 +5,7 @@ import multithread_large_fasta as multiple
 import transcript_assembly as transcripts
 
 
-def BrakerAAT(queue,ref, bamFile, species_name, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
+def braker_aat(queue, ref, bamFile, species_name, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
     '''Handles Braker and AAT so that we can run them in parallel'''
     # DIVIDE THREADS BY 2
     use = (round(int(threads) / 2) - 1)
@@ -21,7 +21,7 @@ def BrakerAAT(queue,ref, bamFile, species_name, protein_evidence, threads, fungu
         queue.task_done()
 
 
-def AugustGmesAAT(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
+def august_gmes_aat(queue, ref, species, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
     use = (round(int(threads) / 3)-1)
     use_gmes = str(use)
     augustus_wd = wd + 'augustus/'
