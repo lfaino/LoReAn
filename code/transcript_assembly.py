@@ -8,7 +8,7 @@ import sys
 # COMMANDS LIST
 
 TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --grid_node_max_memory %sG --max_memory %sG --output %s --CPU %s --full_cleanup --no_path_merging'
-
+#TODO more option can be changed in trinity run
 GMES_FU = 'gmes_petap.pl --ES --fungus --core %s --sequence %s'
 
 GMES = 'gmes_petap.pl --ES --core %s --sequence %s'
