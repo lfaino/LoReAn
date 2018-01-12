@@ -86,6 +86,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
     return filename
 
 def star_build(reference, genome_dir, threads, wd, verbose):
+    #TODO STOP if the build of the index fails
     '''Builds star reference index'''
     check_file = genome_dir + 'SAindex'
     if os.path.isfile(check_file):  # If the ref is there do not build it again
@@ -138,7 +139,7 @@ def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
     '''
     mapping short reads using STAR
     '''
-
+    #TODO STOP if the mapping gices an empty file
     prefix = 'STAR_shortreads'
     if isinstance(reads, str):  # Only one file
         cmd = STAR_SINGLE % (threads, genome_dir, max_intron_length, max_intron_length, prefix, reads) # '--limitGenomeGenerateRAM', '1100000000',
@@ -153,6 +154,8 @@ def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
             ' --- skipping\n'))
         return filename
 
+
+
     log_name_err = wd + 'star.err.log'
     log_err = open(log_name_err, 'w')
     log_name = wd + 'star.log'
@@ -166,10 +169,15 @@ def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
         # sys.stdout.write '>STAR worked. Output is: ' + filename +'\n'
     except:
         raise NameError('')
+
+
     log.close()
     log_err.close()
 
-    return filename
+    if os.path.exists(filename) and os.path.getsize(filename) > 0:
+        return filename
+    else:
+        sys.exit("##### STAR DID NOT WORK. PLEASE, CHECK THE FASTQ FILES #####\n")
 
 
 def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
