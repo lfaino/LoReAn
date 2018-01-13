@@ -6,7 +6,7 @@ import subprocess
 import sys
 from multiprocessing import Pool
 
-import dirs_and_files as logistic
+import dirsAndFiles as logistic
 from Bio import SeqIO
 
 count_sequences = 0

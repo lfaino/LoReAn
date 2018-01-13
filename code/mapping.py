@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 
-import dirs_and_files as logistic
+import dirsAndFiles as logistic
 from Bio import SeqIO
 
 #==========================================================================================================
@@ -204,12 +204,7 @@ def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
 def gmap_build(reference, working_dir, verbose):
     """
     Build the GMAP indexed reference from the fasta reference file
-    :param verbose:
-    :param reference:
-    :param working_dir:
-    :return:
     """
-
 
     if '/' in reference:
         refer = reference.split('/')[-1] + '_GMAPindex'
@@ -249,17 +244,8 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     reference_db = gmap_build(reference, wd, verbose)
     # Mapping
     sys.stdout.write('\t###MAP###\n')
-    out_file = gmap_map(
-        reference_db,
-        fastq_reads,
-        threads,
-        out_format,
-        min_intron_length,
-        max_intron_length,
-        exon_length,
-        wd,
-        Fflag,
-        type_out, verbose)
+    out_file = gmap_map(reference_db, fastq_reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
+                        wd, Fflag, type_out, verbose)
     return out_file
 
 def samtools_view(sam_file, wd, verbose):

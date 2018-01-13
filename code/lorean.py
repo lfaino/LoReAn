@@ -15,25 +15,24 @@ import subprocess
 import sys
 import tempfile
 import time
-from os.path import expanduser
 from queue import Queue
 from threading import Thread
 
-import arguments as arguments
-import collect_only as collect
-import consensus_iAssembler as consensus
 # OTHER SCRIPTS
-import dirs_and_files as logistic
-import evm_pipeline
-import get_right_strand as grs
+import arguments as arguments
+import collectOnly as collect
+import consensusIAssembler as consensus
+import dirsAndFiles as logistic
+import evmPipeline
+import getRightStrand as grs
 import handlers as handler
 import manipulateSeq as mseq
 import mapping
-import multithread_large_fasta as multiple
+import multithreadLargeFasta as multiple
 import pasa as pasa
-import prepare_evm_inputs as inputEvm
+import prepareEvmInputs as inputEvm
 import reduceUTRs as utrs
-import transcript_assembly as transcripts
+import transcriptAssembly as transcripts
 import update as update
 
 
@@ -42,7 +41,7 @@ import update as update
 ###############
 
 def main():
-    home = expanduser("~")
+    home = os.path.expanduser("~")
     args = arguments.setting()
     if os.path.isfile(home + "/.gm_key"):
         '''Core of the program'''
@@ -54,12 +53,22 @@ def main():
         root = os.getcwd()
 
         output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
-        wd = temp_dir.name
+        logistic.check_create_dir(output_dir)
 
-        ref = os.path.abspath(args.ref)
+
+        wd = os.path.join(output_dir, "run/")
+        if args.keep_tmp:
+            logistic.check_create_dir(wd)
+        elif not os.path.exists(wd) and not args.verbose:
+            logistic.check_create_dir(wd)
+        else:
+            temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
+            wd = temp_dir.name
+
+        ref_orig = os.path.abspath(args.reference)
+        ref = os.path.join(wd, args.reference)
+        if not os.path.exists(ref):
+            os.symlink(ref_orig, ref)
 
         max_threads = multiprocessing.cpu_count()
         if int(args.threads) > max_threads:
@@ -68,19 +77,20 @@ def main():
         else:
             threads_use = args.threads
 
-        gmap_name = args.ref + '_GMAPindex'
+        gmap_name = args.reference + '_GMAPindex'
         pasa_name = 'assembler-' + args.pasa_db
 
         if args.short_reads == '' and args.long_reads == '':
-            weights_dic = {'Augustus': args.augustus, 'GeneMark.hmm': args.genemark, 'AAT': args.AAT}
+            weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
 
         elif args.short_reads != '' or args.long_reads != '':
-            weights_dic = {'Augustus': args.augustus, pasa_name: args.pasa, 'GeneMark.hmm': args.genemark,
-                           'AAT': args.AAT, gmap_name: args.trinity}
+            weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
+                           'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
         FinalFiles = []  # STORE THE IMPORTANT OUTPUT FILES
 
         logistic.check_create_dir(wd)
         logistic.check_file(ref)
+
         gmap_wd = wd + '/gmap_output/'
         exonerate_wd = wd + '/exonerate/'
         pasa_dir = wd + 'PASA/'
@@ -111,7 +121,7 @@ def main():
                 if "AUGUSTUS_CONFIG_PATH" in path:
                     augustus_specie_dir = path.split("=~")[1].rsplit()[0]
                     augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
-        protein_loc = os.path.abspath(args.protein_evidence)
+        protein_loc = os.path.abspath(args.proteins)
 
         if args.repeat_masked:
             genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
@@ -162,7 +172,7 @@ def main():
                 # artefacts
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
-                long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlapLength,
+                long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
                                                                 args.max_long_read, gmap_wd, args.adapter, threads_use,
                                                                 a=True)
                 if filter_count != 0:
@@ -222,7 +232,7 @@ def main():
                 for software in range(3):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(3):
-                        t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.species, protein_loc,
+                        t = Thread(target=handler.august_gmes_aat, args=(queue, ref, args.species, protein_loc,
                                                                        threads_use, args.fungus, list_fasta_names, wd,
                                                                        args.verbose))
                         t.daemon = True
@@ -241,7 +251,7 @@ def main():
                 for software in range(2):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
-                        t = Thread(target=handler.BrakerAAT, args=(queue, ref, default_bam, args.species, protein_loc,
+                        t = Thread(target=handler.braker_aat, args=(queue, ref, default_bam, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                    args.verbose))
                         t.daemon = True
@@ -260,7 +270,7 @@ def main():
                 for software in range(2):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
-                        t = Thread(target=handler.BrakerAAT,
+                        t = Thread(target=handler.braker_aat,
                                    args=(queue, ref, long_sorted_bam, args.species, protein_loc,
                                          threads_use, args.fungus, list_fasta_names, wd, args.verbose))
                         t.daemon = True
@@ -278,7 +288,7 @@ def main():
             for software in range(3):
                 queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                 for software in range(3):
-                    t = Thread(target=handler.AugustGmesAAT, args=(queue, ref, args.species, protein_loc,
+                    t = Thread(target=handler.august_gmes_aat, args=(queue, ref, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                    args.verbose))
                     t.daemon = True
@@ -315,12 +325,12 @@ def main():
 
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
-            evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
-                                                 transcript_file, protein_file, args.segmentSize, args.overlapSize, args.verbose)
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+                                                transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
-            evm_gff3 = evm_pipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
-                                                 transcript_file, protein_file, args.segmentSize, args.overlapSize, args.verbose)
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+                                                transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         # KEEP THIS OUTPUT
         FinalFiles.append(evm_gff3)
         if not args.short_reads and not args.long_reads:
@@ -388,7 +398,7 @@ def main():
                 gffreadFastaFile = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
-                long_fasta, filter_count = mseq.filterLongReads(gffreadFastaFile, args.assembly_overlapLength,
+                long_fasta, filter_count = mseq.filterLongReads(gffreadFastaFile, args.assembly_overlap_length,
                                                                 args.max_long_read, consensus_wd, fake, threads_use,
                                                                 a=False)
 
@@ -398,7 +408,7 @@ def main():
 
                 # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME
                 # POSITION
-                cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlapLength, args.stranded)
+                cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlap_length, args.stranded, args.verbose)
                 now = datetime.datetime.now().strftime(fmtdate)
 
                 sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
@@ -411,8 +421,8 @@ def main():
                     sys.stdout.write('No assembly')
                 else:
                     consensus.generate_fasta(cluster_list, gffreadDict, args.cluster_min_evidence,
-                                             args.cluster_max_evidence, args.assembly_overlapLength, tmp_wd)
-                    consensus.assembly(args.assembly_overlapLength, args.assembly_percentIdentity, threads_use, tmp_wd,
+                                             args.cluster_max_evidence, args.assembly_overlap_length, tmp_wd)
+                    consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
                                        args.verbose)
                     utrs.lengthSupport(tmp_wd, threads_use)
 
@@ -422,12 +432,12 @@ def main():
         # HERE WE COLLECT THE ASSEMBLED SEQUENCES. WE COLLECT ONLY SEQUENCE
         # THAT PASS THE FILTER
         tmp_consensus = os.path.join(consensus_wd , 'tmp/')
-        collect.parse_only(args.assembly_readThreshold, tmp_consensus)
-        tmp_assembly = collect.catAssembled(tmp_consensus)
+        collect.parse_only(args.assembly_read_threshold, tmp_consensus, args.verbose)
+        tmp_assembly = collect.cat_assembled(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
         mergedFastaFilename = consensus_wd + 'assembly.wEVM.fasta'
-        collect.addEVM(gffreadFastaFile, tmp_assembly, mergedFastaFilename)
+        collect.add_EVM(gffreadFastaFile, tmp_assembly, mergedFastaFilename)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
@@ -458,7 +468,7 @@ def main():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-        fastaAll = logistic.catTwoFasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
+        fastaAll = logistic.cat_two_fasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,

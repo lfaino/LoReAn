@@ -50,7 +50,7 @@ def setting():
                         metavar='N')
     parser.add_argument("-c","--segmentSize", nargs="?", default="100000", help="Segment size for EVM partitions [100000]",
                         metavar='N')
-    parser.add_argument("-e","--overlapSize", nargs="?", default="10000", help="Overlap size for EVM partitions [10000]",
+    parser.add_argument("-e","--overlap_size", nargs="?", default="10000", help="Overlap size for EVM partitions [10000]",
                         metavar='N')
     parser.add_argument("-g","--min_intron_length", nargs="?", default="9", help="Minimal intron length for GMAP [9]",
                         metavar='N')

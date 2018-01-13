@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
-import dirs_and_files as logistic
-import multithread_large_fasta as multiple
-import transcript_assembly as transcripts
+import dirsAndFiles as logistic
+import multithreadLargeFasta as multiple
+import transcriptAssembly as transcripts
 
 
 def braker_aat(queue, ref, bamFile, species_name, protein_evidence, threads, fungus, list_fasta_names, wd, verbose):
     '''Handles Braker and AAT so that we can run them in parallel'''
     # DIVIDE THREADS BY 2
     use = (round(int(threads) / 2) - 1)
-    use_gmes = str(use)
     aat_wd = wd + 'AAT/'
     logistic.check_create_dir(aat_wd)
     while True:
