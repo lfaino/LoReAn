@@ -36,6 +36,7 @@ SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
 
 #==========================================================================================================
 
+
 def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference
     Out_format can be samse of gff3 (2)'''
@@ -47,14 +48,14 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             filename = working_dir + 'gmap.cluster_consensus.gff3'
         elif type_out == 'trin':
             filename = working_dir + 'gmap.trinity.gff3'
+        elif type_out == 'ext':
+            filename = working_dir + 'external.gff3'
+
     else:
         raise NameError(
-            'Unknown format: ' +
-            out_format +
-            'for GMAP. Accepted are samse or 2 (gff3_gene)')
+            'Unknown format: ' + out_format + 'for GMAP. Accepted are samse or 2 (gff3_gene)')
     if os.path.isfile(filename) and os.path.getsize(filename) > 1:  # If the ref is there do not build it again
-        sys.stdout.write(('STAR index existed already: ' +
-               filename + ' --- skipping'))
+        sys.stdout.write(('GMAP index existed already: ' + filename + ' --- skipping'))
     else:
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
@@ -66,9 +67,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                     sys.stderr.write('Executing: %s\n\n' % cmd)
                 gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
                 gmapmap.communicate()
-                # sys.stdout.write '>GMAP worked. Output is: ' + filename +'\n'
             except:
-                # sys.stdout.write 'GMAP did not work properly\n'
                 raise NameError('')
         else:
             cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
@@ -77,9 +76,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                     sys.stderr.write('Executing: %s\n\n' % cmd)
                 gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
                 gmapmap.communicate()
-                # sys.stdout.write '>GMAP worked. Output is: ' + filename +'\n'
             except:
-                # sys.stdout.write 'GMAP did not work properly\n'
                 raise NameError('')
         out_f.close()
         log.close()

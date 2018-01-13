@@ -358,8 +358,6 @@ def genename(gff_filename, prefix, verbose):
                 if not line.startswith('#'):
                     fileout.write(line)
 
-
-    #errorFile = tmp_file + "error.log"
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")# open(errorFile, "w")
     tmp_file = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")
     cmd = GT_GFF3 % fileout.name

@@ -136,8 +136,7 @@ def evm_combine(evm_output, partitions):
     perl /home/jose/bin/EVidenceModeler-1.1.1/EvmUtils/recombine_EVM_partial_outputs.pl
     --partitions partitions_list.out --output_file_name evm.out
     '''
-    args = ['recombine_EVM_partial_outputs.pl', '--partitions', partitions,
-            '--output_file_name', 'evm.out']
+    args = ['recombine_EVM_partial_outputs.pl', '--partitions', partitions, '--output_file_name', 'evm.out']
 
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
@@ -165,8 +164,7 @@ def evm_to_gff3(evm_output, partitions, reference):
     --partitions partitions_list.out --output evm.out
     --genome ~/Reference/JR2_Chr8/Verticillium_dahliaejr2.GCA_000400815.2.29.dna.chromosome.8.fa
     '''
-    args = ['convert_EVM_outputs_to_GFF3.pl', '--partitions', partitions,
-            '--output', 'evm.out', '--genome', reference]
+    args = ['convert_EVM_outputs_to_GFF3.pl', '--partitions', partitions, '--output', 'evm.out', '--genome', reference]
 
     # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'

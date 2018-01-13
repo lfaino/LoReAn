@@ -162,8 +162,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     files to prepare the EVM command. Augustus, Genemark and Transdecoder
     go into gene_predictions.gff3 and pasa asemblies and transcript
     alignments go into transcripts.gff3
-    :param evm_dir:
-    :return:
+
     """
     # GENE PREDICTIONS
 
@@ -198,18 +197,15 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
             elif 'trinity' in name:
                 ab_initio_list.append(os.path.join(root, name))
                 list_soft.append('gmap')
-            elif 'update' in name:
+            elif 'external' in name:
                 ab_initio_list.append(os.path.join(root, name))
-                list_soft.append('update')
+                list_soft.append('external')
 
     pred_filename = evm_dir + 'gene_predictions.gff3'
 
     if os.path.isfile(pred_filename):
-        sys.stdout.write(('Gene predictions GFF3 file existed already: ' +
-               pred_filename + ' --- skipping\n'))
+        sys.stdout.write(('Gene predictions GFF3 file existed already: ' + pred_filename + ' --- skipping\n'))
     else:
-
-        # sys.stdout.write '\nCMD: ' + ' '.join(ab_initio_list) + '\n'
         pred_file = open(pred_filename, 'w')
         try:
             subprocess.check_call(ab_initio_list, stdout=pred_file, cwd=evm_dir)
@@ -227,7 +223,7 @@ def group_EVM_inputs(evm_dir, inputs):
     Moves all the inputs to EVM directory and concatenates them
     in the same file"""
     # Move
-    new_inputs = move_EVM_inputs(evm_dir, inputs)
+    move_EVM_inputs(evm_dir, inputs)
     # Concatenate
     list_soft, pred_file, transcript_file, protein_file = cat_EVM_inputs(evm_dir)
     return list_soft, pred_file, transcript_file, protein_file
@@ -240,19 +236,9 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_filename = evm_dir + 'weights.txt'
     list_match = []
 
-    evidence_dic = {
-        'GeneMark.hmm': 'ABINITIO_PREDICTION',
-        'Augustus': 'ABINITIO_PREDICTION',
-        'AAT': 'PROTEIN',
-        pasa_name: 'TRANSCRIPT',
-        gmap_name: 'ABINITIO_PREDICTION',
-        'update': 'ABINITIO_PREDICTION'}
-    software_links = {
-        'genemark': 'GeneMark.hmm',
-        'augustus': 'Augustus',
-        'aat': 'AAT',
-        'update': 'update',
-        'pasa': pasa_name,
+    evidence_dic = {'GeneMark.hmm': 'ABINITIO_PREDICTION', 'Augustus': 'ABINITIO_PREDICTION', 'AAT': 'PROTEIN', pasa_name: 'TRANSCRIPT',
+        gmap_name: 'ABINITIO_PREDICTION', 'external': 'ABINITIO_PREDICTION'}
+    software_links = { 'genemark': 'GeneMark.hmm',  'augustus': 'Augustus', 'aat': 'AAT', 'external': 'external', 'pasa': pasa_name,
         'gmap': gmap_name}
 
     for software in software_links:
@@ -261,9 +247,7 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_file = open(w_filename, 'w')
     for present_soft in list_match:
         if present_soft in evidence_dic:
-            #            sys.stdout.write present_soft
-            w_file.write('\t'.join(
-                [evidence_dic[present_soft], present_soft, weights_dic[present_soft]]))
+            w_file.write('\t'.join([evidence_dic[present_soft], present_soft, weights_dic[present_soft]]))
             w_file.write('\n')
 
     w_file.close()
