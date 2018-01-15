@@ -41,8 +41,8 @@ def main():
     home = os.path.expanduser("~")
     args = arguments.setting()
     if os.path.isfile(home + "/.gm_key"):
-        fasta = ("fasta", "fa", "fas", "fsta")
-        fastq = ("fastq", "fq")
+        fasta = (".fasta", ".fa", ".fas", ".fsta")
+        fastq = (". fastq", ".fq")
         '''Core of the program'''
         # Parse the arguments
 

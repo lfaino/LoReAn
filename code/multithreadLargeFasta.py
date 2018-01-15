@@ -27,9 +27,6 @@ AAT = 'AAT.pl -P -b -q %s -s %s r"--dps" r" \'-f 100 -i 30 -a 200\'" r"--filter"
 def single_fasta(ref, wd):
     """
     From a fasta file make single files with each sequence
-    :param ref:
-    :param wd:
-    :return:
     """
     wd_split = wd + '/split/'
     logistic.check_create_dir(wd_split)
@@ -45,7 +42,6 @@ def single_fasta(ref, wd):
 
 def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
-
 
 
     if int(threads) < 1:
