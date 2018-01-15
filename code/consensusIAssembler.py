@@ -53,6 +53,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
         raise NameError('')
     return out_name
 
+
 def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     """
     here the clusters of sequence from the same locus are prepared
@@ -90,6 +91,7 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     final_output = outputBT.splitlines()
     return final_output
 
+
 def fasta2Dict(fasta_filename):
     """
     Prepare a dictionary of all the sequences that is used together with
@@ -105,6 +107,7 @@ def fasta2Dict(fasta_filename):
     fasta_file.close()
     return fasta_dict
 
+
 def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evidence, wd):
     """
     From the output list of the pipeline, recovers the ID and goes back to the
@@ -112,11 +115,9 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     """
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
-        chrm, start, end, strand, number, idents = (
-            line[0], line[1], line[2], line[3], line[4], line[5])
+        chrm, start, end, strand, number, idents = (line[0], line[1], line[2], line[3], line[4], line[5])
     elif len(line) == 5:
-        chrm, start, end, number, idents = (
-            line[0], line[1], line[2], line[3], line[4])
+        chrm, start, end, number, idents = (line[0], line[1], line[2], line[3], line[4])
 
     ids_short = []
     if len(idents.split(',')) > int(min_evidence) and len(idents.split(',')) < int(max_evidence):
@@ -136,11 +137,9 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
         if iden in fasta_dict:
             if len(str(fasta_dict[iden])) > int(min_length):
                 if len(iden) < 40:
-                    cluster_file.write('>' + iden + '\n' +
-                                      str(fasta_dict[iden]) + '\n')
+                    cluster_file.write('>' + iden + '\n' +  str(fasta_dict[iden]) + '\n')
                 else:
-                    cluster_file.write('>' + str(read_count) +
-                                      '\n' + str(fasta_dict[iden]) + '\n')
+                    cluster_file.write('>' + str(read_count) + '\n' + str(fasta_dict[iden]) + '\n')
                     read_count += 1
                 del fasta_dict[iden]
             else:
@@ -158,6 +157,7 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     cluster_file.close()
     return cluster_filename
 
+
 def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, wd):
     """write fasta clusters
     """
@@ -166,6 +166,7 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
         # Write fasta for each cluster
         write_fastas(cluster_counter, record, fasta_dict, overlap_length, min_evidence, max_evidence, wd)
         cluster_counter += 1
+
 
 def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """

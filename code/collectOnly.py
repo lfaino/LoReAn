@@ -40,18 +40,18 @@ def parse_only(threshold_float, wd, verbose):
     return evm_list
 
 
-def parse_contigs(outputAssembly, threshold_float, verbose):
+def parse_contigs(output_assembly, threshold_float, verbose):
     """
     Parses the output from iAssembler, to a single FASTA file
     """
 
     if verbose:
         sys.stderr.write('Executing: Parse assembled consensus\n')
-    fname = outputAssembly + 'contig_member'
+    fname = output_assembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
     if fname_exists:
         # part all the files in the tmp assembly folder
-        contigInfo = open(outputAssembly + 'contig_member', 'r')
+        contigInfo = open(output_assembly + 'contig_member', 'r')
         contigs = {}
         total_reads = 0
         for line in contigInfo:
@@ -87,10 +87,10 @@ def parse_contigs(outputAssembly, threshold_float, verbose):
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                     count_unitigs += 1
         # writes the outputs
-        fileAssembly = outputAssembly + 'unigene_seq.new.fasta'
+        fileAssembly = output_assembly + 'unigene_seq.new.fasta'
         contigSeq = open(fileAssembly, 'r')
         contigDict = SeqIO.to_dict(SeqIO.parse(contigSeq, 'fasta'))
-        output_filename = outputAssembly[:-1] + '_assembled.fasta'
+        output_filename = output_assembly[:-1] + '_assembled.fasta'
         outputFile = open(output_filename, 'w')
         for iden, write_iden in list(real_contigs.items()):
             if iden in contigDict:

@@ -56,7 +56,7 @@ strain JR2 while the second is from PacBio data of *Plicaturopsis crispa*. Both 
 - GeneMark-ES/ET v.4.33 64bit **(THIS SOFTWARE IS NOT FREE FOR EVERYONE, check installation instruction)** 
 - PASApipeline v2.1.0 
 - augustus v3.3
-- trinityrnaseq v2.2.0
+- trinityrnaseq v2.5.1
 - STAR v2.5.3a
 - gmap-gsnap v2017-06-20
 - fasta v36.3.8e

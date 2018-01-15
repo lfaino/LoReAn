@@ -41,6 +41,8 @@ def main():
     home = os.path.expanduser("~")
     args = arguments.setting()
     if os.path.isfile(home + "/.gm_key"):
+        fasta = ("fasta", "fa", "fas", "fsta")
+        fastq = ("fastq", "fq")
         '''Core of the program'''
         # Parse the arguments
 
@@ -82,13 +84,13 @@ def main():
             external_file = ''
 
         if args.short_reads == '' and args.long_reads == '':
-            if external_file.endswith("gff3") or external_file.endswith("fasta"):
+            if external_file.endswith("gff3") or external_file.endswith(fasta):
                 weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
                                'external' : args.external_weigth}
             else:
                 weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
         elif args.short_reads != '' or args.long_reads != '':
-            if external_file.endswith("gff3") or external_file.endswith("fasta"):
+            if external_file.endswith("gff3") or external_file.endswith(fasta):
                 weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
                                'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth, 'external' : args.external_weigth}
             else:
@@ -123,8 +125,7 @@ def main():
         check_species = 'augustus --species=help'
         process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         out_augustus, err_augustus = process.communicate()
-        list_file = [os.path.join(home, o) for o in os.listdir(home) if
-                     os.path.isfile(os.path.join(home, o)) and ".bashrc" == o]
+        list_file = [os.path.join(home, o) for o in os.listdir(home) if os.path.isfile(os.path.join(home, o)) and ".bashrc" == o]
         with open(list_file[0]) as bashrc:
             for path in bashrc:
                 if "AUGUSTUS_CONFIG_PATH" in path:
@@ -143,7 +144,7 @@ def main():
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
             # SHORT READS
-            if 'fastq' in args.short_reads or 'fq' in args.short_reads:
+            if args.short_reads.endswith(fastq):
                 if ',' in args.short_reads:
                     pairedEndFiles = args.short_reads.split(',')
                     short_1 = os.path.abspath(pairedEndFiles[0])
@@ -158,15 +159,14 @@ def main():
                 # Keep the output
                 final_files.append(short_sorted_bam)
             # BAM SORTED FILES GET IN HERE
-            elif 'bam' in args.short_reads:
-                star_out = wd + '/STAR/'
+            elif args.short_reads.endswith("bam"):
                 logistic.check_create_dir(star_out)
                 short_sorted_bam = os.path.abspath(args.short_reads)
-                cmdstring = "mv %s %s" % (short_sorted_bam, star_out)
-                os.system(cmdstring)
-                bam_file = args.short_reads.split("/")
+                bam_file = short_sorted_bam.split("/")
                 short_bam = star_out + "/" + bam_file[-1]
-                # sys.stdout.write short_sorted_bam
+                if not os.path.exists(ref):
+                    os.symlink(short_sorted_bam, short_bam)
+
             else:
                 short_sorted_bam = False
                 sys.stdout.write('No short reads file')
@@ -217,9 +217,9 @@ def main():
             else:
                 trinity_cpu = int(threads_use)
             trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
-            trinityGFF3 = mapping.gmap('trin', genome_gmap, trinity_out, threads_use, 'gff3_gene',
-                                       args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
-            trinity_path = trinityGFF3
+            trinity_gff3 = mapping.gmap('trin', genome_gmap, trinity_out, threads_use, 'gff3_gene',
+                                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
+            trinity_path = trinity_gff3
 
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
@@ -315,7 +315,7 @@ def main():
 
         if not args.short_reads and not args.long_reads:
             if external_file:
-                if external_file.endswith("fasta"):
+                if external_file.endswith(fasta):
                     external_file_gff3 = mapping.gmap('ext', genome_gmap, external_file, threads_use, 'gff3_gene', args.min_intron_length,
                                  args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
                     external_file_changed = update.external(external_file_gff3, gmap_wd, args.verbose)
@@ -327,7 +327,7 @@ def main():
         elif args.short_reads or args.long_reads:
             if args.external:
                 external_file = args.external
-                if external_file.endswith("fasta"):
+                if external_file.endswith(fasta):
                     external_file_gff3 = mapping.gmap('ext', genome_gmap, external_file, threads_use, 'gff3_gene', args.min_intron_length,
                                                       args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
                     external_file_changed = update.external(external_file_gff3, gmap_wd, args.verbose)
@@ -369,8 +369,8 @@ def main():
             round_n += 1
             finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
                                                align_pasa_conf, ref, trinity_out, evm_gff3, args.verbose)
-            finalUpdate = grs.genename(finalOutput, args.prefix_gene, args.verbose)
-            updatedGff3 = grs.newNames(finalUpdate)
+            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
+            updatedGff3 = grs.newNames(final_update)
         else:
             updatedGff3 = evm_gff3
 
@@ -402,6 +402,7 @@ def main():
                                             args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                             args.verbose, Fflag=False)
                     long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
+                    final_files.append(long_sorted_bam)
 
                     # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
                     # FILE
@@ -418,14 +419,14 @@ def main():
 
                 # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
                 # REFERENCE
-                gffreadFastaFile = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
+                gffread_fasta_file = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
-                long_fasta, filter_count = mseq.filterLongReads(gffreadFastaFile, args.assembly_overlap_length,
+                long_fasta, filter_count = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
                                                                 args.max_long_read, consensus_wd, fake, threads_use,
                                                                 a=False)
 
-                gffreadDict = consensus.fasta2Dict(gffreadFastaFile)
+                gffreadDict = consensus.fasta2Dict(gffread_fasta_file)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
 
@@ -459,29 +460,29 @@ def main():
         tmp_assembly = collect.cat_assembled(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
-        mergedFastaFilename = consensus_wd + 'assembly.wEVM.fasta'
-        collect.add_EVM(gffreadFastaFile, tmp_assembly, mergedFastaFilename)
+        merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
+        collect.add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
-        consensusMappedGFF3 = mapping.gmap('cons', genome_gmap, mergedFastaFilename, threads_use, 'gff3_gene',
-                                           args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-                                           args.verbose,
-                                           Fflag=True)
+        consensus_mapped_gff3 = mapping.gmap('cons', genome_gmap, merged_fasta_filename, threads_use, 'gff3_gene',
+                                             args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                             args.verbose,
+                                             Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
         # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
         # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
         # INVERT THE ORIGINAL STRAND
 
-        strandMappedGFF3 = grs.strand(evm_gff3, consensusMappedGFF3, ref, threads_use, gmap_wd, args.verbose)
-        gffPasa = grs.appendID(strandMappedGFF3)
-        noOverl = grs.removeOverlap(gffPasa, args.verbose)
-        noDisc = grs.removeDiscrepancy(noOverl, evm_gff3, args.verbose)
-        uniqGene = grs.newNames(noDisc)
+        strand_mapped_gff3 = grs.strand(evm_gff3, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
+        gff_pasa = grs.appendID(strand_mapped_gff3)
+        no_overl = grs.removeOverlap(gff_pasa, args.verbose)
+        no_disc = grs.removeDiscrepancy(no_overl, evm_gff3, args.verbose)
+        uniq_gene = grs.newNames(no_disc)
 
-        finalupdate3 = grs.genename(uniqGene, args.prefix_gene, args.verbose)
+        finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose)
         print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, threads_use, exonerate_wd, args.verbose)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
@@ -491,19 +492,17 @@ def main():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-        fastaAll = logistic.cat_two_fasta(trinity_out, mergedFastaFilename, long_fasta, pasa_dir)
+        fasta_all = logistic.cat_two_fasta(trinity_out, merged_fasta_filename, long_fasta, pasa_dir)
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                           fastaAll,
-                                           finalupdate5, args.verbose)
+                                           fasta_all, finalupdate5, args.verbose)
         round_n += 1
         finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
-                                            fastaAll,
-                                            finalupdate, args.verbose)
-        finalUpdate = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
+                                            fasta_all, finalupdate, args.verbose)
+        final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
-        final_files.append(finalUpdate)
+        final_files.append(final_update)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))

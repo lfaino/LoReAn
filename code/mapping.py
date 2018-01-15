@@ -82,6 +82,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         log.close()
     return filename
 
+
 def star_build(reference, genome_dir, threads, wd, verbose):
     #TODO STOP if the build of the index fails
     '''Builds star reference index'''
@@ -131,6 +132,7 @@ def star_build(reference, genome_dir, threads, wd, verbose):
         log_err.close()
 
     return None
+
 
 def star_map(reads, threads, genome_dir, max_intron_length, wd, verbose):
     '''
@@ -198,6 +200,7 @@ def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
         wd, verbose)
     return out_file
 
+
 def gmap_build(reference, working_dir, verbose):
     """
     Build the GMAP indexed reference from the fasta reference file
@@ -245,6 +248,7 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
                         wd, Fflag, type_out, verbose)
     return out_file
 
+
 def samtools_view(sam_file, wd, verbose):
     '''SAM to BAM'''
     bam_filename = sam_file + '.bam'
@@ -269,11 +273,6 @@ def samtools_view(sam_file, wd, verbose):
 def samtools_sort(bam_file, threads, wd, verbose):
     '''
     run a sorting of a bam file
-    :param verbose:
-    :param bam_file:
-    :param threads:
-    :param wd:
-    :return:
     '''
     s_bam_filename = bam_file + '.sorted'
 
@@ -295,6 +294,7 @@ def samtools_sort(bam_file, threads, wd, verbose):
         log.close()
     sor_bam_filename = s_bam_filename + ".bam"
     return sor_bam_filename
+
 
 def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     sys.stdout.write('\t###SAM to BAM###\n')

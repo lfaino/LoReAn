@@ -159,13 +159,11 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % gt_com)
     gt_call = subprocess.Popen(gt_com, stdout=gtf_file_outfile, stderr=errorFilefile, shell=True)
     gt_call.communicate()
-    #gtf_file_outfile.close()
-    #errorFilefile.close()
+
 
     db1 = gffutils.create_db(gff_file_outfile.name, ':memory:', merge_strategy='create_unique', keep_order=True)
 
-    #fasta_file_out = gff_file + ".intron.tidy.sorted.fasta"
-    #errorFile = gff_file + ".1.gt_err.log"
+
     fasta_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(fasta_file_out, "w")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     com = 'cufflinks_gtf_genome_to_cdna_fasta.pl %s %s' % (gtf_file_outfile.name, fasta)
@@ -173,11 +171,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=fasta_file_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
-    #fasta_file_outfile.close()
-    #errorFilefile.close()
 
-    #gff_file_out_u = gtf_file_out + ".gff3"
-    #errorFile = gtf_file_out + ".2.gt_err.log"
     gff_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out_u, "w")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     com = 'cufflinks_gtf_to_alignment_gff3.pl %s' % gtf_file_outfile.name
@@ -185,12 +179,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile, stderr=errorFilefile, shell=True)
     call.communicate()
-    #gff_file_outfile.close()
-    #errorFilefile.close()
-    # /opt/LoReAn/third_party/software/TransDecoder-3.0.1/util/
 
-    #errorFile = gtf_file_out + ".TrDec_err.2.log"
-    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
     errorFilefile_1 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     com = 'TransDecoder.LongOrfs -m 10 -t %s' % fasta_file_outfile.name
@@ -198,11 +187,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile_1, stderr=errorFilefile_1, cwd=wd, shell=True)
     call.communicate()
-    #errorFilefile.close()
-    #gff_file_outfile.close()
 
-    #errorFile = gtf_file_out + ".TrDec_err.3.log"
-    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile_2 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".out") #open(gff_file_out, "w")
     errorFilefile_2 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.", suffix=".err") #open(errorFile, "w")
     wd_fasta = fasta_file_outfile.name
@@ -211,11 +196,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile_2, stderr=errorFilefile_2, cwd=wd, shell=True)
     call.communicate()
-    #errorFilefile.close()
-    #gff_file_outfile.close()
 
-    #errorFile = gtf_file_out + ".TrDec_err.4.log"
-    #gff_file_out = gtf_file_out + ".TrDec_err.stdout"
     gff_file_outfile_3 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.") #open(outputFilename, "w")
     errorFilefile_3 = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="longest.") #open(errorFile, "w")
     transdecoder = tempfile.NamedTemporaryFile(delete=False)
@@ -226,8 +207,7 @@ def longest(gff_file, fasta, proc, wd, verbose):
         sys.stderr.write('Executing: %s\n\n' % com)
     call = subprocess.Popen(com, stdout=gff_file_outfile_3, stderr=errorFilefile_3, cwd=wd, shell=True)
     call.communicate()
-    #errorFilefile.close()
-    #gff_file_outfile.close()
+
 
     listErr = []
     err_file = open(errorFilefile.name, "r")
@@ -247,18 +227,13 @@ def longest(gff_file, fasta, proc, wd, verbose):
 
     gff_files = [outputFilenameLeft.name, gff_file_outfile.name]
     outputFilenameFinal = wd + 'finalAnnotation.Transdecoder.gff3'
-    #outfile = open(outputFilenameFinal, "w")
+
 
 
     with open(outputFilenameFinal, 'wb') as wfd:
         for f in gff_files:
             with open(f, 'rb') as fd:
                 shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
-
-
-#    call = subprocess.Popen(com, stdout=outfile, cwd=wd)
-#    call.communicate()
-#    outfile.close()
 
     return outputFilenameFinal
 
@@ -365,9 +340,6 @@ def genename(gff_filename, prefix, verbose):
         sys.stderr.write('Executing: %s\n\n' % cmd)
         sys.stderr.write('Log file is: %s\n\n' % errorFilefile.name)
     gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=True)
-    #errorFilefile.close()
-    fields = []
-    featureann = []
     chrold = ''
     count = 0
     path = []
@@ -436,19 +408,17 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
     gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
 
-
-
     gt_com = GT_RETAINID % gff_file1
-    file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(gff_file1_out, 'w')
-    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd) #open(errorFile, 'w')
+    file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd)
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
         sys.stderr.write('Log file is: %s %s\n\n' % (file1.name, err1.name))
     gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=True)
     gt_call.communicate()
 
-    file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(gff_file2_out, 'w')
-    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")#open(errorFile, 'w')
+    file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")
     gt_com = GT_RETAINID % gff_file2
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
@@ -457,7 +427,6 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
 
     db1 = gffutils.create_db(file1.name, ':memory:', merge_strategy='create_unique', keep_order=True)
     db2 = gffutils.create_db(file2.name, ':memory:', merge_strategy='create_unique', keep_order=True)
-    listgene1 = []
     listgeneintrons = []
     listgenetotal = []
     for i in db1.features_of_type("intron"):
@@ -467,8 +436,6 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
         g = ' '.join(i.attributes['Parent'])
         listgenetotal.append(g)
     listgene1 = sorted(set(list(set(listgenetotal) ^ set(listgeneintrons))))
-    # sys.stdout.write (len(set(listgenetotal)))
-    listgene2 = []
     listgeneintrons = []
     listgenetotal = []
 
@@ -481,37 +448,35 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
     listgene2 = sorted(set(list(set(listgenetotal) ^ set(listgeneintrons))))
 
     newlist = []
-    geneDict = {}
+    gene_dict = {}
     for a in listgene2:
         b = a.split('_', 1)[1]
         bb = b.split('.')
         del bb[-1]
         evm = '.'.join(bb)
         newlist.append(evm)
-        if evm in geneDict:
-            z = geneDict[evm]
-            geneDict[evm] = z + [a]
+        if evm in gene_dict:
+            z = gene_dict[evm]
+            gene_dict[evm] = z + [a]
         else:
-            geneDict[evm] = [a]
+            gene_dict[evm] = [a]
     commonlist = list(set(listgene1).intersection(newlist))
     uniqGmap = sorted(set(list(set(newlist) ^ set(commonlist))))
 
-    evmList = []
-    gmapList = []
-    count = 0
+    evm_list = []
+    gmap_list = []
     for a in commonlist:
-        if geneDict[a] and len(geneDict[a]) < 2:
-            evmList.append(a)
-        elif geneDict[a] and len(geneDict[a]) > 1:
-            gmapList = gmapList + geneDict[a]
+        if gene_dict[a] and len(gene_dict[a]) < 2:
+            evm_list.append(a)
+        elif gene_dict[a] and len(gene_dict[a]) > 1:
+            gmap_list = gmap_list + gene_dict[a]
 
     for a in uniqGmap:
-        if geneDict[a]:
-            gmapList = gmapList + geneDict[a]
-    listgeneintronsU = []
-    listgeneintronsU = (set(listgeneintrons))
+        if gene_dict[a]:
+            gmap_list = gmap_list + gene_dict[a]
+    listgeneintrons_u = (set(listgeneintrons))
 
-    for evm in evmList:
+    for evm in evm_list:
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
         gff_out.write_rec(db1[evm])
@@ -520,7 +485,7 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
 
-    for evm in gmapList:
+    for evm in gmap_list:
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out_s.write_rec(i)
         gff_out_s.write_rec(db2[evm])
@@ -529,7 +494,7 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
         for i in db2.children(evm, featuretype='exon', order_by='start'):
             gff_out_s.write_rec(i)
 
-    for evm in listgeneintronsU:
+    for evm in listgeneintrons_u:
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
         gff_out.write_rec(db2[evm])
@@ -542,22 +507,15 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
 
     gffOrf = longest(outputFilenameGmap.name, fasta, proc, gmap_wd, verbose)
 
-    #single_gff3 = exonerate(fasta, outputFilenameGmap.name, proc, exonerate_wd, verbose)
-
-    outputFilenameFinal = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
-    #outfile = open(outputFilenameFinal, "w")
+    output_filename_final = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
     gff_files = [gffOrf, outputFilename.name]
-#    print (gff_files)
 
-    with open(outputFilenameFinal, 'wb') as wfd:
+    with open(output_filename_final, 'wb') as wfd:
         for f in gff_files:
             with open(f, 'rb') as fd:
                 shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
 
-    #call = subprocess.Popen(com, stdout=outfile, cwd=gmap_wd)
-    #call.communicate()
-    #outfile.close()
-    return outputFilenameFinal
+    return output_filename_final
 
 
 def exonerate(ref, gff_file, proc, wd, verbose):
