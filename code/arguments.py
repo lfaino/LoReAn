@@ -13,10 +13,9 @@ def setting():
                                      description='LoReAn - Automated genome annotation pipeline that integrates long reads',
                                      epilog='Luigi Faino - luigi.faino@gmail.com; luigi.faino@uniroma1.it - October 2017')
     parser.add_argument("reference", help="Path to reference file")
-    parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []", required=True)
-    parser.add_argument("-sp", "--species", nargs="?", required=True,
-                        help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
-                             "config folder", default="")
+    parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []")
+    parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
+                             "config folder", default="", required = True)
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
     parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
                         action='store_true')
@@ -31,6 +30,8 @@ def setting():
     parser.add_argument("-rp","--repeat_masked", nargs="?", default="", help="GFF or GFF3 or GTF or BED file containing "
                                                                              "repeats coordinates []", metavar='GFF_file')
     parser.add_argument("-ex","--external", nargs="?", default="", help="GFF3 of FASTA file containing external annotation "
+                                                                        "information []", metavar='GFF_file')
+    parser.add_argument("-up","--upgrade", nargs="?", default="", help="GFF3 to upgrade using long reads [and short read]"
                                                                         "information []", metavar='GFF_file')
     parser.add_argument("-m","--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
                                                                                "(longer reads may affect mapping and "

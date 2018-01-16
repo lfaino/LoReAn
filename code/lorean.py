@@ -38,11 +38,14 @@ import update as update
 ###############
 
 def main():
+
     home = os.path.expanduser("~")
     args = arguments.setting()
-    if os.path.isfile(home + "/.gm_key"):
+    if args.upgrade:
+        update.upgrade()
+    elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
         fasta = (".fasta", ".fa", ".fas", ".fsta")
-        fastq = (". fastq", ".fq")
+        fastq = (".fastq", ".fq")
         '''Core of the program'''
         # Parse the arguments
 
@@ -362,7 +365,7 @@ def main():
             # RE-RUN PASA PIPELINE
         # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
         # AFTER EVM; #We only want to update if it ran with short reads
-        round_n = 0
+        round_n = 1
         if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
@@ -411,9 +414,9 @@ def main():
                 # ORIGINAL FILE
                 if os.path.isfile(updatedGff3):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, update)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, args.verbose)
                 else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, update)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, args.verbose)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -521,12 +524,8 @@ def main():
                 os.system(cmdstring)
         if not args.keep_tmp:
             temp_dir.cleanup()
-
     else:
-        sys.stdout.write(
-            'Key for GeneMark-ES not found.  Please, place the GeneMark-ES key in the folder where you have your data.')
-        sys.exit("#####LOREAN STOPS HERE.#####\n")
-
+        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN AND SPECIES OPTION HAVE BOTH AN ARGUMENT. CHECK THAT THE gm_key IS IN THE FOLDER#####\n")
 
 if __name__ == '__main__':
     realstart = time.perf_counter()
