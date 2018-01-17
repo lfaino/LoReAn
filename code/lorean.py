@@ -60,7 +60,7 @@ def main():
         wd = os.path.join(output_dir, "run/")
         if args.keep_tmp:
             logistic.check_create_dir(wd)
-        elif not os.path.exists(wd) and not args.verbose:
+        elif not os.path.exists(wd) and args.verbose:
             logistic.check_create_dir(wd)
         else:
             temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
@@ -475,9 +475,6 @@ def main():
                                              Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
-        # IN THIS STEP WE CORRECT FOR STRAND. GMAP CAN NOT DECIDE THE STRAND
-        # FOR SINGLE EXONS GENE MODELS. WE USE THE ORIENTATION FROM EVM IF GMAP
-        # INVERT THE ORIGINAL STRAND
 
         strand_mapped_gff3 = grs.strand(evm_gff3, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
         gff_pasa = grs.appendID(strand_mapped_gff3)
@@ -509,7 +506,6 @@ def main():
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
-
 
         final_output_dir = os.path.join(output_dir,  args.species + '_output' )
 
