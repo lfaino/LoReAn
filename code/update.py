@@ -257,4 +257,4 @@ def upgrade():
         if not args.keep_tmp:
             temp_dir.cleanup()
 
-    sys.exit("#####LOREAN FINISHED HERE.#####\n")
+    sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")

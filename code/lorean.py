@@ -362,9 +362,7 @@ def main():
         if not args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
-            # RE-RUN PASA PIPELINE
-        # HERE WE CAN EXCLUDE TO RUN AGAIN PASA TO UPDATE THE DATABASE
-        # AFTER EVM; #We only want to update if it ran with short reads
+
         round_n = 1
         if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
@@ -377,9 +375,7 @@ def main():
         else:
             updatedGff3 = evm_gff3
 
-        # updatedGff3 = wd+'PASA/annotation.PASAupdated.round1.gff3'
-        # HERE WE CHECK IF WE HAVE LONG READS; IF LONG READS ARE NOT
-        # PROVIDED, THE SOFTWARE STOPS
+
 
         if args.long_reads == '':
             final_output_dir = wd + 'output/'
@@ -390,9 +386,8 @@ def main():
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
             now = datetime.datetime.now().strftime(fmtdate)
-            sys.exit("#####ANNOTATION FINISHED WITHOUT USING LONG READS\t" + now + "\t#####\n")
+            sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
-        # HERE WE START WITH LONG READS
         else:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
@@ -520,6 +515,7 @@ def main():
                 os.system(cmdstring)
         if not args.keep_tmp:
             temp_dir.cleanup()
+        sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
     else:
         sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN AND SPECIES OPTION HAVE BOTH AN ARGUMENT. CHECK THAT THE gm_key IS IN THE FOLDER#####\n")
 
