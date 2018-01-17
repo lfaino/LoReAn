@@ -52,7 +52,7 @@ def upgrade():
     wd = os.path.join(output_dir, "run/")
     if args.keep_tmp:
         logistic.check_create_dir(wd)
-    elif not os.path.exists(wd) and not args.verbose:
+    elif not os.path.exists(wd) and args.verbose:
         logistic.check_create_dir(wd)
     else:
         temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
