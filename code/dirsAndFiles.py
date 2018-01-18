@@ -172,6 +172,6 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
                                 end_exon, gmap_wd, verbose, Fflag=False)
 
         if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
-            sys.exit("\n### GMAP WORKS CORRECTLY ### \n")
+            sys.stdout.write("\n### GMAP WORKS CORRECTLY ### \n")
         else:
             sys.exit("\n### GMAP DID NOT COMPILE CORRECTLY ### \n")
