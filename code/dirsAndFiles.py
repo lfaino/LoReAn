@@ -137,7 +137,7 @@ def cat_two_fasta(trinity, consens, long_fasta, wd):
 
 def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon, gmap_wd, verbose):
 
-    sys.stdout.write("\n### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD ### \n")
+    print("\n ### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD ### \n")
 
     genome_gmap = "/opt/LoReAn/third_party/check_gmap/chr8.testGMAP.fasta"
     long_fasta = "/opt/LoReAn/third_party/check_gmap/exons.testGMAP.fasta"
@@ -146,10 +146,12 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
                             end_exon, gmap_wd, verbose, Fflag=False)
 
     if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
-        sys.stdout.write("\n### GMAP IS CORRECTLY BUILD ### \n")
+        print("\n" + "\033[32m ### GMAP IS CORRECTLY BUILD ### \n")
+        print('\033[0m')
 
     else:
-        sys.stdout.write("\n### GMAP REQUIRES A RE-BUILD; THIS WILL TAKE TIME ### \n")
+        print("\n" + "\033[32m ### GMAP REQUIRES A RE-BUILD; THIS WILL TAKE TIME ### \n")
+        print('\033[0m')
         log_name = gmap_wd + '/gmap_compile.log'
         err_name = gmap_wd + '/gmap_compile.err'
         log = open(log_name, 'w')
@@ -167,11 +169,14 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
         log.close()
         err.close()
 
-        sys.stdout.write("\n### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD (2)### \n")
+        print("\n ### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD (2)### \n")
+
         long_sam = mapping.gmap('test', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
                                 end_exon, gmap_wd, verbose, Fflag=False)
 
         if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
-            sys.stdout.write("\n### GMAP WORKS CORRECTLY ### \n")
+            print("\n" + "\033[32m ### GMAP WORKS CORRECTLY ### \n")
+            print('\033[0m')
         else:
-            sys.exit("\n### GMAP DID NOT COMPILE CORRECTLY ### \n")
+            print("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
+            print('\033[0m')
