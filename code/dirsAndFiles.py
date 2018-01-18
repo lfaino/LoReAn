@@ -142,7 +142,7 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
     genome_gmap = "/opt/LoReAn/third_party/check_gmap/chr8.testGMAP.fasta"
     long_fasta = "/opt/LoReAn/third_party/check_gmap/exons.testGMAP.fasta"
 
-    long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
+    long_sam = mapping.gmap('test', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
                             end_exon, gmap_wd, verbose, Fflag=False)
 
     if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
@@ -168,7 +168,7 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
         err.close()
 
         sys.stdout.write("\n### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD (2)### \n")
-        long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
+        long_sam = mapping.gmap('test', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
                                 end_exon, gmap_wd, verbose, Fflag=False)
 
         if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:

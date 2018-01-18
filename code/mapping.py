@@ -42,7 +42,10 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
     Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
-        filename = working_dir + 'gmap.long_reads.sam'
+        if type_out == 'test':
+            filename = working_dir + 'gmap.long_reads.test.sam'
+        elif type_out == 'sam':
+            filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':
         if type_out == 'cons':
             filename = working_dir + 'gmap.cluster_consensus.gff3'
