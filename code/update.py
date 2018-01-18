@@ -90,6 +90,8 @@ def upgrade():
         consensus_wd = (wd + '/consensus/')
         logistic.check_create_dir(consensus_wd)
 
+    logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose)
+
     if args.repeat_masked:
         genome_gmap = mseq.maskedgenome(gmap_wd, ref, args.repeat_masked)
     else:
