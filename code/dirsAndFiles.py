@@ -7,6 +7,8 @@ import subprocess
 import sys
 import tempfile
 
+import mapping
+
 #==========================================================================================================
 # COMMANDS LIST
 
@@ -131,3 +133,35 @@ def cat_two_fasta(trinity, consens, long_fasta, wd):
 
 
     return outFileFasta
+
+
+def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon, gmap_wd, verbose):
+
+    genome_gmap = "/opt/LoReAn/third_party/check_gmap/chr8.testGMAP.fasta"
+    long_fasta = "/opt/LoReAn/third_party/check_gmap/exons.testGMAP.fasta"
+
+    long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
+                            end_exon, gmap_wd, verbose, Fflag=False)
+
+    if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
+        sys.stdout.write("\n### GMAP IS CORRECTLY BUILD ### \n")
+
+    else:
+        log_name = gmap_wd + '/gmap_compile.log'
+        err_name = gmap_wd + '/gmap_compile.err'
+        log = open(log_name, 'w')
+        err = open(err_name, 'w')
+
+        gmap_installation_dir = '/opt/LoReAn/third_party/software/gmap'
+        cmd = 'sudo make clean; sudo ./configure ; sudo make ; sudo make install'
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        gmap_build = subprocess.Popen(cmd, stdout=log, stderr=err, cwd = gmap_installation_dir, shell = True)
+        gmap_build.communicate()
+        log.close()
+        err.close()
+        long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
+                                end_exon, gmap_wd, verbose, Fflag=False)
+
+        if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
+            sys.exit("\n### GMAP DID NOT COMPILE CORRECTLY ### \n")

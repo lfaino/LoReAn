@@ -41,6 +41,7 @@ def main():
 
     home = os.path.expanduser("~")
     args = arguments.setting()
+
     if args.upgrade:
         update.upgrade()
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
@@ -124,6 +125,10 @@ def main():
         if args.long_reads:
             consensus_wd = (wd + '/consensus/')
             logistic.check_create_dir(consensus_wd)
+
+
+        logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                            args.verbose)
 
         check_species = 'augustus --species=help'
         process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
