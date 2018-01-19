@@ -138,8 +138,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         out_filename = fastq_filename + '.longreads.filtered.fasta'
     filter_count = 0
     if os.path.isfile(out_filename):
-            sys.stdout.write(('Filtered FASTQ existed already: ' +
-                out_filename + ' --- skipping\n'))
+            sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
             return out_filename, 0
     if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
         for record in SeqIO.parse(fastq_filename, "fastq"):
@@ -162,7 +161,8 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             listA_adapter.append(adpt.id)
             list_seq_adap.append(adpt)
     outFile = open(out_filename, 'w')
-    
+
+    filter_count = 0
     if len(listA_adapter) == 1:
         filter_count = 0
         list_command = []
@@ -190,7 +190,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                 sequenze = reverse_complement(seq_dict[key][0].seq)
                 seq_dict[key][0].seq = sequenze
                 final_seq.append(seq_dict[key][0])
-
     elif len(listA_adapter) == 2:
         filter_count = 0
         list_command = []
