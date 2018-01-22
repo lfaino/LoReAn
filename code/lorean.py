@@ -460,6 +460,7 @@ def main():
         tmp_consensus = os.path.join(consensus_wd , 'tmp/')
         collect.parse_only(args.assembly_read_threshold, tmp_consensus, args.verbose)
         tmp_assembly = collect.cat_assembled(tmp_consensus)
+        tmp_assembly_all = collect.cat_assembled_all(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
         merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
@@ -491,7 +492,7 @@ def main():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
 
-        fasta_all = logistic.cat_two_fasta(trinity_out, merged_fasta_filename, long_fasta, pasa_dir)
+        fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,

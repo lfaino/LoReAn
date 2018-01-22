@@ -9,6 +9,7 @@ count_sequences = 0
 length_cluster = 0
 
 
+
 def parse_only(threshold_float, wd, verbose):
     """
     to join the assembly and the parsing process
@@ -105,7 +106,6 @@ def cat_assembled(wd):
     collect the assembled contigs and generate a multifasta file
     """
     sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
-    '''C at all the assembled single fasta files in to a uniq file'''
     wd_tmp = wd
     fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
@@ -119,6 +119,30 @@ def cat_assembled(wd):
                 t_file.close()
 
     testFasta.close()
+    return fileName
+
+
+def cat_assembled_all(wd):
+    """
+    collect the assembled contigs and generate a multifasta file
+    """
+    sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
+    wd_tmp = wd
+    fileName = wd_tmp + 'assembly.all.fasta'
+    out_file = open(fileName, "w")
+    count_seq_ass = 0
+    for root, dirs, files in os.walk(wd_tmp):
+        for name in dirs:
+            wd_dir = os.path.join(root, name)
+            if 'fasta_output' in wd_dir:
+                wd_fasta = os.path.join(wd_dir, "unigene_seq.new.fasta")
+                fasta_sequences = SeqIO.parse(open(wd_fasta),'fasta')
+                for fasta in fasta_sequences:
+                    fasta_name = ">assembled_" + str(count_seq_ass)
+                    count_seq_ass += 1
+                    cdna = fasta_name + "\n" + str(fasta.seq) + "\n"
+                    out_file.write(cdna)
+
     return fileName
 
 
