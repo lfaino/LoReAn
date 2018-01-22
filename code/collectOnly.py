@@ -142,7 +142,6 @@ def cat_assembled_all(wd):
                     count_seq_ass += 1
                     cdna = fasta_name + "\n" + str(fasta.seq) + "\n"
                     out_file.write(cdna)
-
     return fileName
 
 
