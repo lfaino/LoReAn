@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 
 #=======================================================================================================================
 
@@ -16,7 +17,9 @@ PART_TRANS = 'partition_EVM_inputs.pl --genome %s --gene_predictions %s --protei
 EVM_WRITE_COMM = 'write_EVM_commands.pl --genome %s --weights %s --gene_predictions %s --transcript_alignments %s ' \
                  '--protein_alignments %s --output_file_name %s --partitions  %s'
 
+GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
 
+GT_STATS = 'gt stat -addintrons'
 #=======================================================================================================================
 
 
@@ -47,8 +50,37 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
 
     # Combine the different chromosomes
     evm_gff3 = combine_gff3(working_dir)
+    gff3_stat_file = gff3_stats(evm_gff3, working_dir)
 
-    return evm_gff3
+    return evm_gff3, gff3_stat_file
+
+
+def gff3_stats(gff3_file, working_dir):
+    '''
+    generates stats for gff3 file
+    '''
+
+    gt_com = GT_RETAINID % gff3_file
+    gt_stat = GT_STATS
+    file_out = gff3_file + ".stats"
+    file1 = open(file_out, "w")
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=working_dir)
+    gt_call = subprocess.Popen(gt_com, stdout=subprocess.PIPE, stderr=err1, shell=True)
+    gt_call_stat = subprocess.Popen(gt_stat, stdin=gt_call.stdout, stdout=file1, stderr=err1, shell=True)
+    gt_call_stat.communicate()
+    file1.close()
+
+    if "evm" in gff3_file:
+        sys.stdout.write("\033[31m ### EVM GFF3 STATS ### \n\033[0m")
+    else:
+        sys.stdout.write("\033[31m ### LOREAN GFF3 STATS ### \n\033[0m")
+
+    with open(file_out) as stats:
+        for line in stats:
+            sys.stdout.write("\033[32m" + line + "\033[0m")
+
+    return file_out
+
 
 
 def evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, segmentSize, overlapSize, verbose):

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import ctypes as ct
+import datetime
 import os
 import subprocess
 import sys
@@ -249,7 +250,14 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                 filter_count += 1
                 final_seq.append(record_dict[key])
     SeqIO.write(final_seq, out_filename, "fasta")
-    return out_filename, filter_count
+
+    fmtdate = '%H:%M:%S %d-%m'
+    now = datetime.datetime.now().strftime(fmtdate)
+
+    sys.stdout.write(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" +
+                      str(filter_count) + "\033[0m\tREADS AFTER LENGTH FILTERING###\n"))
+
+    return out_filename
 
 
 def maskedgenome(wd, ref , gff3):

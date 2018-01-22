@@ -176,7 +176,8 @@ def main():
 
             else:
                 short_sorted_bam = False
-                sys.stdout.write('No short reads file')
+                sys.stdout.write("\n\033[31m ### NO SHORT READS ### \033[0m\n")
+
             # LONG READS
             if 'fastq' in args.long_reads or 'fq' in args.long_reads or 'fasta' in args.long_reads or 'fa' in args.long_reads:
                 # with this operation, reads are filtered for their length.
@@ -185,13 +186,9 @@ def main():
                 # artefacts
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
-                long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
+                long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
                                                                 args.max_long_read, gmap_wd, args.adapter, threads_use,
                                                                 a=True)
-                if filter_count != 0:
-                    now = datetime.datetime.now().strftime(fmtdate)
-                    sys.stdout.write(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t" + str(
-                        filter_count) + "\tREADS AFTER LENGTH FILTERING###\n"))
                 if not short_sorted_bam:
                     # If short reads have been mapped dont do it
                     now = datetime.datetime.now().strftime(fmtdate)
@@ -355,14 +352,16 @@ def main():
 
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
-            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+            evm_gff3, gff3_stat_file = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
-            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+            evm_gff3, gff3_stat_file = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         # KEEP THIS OUTPUT
         final_files.append(evm_gff3)
+        final_files.append(gff3_stat_file)
+
         if not args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
@@ -503,6 +502,9 @@ def main():
         final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
         final_files.append(final_update)
+
+        final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
+        final_files.append(final_update_stats)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
