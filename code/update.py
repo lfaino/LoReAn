@@ -126,13 +126,9 @@ def upgrade():
         if args.long_reads.endswith(fastq) or args.long_reads.endswith(fasta):
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
-            long_fasta, filter_count = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
+            long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
                                                             args.max_long_read, gmap_wd, args.adapter, threads_use,
                                                             a=True)
-            if filter_count != 0:
-                now = datetime.datetime.now().strftime(fmtdate)
-                sys.stdout.write(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t" + str(
-                    filter_count) + "\tREADS AFTER LENGTH FILTERING###\n"))
             if not short_sorted_bam:
                 # If short reads have been mapped dont do it
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -181,7 +177,7 @@ def upgrade():
         gffread_fasta_file = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
         fake = []
-        long_fasta, filter_count = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
+        long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
                                                         args.max_long_read, consensus_wd, fake, threads_use,
                                                         a=False)
 

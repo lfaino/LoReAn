@@ -65,11 +65,11 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     dist = '-' + str(merge_distance)
     if strand:
         btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
-        sys.stdout.write("\t###CLUSTERING IN STRANDED MODE###\n")
+        sys.stdout.write("\t ###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
 
     else:
         btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
-        sys.stdout.write("\t###CLUSTERING IN NON-STRANDED MODE###\n")
+        sys.stdout.write("\t###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
 
     btsort2 = BEDTOOLS_SORT
     # Sort the GFF3 file
