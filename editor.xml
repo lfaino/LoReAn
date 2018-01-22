@@ -1,0 +1,7 @@
+<application>
+  <component name="TodoConfiguration">
+    <pattern pattern="\btodo\b.*" />
+    <pattern pattern="\bfixme\b.*" />
+    <pattern case-sensitive="true" pattern="TODO" />
+  </component>
+</application>
