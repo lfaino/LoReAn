@@ -23,7 +23,7 @@ https://docs.docker.com/engine/installation/
 
 After Docker installation, you can download  LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean createUser.sh $USER $UID 
+docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID 
 ```
 
 At this point, run
@@ -36,18 +36,4 @@ lorean.py -help
 
 It is possible to run LoReAn using bash only if all the tools listed in the Dockerfile are installed, the specific file removed and
 each tool is correctly installed. After the installation is complete, LoReAn can be run  
-
-
-### KNOWN PROBLEMS 
-
-GMAP compiling:
-
-Docker builds container every time the code is updated or modified. Therefore, all the software are compiled using the infrastructure provided by docker. However, the compilation of GMAP is 
-infrastructure dependent. Therefore, if you get a PASA error and the file **annotation/run/PASA/gmap.spliced_alignments.gff3** is empty, try to re-compile GMAP from inside the 
-container using:
-```bash
-exit
-cd /opt/LoReAn/third_party/software/gmap; make clean; ./configure ; make ; sudo make install ; cd /data/
-su user_name
-```
 
