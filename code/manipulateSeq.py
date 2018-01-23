@@ -178,10 +178,13 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             else:
                 seq_dict[aling_res[1]] = [record_dict[aling_res[1]], aling_res[2]]
                 score_dict[aling_res[1]] =  aling_res[3]
-        for key in score_dict:
-            if score_dict[key][0] > max_score:
-                max_score = score_dict[key][0]
-        value_optimal = max_score - (max_score/20)
+        numbers = [score_dict[key][0] for key in score_dict]
+        value_optimal = float(sum(numbers)) / max(len(numbers), 1)
+        #for key in score_dict:
+
+        #    if score_dict[key][0] > max_score:
+        #        max_score = score_dict[key][0]
+        #value_optimal = max_score - (max_score/20)
         for key in score_dict:
             if score_dict[key][0] > value_optimal and seq_dict[key][1] == 0:
                 filter_count += 1
@@ -254,8 +257,8 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
 
-    sys.stdout.write(("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" +
-                      str(filter_count) + "\033[0m\tREADS AFTER LENGTH FILTERING###\n"))
+    sys.stdout.write(("###FINISHED FILTERING AT:\t" + now +
+                      "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) + "\033[0m\tREADS AFTER LENGTH FILTERING###\n"))
 
     return out_filename
 
