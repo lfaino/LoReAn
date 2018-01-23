@@ -199,9 +199,12 @@ def upgrade():
             consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
                                args.verbose)
             utrs.lengthSupport(tmp_wd, threads_use)
+
         tmp_consensus = os.path.join(consensus_wd , 'tmp/')
         collect.parse_only(args.assembly_read_threshold, tmp_consensus, args.verbose)
         tmp_assembly = collect.cat_assembled(tmp_consensus)
+        tmp_assembly_all = collect.cat_assembled_all(tmp_consensus)
+
         merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
         collect.add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename)
         now = datetime.datetime.now().strftime(fmtdate)
@@ -227,7 +230,7 @@ def upgrade():
 
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         round_n = 0
-        fasta_all = logistic.cat_two_fasta(trinity_out, merged_fasta_filename, long_fasta, pasa_dir)
+        fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
         pasa.create_pasa_database(pasa_dir, args.pasa_db, args.verbose)
         align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
