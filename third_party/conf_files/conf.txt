@@ -27,7 +27,7 @@ MYSQL_RO_PASSWORD=lorean
 ## PASA admin settings
 
 #emails sent to admin on job launch, success, and failure
-PASA_ADMIN_EMAIL=jose.espejovalle-inclan@wur.nl
+PASA_ADMIN_EMAIL=
 
 # database to manage pasa jobs; required for daemon-based processing.
 PASA_ADMIN_DB=PASA2_admin
