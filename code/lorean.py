@@ -262,7 +262,7 @@ def main():
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
                         t = Thread(target=handler.braker_aat, args=(queue, ref, default_bam, args.species, protein_loc,
-                                                                   threads_use, args.fungus, list_fasta_names, wd,
+                                                                   threads_use, args.fungus, list_fasta_names, wd, braker_out,
                                                                    args.verbose))
                         t.daemon = True
                         t.start()
@@ -282,7 +282,7 @@ def main():
                     for software in range(2):
                         t = Thread(target=handler.braker_aat,
                                    args=(queue, ref, long_sorted_bam, args.species, protein_loc,
-                                         threads_use, args.fungus, list_fasta_names, wd, args.verbose))
+                                         threads_use, args.fungus, list_fasta_names, wd, braker_out, args.verbose))
                         t.daemon = True
                         t.start()
                 queue.join()

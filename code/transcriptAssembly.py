@@ -64,7 +64,7 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        braker_ex = subprocess.Popen(cmd, stdout=log, stderr=log_err, shell=True)
+        braker_ex = subprocess.Popen(cmd, cwd = wd, stdout=log, stderr=log_err, shell=True)
         braker_ex.communicate()
     except:
         raise NameError('')
@@ -73,8 +73,6 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     return
 
 def gmes_call(wd, ref, fungus, threads, verbose):
-
-
     if int(threads) < 1:
         threads = 1
 
