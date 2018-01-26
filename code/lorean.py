@@ -112,7 +112,7 @@ def main():
         star_out = wd + '/STAR/'
         trin_dir = wd + '/Trinity/'
         evm_inputs_dir = wd + '/evm_inputs/'
-        braker_out = wd + '/braker/' + args.species + '/'
+        braker_folder = wd + '/braker/'
         evm_output_dir = wd + '/evm_output/'
 
         logistic.check_create_dir(evm_inputs_dir)
@@ -255,6 +255,7 @@ def main():
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
 
             elif args.short_reads:  # USING PROTEINS AND SHORT READS
+                logistic.check_create_dir(braker_folder)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###BRAKER1 (USING SHORT READS) AND AAT STARTED AT:\t' + now + '\t###\n'))
                 queue = Queue()
@@ -262,14 +263,14 @@ def main():
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
                         t = Thread(target=handler.braker_aat, args=(queue, ref, default_bam, args.species, protein_loc,
-                                                                   threads_use, args.fungus, list_fasta_names, wd, braker_out,
+                                                                   threads_use, args.fungus, list_fasta_names, wd, braker_folder,
                                                                    args.verbose))
                         t.daemon = True
                         t.start()
                 queue.join()
-                augustus_file = braker_out + 'augustus.gff'
+                augustus_file = braker_folder + 'augustus.gff'
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
+                genemark_file = braker_folder + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
 
@@ -277,18 +278,19 @@ def main():
                 queue = Queue()
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###BRAKER1 (USING LONG READS) AND AAT STARTED AT: \t' + now + '\t###\n'))
+                logistic.check_create_dir(braker_folder)
                 for software in range(2):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
                         t = Thread(target=handler.braker_aat,
                                    args=(queue, ref, long_sorted_bam, args.species, protein_loc,
-                                         threads_use, args.fungus, list_fasta_names, wd, braker_out, args.verbose))
+                                         threads_use, args.fungus, list_fasta_names, wd, braker_folder, args.verbose))
                         t.daemon = True
                         t.start()
                 queue.join()
-                augustus_file = braker_out + 'augustus.gff'
+                augustus_file = braker_folder + 'augustus.gff'
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_out + 'GeneMark-ET/genemark.gtf'
+                genemark_file = braker_folder + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
         elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
@@ -423,7 +425,7 @@ def main():
                 gffread_fasta_file = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
                 # HERE WE STORE THE SEQUENCE IN A DICTIONARY
                 fake = []
-                long_fasta, filter_count = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
+                long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
                                                                 args.max_long_read, consensus_wd, fake, threads_use,
                                                                 a=False)
 
