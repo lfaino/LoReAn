@@ -54,7 +54,7 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && t
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
-RUN wget http://exon.gatech.edu/Braker/BRAKER2.tar.gz && tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && \
+RUN wget http://exon.gatech.edu/Braker/BRAKER2.tar.gz && tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER \
  wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
