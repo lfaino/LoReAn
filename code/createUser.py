@@ -42,6 +42,10 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
+    com = "chown -R mysql:mysql /var/lib/mysql /var/run/mysqld"
+    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    create_user_call.communicate()
+
     com = "usermod -d /var/lib/mysql/ mysql"
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
