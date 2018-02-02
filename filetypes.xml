@@ -1,8 +1,0 @@
-<application>
-  <component name="FileTypeManager" version="17">
-    <extensionMap>
-      <mapping ext="bck" type="PLAIN_TEXT" />
-      <mapping ext="gff" type="PLAIN_TEXT" />
-    </extensionMap>
-  </component>
-</application>
