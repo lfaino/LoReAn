@@ -108,10 +108,14 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
     return new_filename
 
 
-def update_database(n_cpu, round_n, pasa_dir, pasa_db, align_conf_file, reference, transcripts_file, gff3_file, verbose):
+def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
+
     '''Updates the gff3 file with the PASA database'''
     sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
+    create_pasa_database(annot_conf_file, pasa_dir, verbose)
+
+    align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
 
     sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
     load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
@@ -121,6 +125,7 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, align_conf_file, referenc
     gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
     return gff3_out
+
 
 def pasa_configuration(pasa_dir, pasa_db, verbose):
     '''Creates a PASA configuration file. Database name will be the reference name'''
@@ -142,10 +147,14 @@ def pasa_configuration(pasa_dir, pasa_db, verbose):
     conf.close()
     return conf_file
 
-def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_length, threads, verbose):
+
+def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, threads, verbose):
     '''PASA to construct a database of transcripts. It will overwrite any
     database with the same name -the one of the reference-.'''
-    cmd = LAUNCH_PASA % (conf_file, reference, transcripts, max_intron_length, threads)
+
+    align_pasa_conf = pasa_configuration(pasa_dir, pasa_db, verbose)
+
+    cmd = LAUNCH_PASA % (align_pasa_conf, reference, transcripts, max_intron_length, threads)
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     # sys.stdout.write out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file):
@@ -167,10 +176,9 @@ def pasa_call(pasa_dir, conf_file, pasa_db, reference, transcripts, max_intron_l
     out_log.close()
     return out_file
 
-def create_pasa_database(pasa_dir, pasa_db, verbose):
 
+def create_pasa_database(conf_file, pasa_dir, verbose):
 
-    conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
     cmd = CREATE_DATABASE % (conf_file)
     log_name = pasa_dir + 'create_databae.log'
     log = open(log_name, 'w')
