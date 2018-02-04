@@ -75,7 +75,7 @@ RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cuff
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
 
-RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz
+RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz && \
     wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
     md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
 
@@ -83,8 +83,8 @@ RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0
 
 WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/data
 
-RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz
-    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz.md5
+RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz && \
+    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz.md5 && \
     md5sum -c panther-data-12.0.tar.gz.md5
 
 RUN tar -pxvzf panther-data-12.0.tar.gz && rm panther-data-12.0.tar.gz.md5
