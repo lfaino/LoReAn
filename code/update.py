@@ -233,11 +233,11 @@ def upgrade():
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
         pasa.create_pasa_database(pasa_dir, args.pasa_db, args.verbose)
-        align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
-        finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+        #align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
+        finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref,
                                            fasta_all, finalupdate5, args.verbose)
         round_n += 1
-        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref,
                                             fasta_all, finalupdate, args.verbose)
         final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 

@@ -42,6 +42,7 @@ def main():
     home = os.path.expanduser("~")
     args = arguments.setting()
 
+
     if args.upgrade:
         update.upgrade()
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
@@ -70,7 +71,7 @@ def main():
         ref_orig = os.path.abspath(args.reference)
         ref = os.path.join(wd, args.reference)
         if not os.path.exists(ref):
-            os.symlink(ref_orig, ref)
+            os.link(ref_orig, ref)
 
         max_threads = multiprocessing.cpu_count()
         if int(args.threads) > max_threads:
@@ -225,13 +226,14 @@ def main():
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd, args.verbose, Fflag=True)
             trinity_path = trinity_gff3
 
+
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###PASA STARTS AT:\t' + now + '\t###\n'))
             # Create PASA folder and configuration file
-            align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
+            #align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
-            pasa_gff3 = pasa.pasa_call(pasa_dir, align_pasa_conf, args.pasa_db, ref, trinity_out,
+            pasa_gff3 = pasa.pasa_call(pasa_dir, args.pasa_db, ref, trinity_out,
                                        args.max_intron_length, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
@@ -345,6 +347,8 @@ def main():
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
                               'AAT': merged_prot_gff3, 'gmap': trinity_path}
 
+
+
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE
 
@@ -365,6 +369,8 @@ def main():
         final_files.append(gff3_stat_file)
 
         if not args.short_reads and not args.long_reads:
+            last_gff3 = grs.newNames(evm_gff3)
+            #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
 
@@ -374,13 +380,16 @@ def main():
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
             round_n += 1
             finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
-                                               align_pasa_conf, ref, trinity_out, evm_gff3, args.verbose)
+                                               ref, trinity_out, evm_gff3, args.verbose)
             final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
             updatedGff3 = grs.newNames(final_update)
+            #score_gff3 = score.score(updatedGff3, evm_inputs)
+            final_files.append(updatedGff3)
         else:
             updatedGff3 = evm_gff3
 
 
+        #score_gff3 = score.score(evm_gff3, evm_inputs)
 
         if args.long_reads == '':
             final_output_dir = wd + 'output/'
@@ -496,12 +505,13 @@ def main():
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
 
-        finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+        finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                            fasta_all, finalupdate5, args.verbose)
         round_n += 1
-        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, align_pasa_conf, ref,
+        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                             fasta_all, finalupdate, args.verbose)
         final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
+        #score_gff3 = score.score(final_update, evm_inputs)
 
         final_files.append(final_update)
 
