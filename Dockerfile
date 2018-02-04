@@ -22,7 +22,7 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
-RUN git clone -b master --single-branch https://github.com/lfaino/LoReAn.git  && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
+RUN git clone -b LoReAn_ipscan --single-branch https://github.com/lfaino/LoReAn.git  && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
     mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/
 
 WORKDIR /opt/LoReAn/third_party/software/
@@ -74,6 +74,30 @@ RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
+
+RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz
+    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
+    md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
+
+RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
+
+WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/data
+
+RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz
+    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz.md5
+    md5sum -c panther-data-12.0.tar.gz.md5
+
+RUN tar -pxvzf panther-data-12.0.tar.gz && rm panther-data-12.0.tar.gz.md5
+
+WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/
+
+#COPY signalp-4.1f.Linux.tar.gz /
+#RUN  tar -xzf /signalp-4.1f.Linux.tar.gz -C /interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1
+
+#COPY tmhmm-2.0c.Linux.tar.gz /
+#RUN  tar -xzf /tmhmm-2.0c.Linux.tar.gz -C / && \
+#     cp /tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  /interproscan-5.27-66.0/bin/tmhmm/2.0c/decodeanhmm && \
+#     cp /tmhmm-2.0c/lib/TMHMM2.0.model  /interproscan-5.27-66.0/data/tmhmm/2.0c/TMHMM2.0c.model
 
 WORKDIR /data/
 
