@@ -1,6 +1,7 @@
 <application>
   <component name="FileTypeManager" version="17">
     <extensionMap>
+      <mapping pattern="Dockerfile_1" type="PLAIN_TEXT" />
       <mapping ext="bck" type="PLAIN_TEXT" />
       <mapping ext="gff" type="PLAIN_TEXT" />
     </extensionMap>
