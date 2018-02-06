@@ -24,7 +24,7 @@ Please see the [installation instructions](INSTALL.md) for details.
 
 The software can be run after installing by:
 ```bash
-lorean.py -pr protein.fasta -sp spacies genome.fasta 
+lorean.py -pr protein.fasta -sp species genome.fasta 
 ```
 The full list of options can be found at [option instructions](OPTIONS.md) or by:
 

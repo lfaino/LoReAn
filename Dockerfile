@@ -81,18 +81,18 @@ RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/data
+#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/data
 
 #RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz && \
 #    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz.md5 && \
 #    md5sum -c panther-data-12.0.tar.gz.md5
 
-RUN tar -pxvzf panther-data-12.0.tar.gz && rm panther-data-12.0.tar.gz.md5
+#RUN tar -pxvzf panther-data-12.0.tar.gz && rm panther-data-12.0.tar.gz.md5
 
-WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/
+#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/
 
 #COPY signalp-4.1f.Linux.tar.gz /
-#RUN  tar -xzf /signalp-4.1f.Linux.tar.gz -C /interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1
+RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1
 
 #COPY tmhmm-2.0c.Linux.tar.gz /
 #RUN  tar -xzf /tmhmm-2.0c.Linux.tar.gz -C / && \

@@ -61,7 +61,7 @@ def upgrade():
     ref_orig = os.path.abspath(args.reference)
     ref = os.path.join(wd, args.reference)
     if not os.path.exists(ref):
-        os.symlink(ref_orig, ref)
+        os.link(ref_orig, ref)
 
     max_threads = multiprocessing.cpu_count()
     if int(args.threads) > max_threads:
@@ -119,7 +119,7 @@ def upgrade():
             bam_file = short_sorted_bam.split("/")
             short_bam = star_out + "/" + bam_file[-1]
             if not os.path.exists(ref):
-                os.symlink(short_sorted_bam, short_bam)
+                os.link(short_sorted_bam, short_bam)
         else:
             short_sorted_bam = False
             sys.stdout.write('No short reads file')
