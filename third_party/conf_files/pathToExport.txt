@@ -18,6 +18,7 @@ export PATH=$PATH:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64
 export PATH=$PATH:/opt/LoReAn/third_party/software/PASApipeline/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/genometools-1.5.9/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/BRAKER
+export PATH=$PATH:/opt/LoReAn/third_party/software/interproscan-5.27-66.0
 export PATH=$PATH:/opt/LoReAn/third_party/software/TransDecoder-3.0.1
 export PATH=$PATH:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util
 export PATH=$PATH:/opt/LoReAn/third_party/conf_files

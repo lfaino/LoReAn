@@ -1,9 +1,11 @@
 FROM ubuntu:xenial
 
-RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
-    python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential apt-utils git wget perl \
+    python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
-    bzip2 liblzma-dev libbz2-dev
+    bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ git wget gzip perl apt-utils
+
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
@@ -81,43 +83,27 @@ RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/data
+WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
-#RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz && \
-#    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/data/panther-data-12.0.tar.gz.md5 && \
-#    md5sum -c panther-data-12.0.tar.gz.md5
+RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
 
-#RUN tar -pxvzf panther-data-12.0.tar.gz && rm panther-data-12.0.tar.gz.md5
-
-#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/
+RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ /interproscan-5.27-66.0/bin/blast
 
 COPY signalp-4.1f.Linux.tar.gz ./
-RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1 &&\
-     rm signalp-4.1f.Linux.tar.gz
-COPY signalp-4.1/signalp /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1/
 
-RUN apt-get update && apt-get upgrade -y -q && apt-get install -y -q \
-    software-properties-common \
-    libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev python \
-    cmake tcsh build-essential g++ git wget gzip perl
+RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
 
-RUN chmod a+w /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+COPY signalp-4.1/signalp bin/signalp/4.1/
 
+RUN mkdir /data_panther
 
-RUN mkdir cddblast && cd cddblast && \
-    wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
-    #ftp://ftp.ncbi.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.6.0+-src.tar.gz &&\
-    #wget ftp://ftp.ncbi.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.6.0+-src.tar.gz.md5 &&\
-    #md5sum -c ncbi-blast-2.6.0+-src.tar.gz.md5 && tar xvzf ncbi-blast-2.6.0+-src.tar.gz && cd ncbi-blast-2.6.0+-src/c++/src/app/ &&\
-    #wget -r --no-parent -l 1 -np -nd -nH -P rpsbproc ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/rpsbproc/rpsbproc-src/
-    #&& cd ../../ && \
-    #./configure && /usr/bin/make
+COPY tmhmm-2.0c.Linux.tar.gz ./
+RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
+     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-#COPY tmhmm-2.0c.Linux.tar.gz /
-#RUN  tar -xzf /tmhmm-2.0c.Linux.tar.gz -C / && \
-#     cp /tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  /interproscan-5.27-66.0/bin/tmhmm/2.0c/decodeanhmm && \
-#     cp /tmhmm-2.0c/lib/TMHMM2.0.model  /interproscan-5.27-66.0/data/tmhmm/2.0c/TMHMM2.0c.model
+COPY interproscan.properties ./
+
+RUN chmod a+w /interproscan-5.27-66.0
 
 WORKDIR /data/
 

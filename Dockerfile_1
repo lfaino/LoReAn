@@ -7,15 +7,6 @@ RUN apt-get update && apt-get upgrade -y -q && apt-get install -y -q \
     zlibc gcc-multilib apt-utils zlib1g-dev python \
     cmake tcsh build-essential g++ git wget gzip perl apt-utils
 
-RUN add-apt-repository -y ppa:webupd8team/java && apt-get update
-
-RUN echo oracle-java8-installer shared/accepted-oracle-license-v1-1 select true | /usr/bin/debconf-set-selections
-RUN apt-get install -y -q oracle-java8-installer
-RUN apt-get install -y -q oracle-java8-set-default
-
-ENV JAVA_HOME=/usr/lib/jvm/java-8-oracle
-ENV CLASSPATH=/usr/lib/jvm/java-8-oracle/bin
-
 RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz && \
     wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
     md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
@@ -42,7 +33,7 @@ WORKDIR /interproscan-5.27-66.0
 
 RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
 
-RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp  ncbi-blast-2.7.1+/bin/* /interproscan-5.27-66.0/bin/blast/ncbi-blast-2.6.0+
+RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ /interproscan-5.27-66.0/bin/blast
 
 COPY signalp-4.1f.Linux.tar.gz ./
 
@@ -53,10 +44,12 @@ COPY signalp-4.1/signalp /interproscan-5.27-66.0/bin/signalp/4.1/
 
 RUN mkdir /data_panther
 
-COPY tmhmm-2.0c.Linux.tar.gz ./
+COPY tmhmm-2.0c.Linux.tar.gz /
 RUN  tar -xzf /tmhmm-2.0c.Linux.tar.gz -C / && \
      cp /tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  /interproscan-5.27-66.0/bin/tmhmm/2.0c/decodeanhmm && \
      cp /tmhmm-2.0c/lib/TMHMM2.0.model  /interproscan-5.27-66.0/data/tmhmm/2.0c/TMHMM2.0c.model
+
+COPY interproscan.properties ./
 
 #COPY phobius101_linux.tar.gz /
 #RUN  tar -xzf /phobius101_linux.tar.gz -C /interproscan-5.22-61.0/bin/phobius/1.01 --strip-components 3
