@@ -1,4 +1,4 @@
-FROM ubuntu:16.04
+FROM ubuntu:xenial
 
 RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
     python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
@@ -91,8 +91,28 @@ RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0
 
 #WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0/
 
-#COPY signalp-4.1f.Linux.tar.gz /
-RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1
+COPY signalp-4.1f.Linux.tar.gz ./
+RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1 --strip-components 1 &&\
+     rm signalp-4.1f.Linux.tar.gz
+COPY signalp-4.1/signalp /opt/LoReAn/third_party/software/interproscan-5.27-66.0/bin/signalp/4.1/
+
+RUN apt-get update && apt-get upgrade -y -q && apt-get install -y -q \
+    software-properties-common \
+    libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
+    zlibc gcc-multilib apt-utils zlib1g-dev python \
+    cmake tcsh build-essential g++ git wget gzip perl
+
+RUN chmod a+w /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+
+
+RUN mkdir cddblast && cd cddblast && \
+    wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
+    #ftp://ftp.ncbi.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.6.0+-src.tar.gz &&\
+    #wget ftp://ftp.ncbi.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.6.0+-src.tar.gz.md5 &&\
+    #md5sum -c ncbi-blast-2.6.0+-src.tar.gz.md5 && tar xvzf ncbi-blast-2.6.0+-src.tar.gz && cd ncbi-blast-2.6.0+-src/c++/src/app/ &&\
+    #wget -r --no-parent -l 1 -np -nd -nH -P rpsbproc ftp://ftp.ncbi.nih.gov/pub/mmdb/cdd/rpsbproc/rpsbproc-src/
+    #&& cd ../../ && \
+    #./configure && /usr/bin/make
 
 #COPY tmhmm-2.0c.Linux.tar.gz /
 #RUN  tar -xzf /tmhmm-2.0c.Linux.tar.gz -C / && \
