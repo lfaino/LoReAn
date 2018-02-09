@@ -4,7 +4,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ git wget gzip perl apt-utils
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++
 
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -77,10 +77,6 @@ RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cuff
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
 
-#RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz && \
-#    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
-#    md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
-
 COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
@@ -105,9 +101,9 @@ RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Lin
 
 COPY interproscan.properties.txt ./interproscan.properties
 
-WORKDIR /opt/LoReAn/third_party/software/
+WORKDIR /opt/LoReAn/
 
-RUN chmod a+w ./interproscan-5.27-66.0
+RUN chmod a+w ./
 
 WORKDIR /data/
 
