@@ -23,6 +23,7 @@ import dirsAndFiles as logistic
 import evmPipeline
 import getRightStrand as grs
 import handlers as handler
+import interproscan as iprscan
 import manipulateSeq as mseq
 import mapping
 import multithreadLargeFasta as multiple
@@ -115,6 +116,7 @@ def main():
         evm_inputs_dir = wd + '/evm_inputs/'
         braker_folder = wd + '/braker/'
         evm_output_dir = wd + '/evm_output/'
+        interproscan_out_dir = wd + 'interproscan'
 
         logistic.check_create_dir(evm_inputs_dir)
         logistic.check_create_dir(evm_output_dir)
@@ -122,6 +124,7 @@ def main():
         logistic.check_create_dir(star_out)
         logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
+        logistic.check_create_dir(interproscan_out_dir)
         logistic.check_create_dir(exonerate_wd)
         if args.long_reads:
             consensus_wd = (wd + '/consensus/')
@@ -373,7 +376,6 @@ def main():
             #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
-
         round_n = 1
         if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
@@ -384,7 +386,9 @@ def main():
             final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
             updatedGff3 = grs.newNames(final_update)
             #score_gff3 = score.score(updatedGff3, evm_inputs)
+            annot = iprscan.iprscan(ref, updatedGff3, interproscan_out_dir, args.threads)
             final_files.append(updatedGff3)
+            final_files.append(annot)
         else:
             updatedGff3 = evm_gff3
 

@@ -16,7 +16,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
 RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama
+    psutil memory_profiler pathlib colorama numpy
 
 WORKDIR /opt/
 
@@ -77,9 +77,11 @@ RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cuff
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
 
-RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz && \
-    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
-    md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
+#RUN wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz && \
+#    wget ftp://ftp.ebi.ac.uk/pub/software/unix/iprscan/5/5.27-66.0/interproscan-5.27-66.0-64-bit.tar.gz.md5 && \
+#    md5sum -c interproscan-5.27-66.0-64-bit.tar.gz.md5
+
+COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
@@ -87,7 +89,7 @@ WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
 RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
 
-RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ /interproscan-5.27-66.0/bin/blast
+RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
 
 COPY signalp-4.1f.Linux.tar.gz ./
 
@@ -101,9 +103,11 @@ COPY tmhmm-2.0c.Linux.tar.gz ./
 RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
      cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-COPY interproscan.properties ./
+COPY interproscan.properties.txt ./interproscan.properties
 
-RUN chmod a+w /interproscan-5.27-66.0
+WORKDIR /opt/LoReAn/third_party/software/
+
+RUN chmod a+w ./interproscan-5.27-66.0
 
 WORKDIR /data/
 
