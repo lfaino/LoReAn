@@ -7,7 +7,6 @@ import subprocess
 import sys
 import tempfile
 
-import dirsAndFiles as logistic
 from Bio import SeqIO
 from Bio.Alphabet import IUPAC
 from Bio.Seq import MutableSeq
@@ -23,13 +22,11 @@ IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
 
 
-def iprscan(ref, gff_file, root, threads):
+def iprscan(ref, gff_file, wd, threads):
 
 
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
-    wd = os.path.join(root,"tmp")
-    logistic.check_create_dir(wd)
     fasta_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="prot_gffread.", suffix=".log")
     errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="prot_gffread.", suffix=".err")
     prot_file_out = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="prot_gffread.", suffix=".fasta")
