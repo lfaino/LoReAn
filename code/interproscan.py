@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 
+import datetime
 import os
 import subprocess
 import sys
@@ -24,6 +25,10 @@ IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
 def iprscan(ref, gff_file, root, threads):
 
+
+    fmtdate = '%H:%M:%S %d-%m'
+    now = datetime.datetime.now().strftime(fmtdate)
+    sys.stdout.write(("\n###RUNNING INTERPROSCAN ANALYSIS:\t" + now + "\t###\n"))
     wd = os.path.join(root,"tmp")
     logistic.check_create_dir(wd)
     fasta_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="prot_gffread.", suffix=".log")
@@ -51,6 +56,7 @@ def iprscan(ref, gff_file, root, threads):
     log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix=prot_file_mod.name, suffix=".log")
     iprscan = subprocess.Popen(cmd, cwd=wd, stderr = err, stdout = log, shell=True)
     iprscan.communicate()
+    sys.stdout.write(("\n###FINISHED TO RUN INTERPROSCAN ANALYSIS:\t" + now + "\t###\n"))
 
     return (prot_file_mod.name + ".tsv")
 
