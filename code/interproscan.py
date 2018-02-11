@@ -52,7 +52,7 @@ def iprscan(ref, gff_file, root, threads):
     iprscan = subprocess.Popen(cmd, cwd=wd, stderr = err, stdout = log, shell=True)
     iprscan.communicate()
 
-
+    return (prot_file_mod.name + ".tsv")
 
 
 
