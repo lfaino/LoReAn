@@ -15,8 +15,8 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
-RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama numpy
+RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
+    psutil memory_profiler pathlib colorama
 
 WORKDIR /opt/
 
@@ -81,7 +81,7 @@ COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+RUN mkdir /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
 RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
 
@@ -103,7 +103,7 @@ COPY interproscan.properties.txt ./interproscan.properties
 
 WORKDIR /opt/LoReAn/
 
-RUN chmod a+w ./
+RUN chmod a+w /opt/
 
 WORKDIR /data/
 

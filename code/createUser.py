@@ -70,7 +70,7 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chmod -R 775 /opt/LoReAn"
+    com = "chmod -R 775 /home/%s" % (name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 

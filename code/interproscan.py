@@ -6,14 +6,14 @@ import os
 import subprocess
 import sys
 import tempfile
-
+import warnings
 from Bio import SeqIO
-from Bio.Alphabet import IUPAC
-from Bio.Seq import MutableSeq
+from Bio.Alphabet import generic_dna
+from Bio.Seq import Seq
 
 #======================================================================================================================
 
-GFFREAD = 'gffread -g %s -y %s %s'
+GFFREAD = 'gffread -g %s -w %s %s'
 
 IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
@@ -24,7 +24,7 @@ IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
 def iprscan(ref, gff_file, wd, threads):
 
-
+    warnings.filterwarnings("ignore")
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
     fasta_file_outfile = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix="prot_gffread.", suffix=".log")
@@ -38,15 +38,14 @@ def iprscan(ref, gff_file, wd, threads):
     count = 0
     input_file = open(prot_file_out.name)
     fasta_dict = SeqIO.to_dict(SeqIO.parse(input_file, "fasta"))
+
+
     for id in fasta_dict:
         count += 1
-        if "." in fasta_dict[id].seq:
-            mutable_seq = MutableSeq(str(fasta_dict[id].seq), IUPAC.unambiguous_dna)
-            mutable_seq.remove(".")
-            fasta_dict[id].seq = mutable_seq
-            SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
-        else:
-            SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
+        coding_dna = Seq(str(fasta_dict[id].seq), generic_dna)
+        prot = coding_dna.translate(to_stop=True)
+        fasta_dict[id].seq = prot
+        SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
     sys.stdout.write(("\n###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))
 
     cmd = IPRSCAN %(prot_file_mod.name, threads)
