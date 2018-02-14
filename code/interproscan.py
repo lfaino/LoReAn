@@ -43,7 +43,7 @@ def iprscan(ref, gff_file, wd, threads):
     for id in fasta_dict:
         count += 1
         coding_dna = Seq(str(fasta_dict[id].seq), generic_dna)
-        prot = coding_dna.translate(to_stop=True)
+        prot = coding_dna.translate(stop_symbol="X")
         fasta_dict[id].seq = prot
         SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
     sys.stdout.write(("\n###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))

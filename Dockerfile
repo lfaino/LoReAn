@@ -4,7 +4,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ ping
 
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
@@ -81,11 +81,10 @@ COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
 RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-RUN mkdir /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
-RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz
-
-RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
+RUN mkdir cddblast && cd cddblast && wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/LATEST/ncbi-blast-2.7.1+-x64-linux.tar.gz &&\
+    tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
 
 COPY signalp-4.1f.Linux.tar.gz ./
 
@@ -99,7 +98,7 @@ COPY tmhmm-2.0c.Linux.tar.gz ./
 RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
      cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-COPY interproscan.properties.txt ./interproscan.properties
+RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
 
 WORKDIR /opt/LoReAn/
 
