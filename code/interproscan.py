@@ -3,18 +3,16 @@
 
 import datetime
 import os
-import re
 import subprocess
 import sys
 import tempfile
 import warnings
 from Bio import SeqIO
-from Bio.Alphabet import generic_dna
-from Bio.Seq import Seq
+
 
 #======================================================================================================================
 
-GFFREAD = 'gffread -g %s -y %s %s'
+GFFREAD = 'gffread -C -g %s -y %s %s'
 
 IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
@@ -37,16 +35,8 @@ def iprscan(ref, gff_file, wd, threads):
     call = subprocess.Popen(com, stdout=fasta_file_outfile, cwd = wd, stderr=errorFilefile, shell=True)
     call.communicate()
     input_file = open(prot_file_out.name)
-    fasta_dict = SeqIO.to_dict(SeqIO.parse(input_file, "fasta"))
+    count = len(SeqIO.to_dict(SeqIO.parse(input_file, "fasta")))
 
-    count = 0
-    for id in fasta_dict:
-        count += 1
-        prot = str(fasta_dict[id].seq)
-        prot_mod = prot.replace(".","")
-        fasta_dict[id].seq = Seq(prot_mod)
-    SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
-    print (count)
     sys.stdout.write(("\n###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))
 
     cmd = IPRSCAN %(prot_file_mod.name, threads)
