@@ -8,6 +8,7 @@ import sys
 import tempfile
 import warnings
 from Bio import SeqIO
+from Bio.Seq import Seq
 
 
 #======================================================================================================================
@@ -35,7 +36,23 @@ def iprscan(ref, gff_file, wd, threads):
     call = subprocess.Popen(com, stdout=fasta_file_outfile, cwd = wd, stderr=errorFilefile, shell=True)
     call.communicate()
     input_file = open(prot_file_out.name)
-    count = len(SeqIO.to_dict(SeqIO.parse(input_file, "fasta")))
+    fasta_dict = SeqIO.to_dict(SeqIO.parse(input_file, "fasta"))
+    count = len(fasta_dict)
+
+    bad_prot = []
+    for id in fasta_dict:
+        if "." in str(fasta_dict[id].seq):
+            count += 1
+            bad_prot.append(fasta_dict[id].description)
+            prot = str(fasta_dict[id].seq)
+            prot_mod = prot.replace(".","")
+            fasta_dict[id].seq = Seq(prot_mod)
+        SeqIO.write(fasta_dict[id], prot_file_mod, "fasta")
+
+    bad_gene = wd + "/bad_gene.txt"
+    with open(bad_gene, "w") as fh:
+        for line in bad_prot:
+            fh.write(line + "\n")
 
     sys.stdout.write(("\n###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))
 
@@ -53,7 +70,7 @@ def iprscan(ref, gff_file, wd, threads):
             done_prot[mRNA] = mRNA
     sys.stdout.write(("\n###FINISHED TO RUN INTERPROSCAN ANALYSIS AT:\t" + now + "\t###\n###PROTEINS DOMAINS WERE FOUND FOR \t\033[32m" + str(len(done_prot)) + "\033[0m\t PROTEINS\t###\n"))
 
-    return (prot_file_mod.name + ".tsv")
+    return ([prot_file_mod.name + ".tsv", bad_gene])
 
 
 
