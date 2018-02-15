@@ -13,6 +13,7 @@ import collectOnly as collect
 import consensusIAssembler as consensus
 import dirsAndFiles as logistic
 import getRightStrand as grs
+import interproscan as iprscan
 import manipulateSeq as mseq
 import mapping
 import pasa as pasa
@@ -242,6 +243,10 @@ def upgrade():
         final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
 
         final_files.append(final_update)
+        final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
+        final_files.append(final_update_stats)
+        annot = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
+        final_files.append(annot)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
