@@ -180,7 +180,7 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
         for fasta_file in file:
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
             new_commands.append(complete_data)
-    results = pool.map_async(iAssembler, new_commands)
+    results = pool.map_async(iAssembler, new_commands, chunksize=1)
     with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
         while not results.ready():
             size = queue.qsize()

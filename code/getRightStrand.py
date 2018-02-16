@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
-import progressbar
 import re
 import shutil
 import subprocess
@@ -10,9 +7,13 @@ import sys
 import tempfile
 import time
 import warnings
+from multiprocessing import Pool, Manager
+
+import gffutils
+import gffutils.gffwriter as gffwriter
+import progressbar
 from Bio import Seq
 from Bio import SeqIO
-from multiprocessing import Pool, Manager
 
 #======================================================================================================================
 
@@ -634,7 +635,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
 
 
-    results = pool.map_async(runExonerate, commandList)
+    results = pool.map_async(runExonerate, commandList, chunksize=1)
     with progressbar.ProgressBar(max_value=len(commandList)) as bar:
         while not results.ready():
             size = queue.qsize()

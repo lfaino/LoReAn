@@ -69,8 +69,9 @@ def iprscan(ref, gff_file, wd, threads):
             mRNA = line.split("\t")[0]
             done_prot[mRNA] = mRNA
     sys.stdout.write(("\n###FINISHED TO RUN INTERPROSCAN ANALYSIS AT:\t" + now + "\t###\n###PROTEINS DOMAINS WERE FOUND FOR \t\033[32m" + str(len(done_prot)) + "\033[0m\t PROTEINS\t###\n"))
-
-    return prot_file_mod.name + ".tsv", bad_gene
+    final_annot = wd + "/" + gff_file + ".tsv"
+    os.rename(prot_file_mod.name + ".tsv", final_annot)
+    return final_annot, bad_gene
 
 
 
