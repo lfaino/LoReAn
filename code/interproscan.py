@@ -7,9 +7,9 @@ import subprocess
 import sys
 import tempfile
 import warnings
+
 from Bio import SeqIO
 from Bio.Seq import Seq
-
 
 #======================================================================================================================
 
@@ -70,7 +70,7 @@ def iprscan(ref, gff_file, wd, threads):
             done_prot[mRNA] = mRNA
     sys.stdout.write(("\n###FINISHED TO RUN INTERPROSCAN ANALYSIS AT:\t" + now + "\t###\n###PROTEINS DOMAINS WERE FOUND FOR \t\033[32m" + str(len(done_prot)) + "\033[0m\t PROTEINS\t###\n"))
 
-    return ([prot_file_mod.name + ".tsv", bad_gene])
+    return prot_file_mod.name + ".tsv", bad_gene
 
 
 

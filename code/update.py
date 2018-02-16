@@ -12,6 +12,7 @@ import arguments as arguments
 import collectOnly as collect
 import consensusIAssembler as consensus
 import dirsAndFiles as logistic
+import evmPipeline
 import getRightStrand as grs
 import interproscan as iprscan
 import manipulateSeq as mseq
@@ -81,12 +82,15 @@ def upgrade():
     pasa_dir = wd + 'PASA/'
     star_out = wd + '/STAR/'
     trin_dir = wd + '/Trinity/'
+    interproscan_out_dir = wd + 'interproscan'
 
     logistic.check_create_dir(trin_dir)
     logistic.check_create_dir(star_out)
     logistic.check_create_dir(pasa_dir)
     logistic.check_create_dir(gmap_wd)
     logistic.check_create_dir(exonerate_wd)
+    logistic.check_create_dir(interproscan_out_dir)
+
     if args.long_reads:
         consensus_wd = (wd + '/consensus/')
         logistic.check_create_dir(consensus_wd)
@@ -245,8 +249,9 @@ def upgrade():
         final_files.append(final_update)
         final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
         final_files.append(final_update_stats)
-        annot = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
+        annot, bad_models = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
         final_files.append(annot)
+        final_files.append(bad_models)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))

@@ -521,8 +521,9 @@ def main():
 
         final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
         final_files.append(final_update_stats)
-        annot = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
+        annot, bad_models = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
         final_files.append(annot)
+        final_files.append(bad_models)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
