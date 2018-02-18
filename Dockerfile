@@ -1,9 +1,11 @@
-FROM ubuntu:16.04
+FROM ubuntu:xenial
 
-RUN apt-get clean all && apt-get update && apt-get install -y build-essential apt-utils git wget perl \
-    python3.5 python2.7 python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential git wget perl \
+    python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
-    bzip2 liblzma-dev libbz2-dev
+    bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping
+
 
 RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
@@ -13,7 +15,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
-RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
+RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
     psutil memory_profiler pathlib colorama
 
 WORKDIR /opt/

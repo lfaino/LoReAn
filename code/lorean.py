@@ -173,7 +173,7 @@ def main():
                 bam_file = short_sorted_bam.split("/")
                 short_bam = star_out + "/" + bam_file[-1]
                 if not os.path.exists(ref):
-                    os.symlink(short_sorted_bam, short_bam)
+                    os.link(short_sorted_bam, short_bam)
 
             else:
                 short_sorted_bam = False
