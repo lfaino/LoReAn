@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
+import progressbar
 import re
 import shutil
 import subprocess
@@ -7,13 +10,9 @@ import sys
 import tempfile
 import time
 import warnings
-from multiprocessing import Pool, Manager
-
-import gffutils
-import gffutils.gffwriter as gffwriter
-import progressbar
 from Bio import Seq
 from Bio import SeqIO
+from multiprocessing import Pool, Manager
 
 #======================================================================================================================
 
@@ -719,3 +718,7 @@ def runExonerate(commandList):
                     fileFinalGff.write(('\t'.join(exonList)) + "\n")
     fileFinalGff.close()
     return protGff3
+
+
+if __name__ == '__main__':
+    removeOverlap(*sys.argv[1:])

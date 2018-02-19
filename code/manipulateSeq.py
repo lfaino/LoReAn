@@ -4,11 +4,11 @@ import datetime
 import os
 import subprocess
 import sys
+from Bio import SeqIO
+from Bio.Seq import reverse_complement
 from multiprocessing import Pool
 
 import ssw_lib
-from Bio import SeqIO
-from Bio.Seq import reverse_complement
 
 
 def to_int(seq, lEle, dEle2Int):

@@ -122,7 +122,7 @@ def cat_assembled(wd):
                         if evm[0] in above:
                             SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
                         else:
-                            fasta_dict[above[0]].id = fasta_dict[evm[0]].id
+                            SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta") 
                             SeqIO.write(fasta_dict[above[0]], testFasta, "fasta")
                     elif len(evm) > 1:
                         SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")

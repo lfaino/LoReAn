@@ -23,7 +23,7 @@ https://docs.docker.com/engine/installation/
 
 After Docker installation, you can download  LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID 
+docker run -it --rm -v $PWD:/data lfaino/lorean:iprscan createUser.py $USER $UID 
 ```
 
 At this point, run
