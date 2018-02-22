@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
-import progressbar
+import os
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import warnings
+from multiprocessing import Pool
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 from Bio import Seq
 from Bio import SeqIO
-from multiprocessing import Pool, Manager
 
 #======================================================================================================================
 
@@ -21,6 +21,8 @@ GT_GFF3 = 'gt gff3 -sort -tidy %s'
 BEDTOOLS_GET_FASTA = 'bedtools getfasta -fi %s -bed %s -fo %s'
 
 GFFREAD_W = 'gffread -W -g %s -w %s -y %s %s'
+
+GFFREAD_M = 'gffread -F -M -C -K -Q -Z -o %s %s'
 
 EXONERATE = 'exonerate --model protein2genome --bestn 1 --showtargetgff yes --query %s --target %s'
 
@@ -34,7 +36,7 @@ GT_GFF3_INTRON = 'gt gff3 -sort -addintrons -tidy %s'
 
 BEDTOOLS_INTERSECT = 'bedtools intersect -v -a %s -b %s'
 
-GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
+GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
 GT_GFF3TOGTF = 'gt gff3_to_gtf %s'
 
@@ -322,100 +324,127 @@ def removeOverlap(gff, verbose):
     return outputFilename
 
 
-def genename(gff_filename, prefix, verbose):
+def genename(gff_filename, prefix, verbose, wd):
+
+    global prefix_name
+    prefix_name = prefix
 
 
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="rename") as fileout:
-        with open(gff_filename, "r") as filein:
-            for line in filein:
-                if not line.startswith('#'):
-                    fileout.write(line)
-
-    errorFilefile = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")# open(errorFile, "w")
-    tmp_file = tempfile.NamedTemporaryFile(delete=False, mode = "w", prefix="rename")
-    cmd = GT_GFF3 % fileout.name
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir= wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    gt_com = GT_GFF3 % gff_filename
     if verbose:
-        sys.stderr.write('Executing: %s\n\n' % cmd)
-        sys.stderr.write('Log file is: %s\n\n' % errorFilefile.name)
-    gt_call = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errorFilefile, shell=True)
-    chrold = ''
-    count = 0
-    path = []
-    path = gff_filename.split('/')
-    path[-1] = prefix + '_LoReAn.annotation.gff3'
-    newpath = '/'.join(path)
-    o = open(newpath, 'w+')
-    o.write('##version-gff 3\n')
-    for ln in gt_call.stdout.readlines():
-        lnn = (ln.decode("utf-8")).rstrip('\n')
-        fields = lnn.split('\t')
-        if len(fields) == 9:
-            typef = fields[2]
-            fields[1] = 'LoReAn'
-            if 'gene' in typef:
-                featureann = fields[8].split(';')
-                for elm in featureann:
-                    if 'ID' in elm:
-                        idname = elm
-                    elif 'Name' in elm:
-                        if fields[0] == chrold:
-                            count += 10
-                            fatureattgene = prefix + '_' + chrold + '_G_' + str(count)
-                            fields[8] = idname + ';Name=' + fatureattgene
-                        else:
-                            chrold = fields[0]
-                            count = 0
-                            count += 10
-                            fatureattgene = prefix + '_' + chrold + '_G_' + str(count)
-                            fields[8] = idname + ';Name=' + fatureattgene
-                o.write('\t'.join(fields) + '\n')
-
-            elif 'mRNA' in typef:
-                featureann = fields[8].split(';')
-                for elm in featureann:
-                    if 'ID' in elm:
-                        idname = elm
-                    elif 'Parent' in elm:
-                        parentname = elm
-                fields[8] = idname + ';' + parentname
-                o.write('\t'.join(fields) + '\n')
-
-
-            else:
-                o.write('\t'.join(fields) + '\n')
-    o.close()
-    return newpath
-
-
-def newNames(oldname):
-    finalout = oldname + ".sorted.gff"
-    errorFile = oldname + ".gt_err.log"
-    finaloutfile = open(finalout, "w")
-    errorFilefile = open(errorFile, "w")
-    gt_com = GT_GFF3 % oldname
-    gt_call = subprocess.Popen(gt_com, stdout=finaloutfile, stderr=errorFilefile, shell=True)
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
     gt_call.communicate()
-    finaloutfile.close()
-    errorFilefile.close()
-    return finalout
+
+    db1 = gffutils.create_db(out.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_name)
+    list_mrna = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('mRNA')]
+    out_gff = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix= ".gff3", dir=wd)
+    gff_out = gffwriter.GFFWriter(out_gff.name)
+    gene_name = []
+    for evm in list_mrna:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            id_gene = i.attributes['ID'][0]
+            if not id_gene in gene_name:
+                gff_out.write_rec(i)
+                gene_name.append(id_gene)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
+
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir = wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w" , dir = wd)
+    gt_com = GT_RETAINID % out_gff.name
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
+    gt_call.communicate()
+    if verbose:
+        print(out.name)
+    return (out.name)
+
+gene_count = 0
+exon_cds_count = 0
+chrold = ""
+
+def transform_name(f):
+    global gene_count
+    global chrold
+    global exon_cds_count
+    chrold = ""
+    if f.featuretype == 'gene':
+        if chrold == "" or f.chrom in chrold:
+            chrold = f.chrom
+            gene_count += 10
+            fatureattgene = prefix_name + '_' + chrold + '_G_' + str(gene_count)
+            f.attributes['Name'] = fatureattgene
+        else:
+            chrold = f.chrom
+            gene_count = 0
+            gene_count += 10
+            fatureattgene = prefix_name + '_' + chrold + '_G_' + str(gene_count)
+            f.attributes['Name'] = fatureattgene
+        for field in f.attributes:
+            if "ID" in field:
+                id = f.attributes["ID"]
+            elif "Name" in field:
+                name = f.attributes["Name"]
+        f.attributes = ""
+        gene = {}
+        gene["ID"] = id
+        gene["Name"] = name
+        f.attributes = gene
+
+    elif f.featuretype == 'mRNA':
+        for field in f.attributes:
+            if "ID" in field:
+                id = f.attributes["ID"]
+            elif "Parent" in field:
+                parent = f.attributes["Parent"]
+        f.attributes = ""
+        mRNA = {}
+        mRNA["ID"] = id
+        mRNA["Parent"] = parent
+        f.attributes = mRNA
+    else:
+        exon_cds_count += 1
+        for field in f.attributes:
+            if "Parent" in field:
+                parent = f.attributes["Parent"]
+        f.attributes = ""
+        code = {}
+        code["Parent"] = parent
+        code["ID"] = "LoReAn-" + str(exon_cds_count)
+        f.attributes = code
+
+    return f
 
 
-def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
-    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
+
+def strand(gff_file1, gff_file2, evm_only, gmap_wd, verbose):
+
+    evm_only_gene = []
+    with open(evm_only, "r") as fh:
+        for line in fh:
+            evm_only_gene.append(line.rstrip())
+
+    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs_output_strand", suffix=".gff3", dir=gmap_wd)
     gff_out = gffwriter.GFFWriter(outputFilename.name)
-    outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=gmap_wd)
-    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
 
     gt_com = GT_RETAINID % gff_file1
-    file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd)
-    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=gmap_wd)
+    file1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs_out_1.", suffix=".gff3" ,dir=gmap_wd)
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs_out.",dir=gmap_wd)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
         sys.stderr.write('Log file is: %s %s\n\n' % (file1.name, err1.name))
     gt_call = subprocess.Popen(gt_com, stdout=file1, stderr=err1, shell=True)
     gt_call.communicate()
 
-    file2 = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    file2 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs_out_2.", suffix=".gff3" ,dir=gmap_wd)
     err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")
     gt_com = GT_RETAINID % gff_file2
     if verbose:
@@ -425,56 +454,8 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
 
     db1 = gffutils.create_db(file1.name, ':memory:', merge_strategy='create_unique', keep_order=True)
     db2 = gffutils.create_db(file2.name, ':memory:', merge_strategy='create_unique', keep_order=True)
-    listgeneintrons = []
-    listgenetotal = []
-    for i in db1.features_of_type("intron"):
-        g = ' '.join(i.attributes['Parent'])
-        listgeneintrons.append(g)
-    for i in db1.features_of_type("CDS"):
-        g = ' '.join(i.attributes['Parent'])
-        listgenetotal.append(g)
-    listgene1 = sorted(set(list(set(listgenetotal) ^ set(listgeneintrons))))
-    listgeneintrons = []
-    listgenetotal = []
 
-    for i in db2.features_of_type("intron"):
-        g = ' '.join(i.attributes['Parent'])
-        listgeneintrons.append(g)
-    for i in db2.features_of_type("CDS"):
-        g = ' '.join(i.attributes['Parent'])
-        listgenetotal.append(g)
-    listgene2 = sorted(set(list(set(listgenetotal) ^ set(listgeneintrons))))
-
-    newlist = []
-    gene_dict = {}
-    for a in listgene2:
-        b = a.split('_', 1)[1]
-        bb = b.split('.')
-        del bb[-1]
-        evm = '.'.join(bb)
-        newlist.append(evm)
-        if evm in gene_dict:
-            z = gene_dict[evm]
-            gene_dict[evm] = z + [a]
-        else:
-            gene_dict[evm] = [a]
-    commonlist = list(set(listgene1).intersection(newlist))
-    uniqGmap = sorted(set(list(set(newlist) ^ set(commonlist))))
-
-    evm_list = []
-    gmap_list = []
-    for a in commonlist:
-        if gene_dict[a] and len(gene_dict[a]) < 2:
-            evm_list.append(a)
-        elif gene_dict[a] and len(gene_dict[a]) > 1:
-            gmap_list = gmap_list + gene_dict[a]
-
-    for a in uniqGmap:
-        if gene_dict[a]:
-            gmap_list = gmap_list + gene_dict[a]
-    listgeneintrons_u = (set(listgeneintrons))
-
-    for evm in evm_list:
+    for evm in evm_only_gene:
         for i in db1.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
         gff_out.write_rec(db1[evm])
@@ -483,16 +464,16 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
         for i in db1.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
 
-    for evm in gmap_list:
-        for i in db2.children(evm, featuretype='CDS', order_by='start'):
-            gff_out_s.write_rec(i)
-        gff_out_s.write_rec(db2[evm])
-        for i in db2.parents(evm, featuretype='gene', order_by='start'):
-            gff_out_s.write_rec(i)
-        for i in db2.children(evm, featuretype='exon', order_by='start'):
-            gff_out_s.write_rec(i)
+    list_introns = [[mRNA.chrom, mRNA.start, mRNA.end, mRNA.attributes["ID"][0]] for mRNA in db2.features_of_type('mRNA')]
+    correct_map = []
+    for line in list_introns:
+        elm = re.split("_|\.", line[3])
+        pos_map = elm[:-1]
+        elm_kept = pos_map[-3:]
+        if line[0] == elm_kept[0] and abs(line[1] - int(elm_kept[1])) < 10000 and abs(line[2] - int(elm_kept[2])) < 10000:
+            correct_map.append(line[3])
 
-    for evm in listgeneintrons_u:
+    for evm in correct_map:
         for i in db2.children(evm, featuretype='CDS', order_by='start'):
             gff_out.write_rec(i)
         gff_out.write_rec(db2[evm])
@@ -501,20 +482,7 @@ def strand(gff_file1, gff_file2, fasta, proc, gmap_wd, verbose):
         for i in db2.children(evm, featuretype='exon', order_by='start'):
             gff_out.write_rec(i)
     gff_out.close()
-    gff_out_s.close()
-
-    gffOrf = longest(outputFilenameGmap.name, fasta, proc, gmap_wd, verbose)
-
-    output_filename_final = gmap_wd + 'finalAnnotation.Final.Comb.gff3'
-    gff_files = [gffOrf, outputFilename.name]
-
-    with open(output_filename_final, 'wb') as wfd:
-        for f in gff_files:
-            with open(f, 'rb') as fd:
-                shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
-
-    return output_filename_final
-
+    return outputFilename.name
 
 def exonerate(ref, gff_file, proc, wd, verbose):
 
@@ -543,14 +511,10 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     longestProt = []
     listTotal = []
     listSingleExons = []
-    testDict= {}
 
     for record in SeqIO.parse(prot_file_out, "fasta"):
         listTotal.append(record.id)
-        if record.seq.startswith("M"):# and record.seq.endswith("."):
-            listComplete.append(record.id)
-        else:
-            dictIncomplete[record.id] = record.id
+        dictIncomplete[record.id] = record.id
     for record in SeqIO.parse(exon_file_out, "fasta"):
         listFields = record.description.split(' ')
         for elem in listFields:
@@ -598,12 +562,9 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     prot_file_out_mod = prot_file_out + ".mod.fasta"
     SeqIO.write(longestProt, prot_file_out_mod, "fasta")
 
-    manage = Manager()
-    queue = manage.Queue()
     pool = Pool(processes=int(proc), maxtasksperchild=10000)
-
-    commandList = []
     listShort = []
+    list_get_seq = []
     record_dict = SeqIO.to_dict(SeqIO.parse(exon_file_out, "fasta"))
     for key in dictFastaProt:
         if key in record_dict:
@@ -623,26 +584,14 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                     bedhandler = open(bedFile, 'w')
                     bedhandler.write(locus)
                     bedhandler.close()
-                    com = BEDTOOLS_GET_FASTA % (ref, bedFile, outputFilename)
-                    if verbose:
-                        sys.stderr.write('Executing: %s\n\n' % com)
-                    call = subprocess.Popen(com, cwd = wd, shell=True)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
-                    call.communicate()
-                    combList = [outputFilenameProt, outputFilename, verbose, queue]
-            commandList.append(combList)
+                    data = [ref, bedFile, outputFilename, outputFilenameProt, verbose, wd]
+                    list_get_seq.append(data)
 
 
-
-
-    results = pool.map_async(runExonerate, commandList, chunksize=1)
-    with progressbar.ProgressBar(max_value=len(commandList)) as bar:
-        while not results.ready():
-            size = queue.qsize()
-            bar.update(size)
-            time.sleep(1)
-
+    results_get = pool.map(get_fasta, list_get_seq, chunksize=1)
+    results = pool.map(runExonerate, results_get, chunksize=1)
     outputFilenameGff = wd + 'mRNA_complete_gene_Annotation.gff3'
-    exonerate_files = results._value + [outputFilenameGff]
+    exonerate_files = results + [outputFilenameGff]
 
     listInGff = listComplete + listShort
     listAsbent = sorted(set(list(set(listTotal) ^ set(listInGff))))
@@ -670,6 +619,59 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     return orintedFIleN
 
+def collaps_locus(orintedFIleN, wd, verbose):
+
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", dir=wd)
+    out = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix= ".gff3", dir=wd)
+
+    com = GFFREAD_M % (out.name, orintedFIleN)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=log, cwd = wd, stderr=err, shell=True)
+    call.communicate()
+
+    db1 = gffutils.create_db(out.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
+    list_mrna = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('mRNA')]
+    out = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix= ".gff3", dir=wd)
+    gff_out = gffwriter.GFFWriter(out.name)
+    gene_name = []
+    for evm in list_mrna:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            id_gene = i.attributes['ID'][0]
+            if not id_gene in gene_name:
+                gff_out.write_rec(i)
+                gene_name.append(id_gene)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
+
+    return out.name
+
+
+def transform(f):
+    if f.featuretype == 'locus':
+        f.featuretype = "gene"
+        f.source = "LoReAn"
+    elif "mRNA" in f.featuretype:
+        f.attributes['Parent'] = f.attributes['locus']
+    return f
+
+
+def get_fasta(list_data):
+
+    com = BEDTOOLS_GET_FASTA % (list_data[0], list_data[1], list_data[2])
+    if list_data[4]:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, cwd = list_data[5], shell=True)  # , stdout= fasta_file_outfile , stderr=errorFilefile)
+    call.communicate()
+    os.remove(list_data[1])
+    combList = [list_data[3], list_data[2], list_data[4], list_data[5]]
+    return combList
+
 
 def runExonerate(commandList):
     outputFilenameProt = commandList[0]
@@ -679,10 +681,9 @@ def runExonerate(commandList):
     protGff_outfile = open(protGff, "w")
     errorFilefile = open(errorFile, "w")
     com = EXONERATE % (outputFilenameProt, outputFilename)
-    commandList[3].put(com)
     if commandList[2]:
         sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=protGff_outfile, stderr=errorFilefile, shell=True)
+    call = subprocess.Popen(com, stdout=protGff_outfile, cwd = commandList[3], stderr=errorFilefile, shell=True)
     call.communicate()
     fileGff = open(protGff, "r")
     protGff3 = protGff + ".gff3"
@@ -717,8 +718,16 @@ def runExonerate(commandList):
                                 "Parent=" + nameGene[2] + ".mRNA"]
                     fileFinalGff.write(('\t'.join(exonList)) + "\n")
     fileFinalGff.close()
+    if os.stat(errorFile).st_size == 0:
+        os.remove(errorFile)
+        os.remove(protGff)
+    os.remove(outputFilenameProt)
+    os.remove(outputFilename)
+
     return protGff3
 
 
 if __name__ == '__main__':
-    removeOverlap(*sys.argv[1:])
+    #strand(*sys.argv[1:])
+    #exonerate(fasta, outputFilename, proc, gmap_wd, verbose)
+    genename(*sys.argv[1:])

@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
 import os
-import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-from Bio import SeqIO
 from multiprocessing import Pool, Manager
+
+import progressbar
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -180,7 +181,7 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
         for fasta_file in file:
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
             new_commands.append(complete_data)
-    results = pool.map_async(iAssembler, new_commands)
+    results = pool.map_async(iAssembler, new_commands, chunksize=1)
     with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
         while not results.ready():
             size = queue.qsize()
@@ -195,18 +196,20 @@ def iAssembler(new_commands):
 
     cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])
     new_commands[5].put(cmd)
-    outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
-    log_name = new_commands[3] + "Assembly.log"
-    log = open(log_name, 'w')
+    outputDir = new_commands[3] + new_commands[0] + '_output/'
+    if not os.path.isdir(outputDir):
+        log_name = new_commands[3] + "Assembly.log"
+        log = open(log_name, 'w')
 
-    try:
-        if new_commands[4]:
-            sys.stderr.write('Executing: %s\n\n' % cmd)
-        assembly = subprocess.Popen(cmd, cwd=new_commands[3], stderr = log, stdout = log, shell=True)
-        assembly.communicate()
-    except:
-        return False
-    log.close()
+        try:
+            if new_commands[4]:
+                sys.stderr.write('Executing: %s\n\n' % cmd)
+            assembly = subprocess.Popen(cmd, cwd=new_commands[3], stderr = log, stdout = log, shell=True)
+            assembly.communicate()
+        except:
+            return False
+        log.close()
+
     return outputDir
 
 if __name__ == '__main__':

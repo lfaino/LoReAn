@@ -117,6 +117,7 @@ def main():
         braker_folder = wd + '/braker/'
         evm_output_dir = wd + '/evm_output/'
         interproscan_out_dir = wd + 'interproscan'
+        exonerate_wd_1 = wd + '/exonerate_1/'
 
         logistic.check_create_dir(evm_inputs_dir)
         logistic.check_create_dir(evm_output_dir)
@@ -126,6 +127,7 @@ def main():
         logistic.check_create_dir(gmap_wd)
         logistic.check_create_dir(interproscan_out_dir)
         logistic.check_create_dir(exonerate_wd)
+        logistic.check_create_dir(exonerate_wd_1)
         if args.long_reads:
             consensus_wd = (wd + '/consensus/')
             logistic.check_create_dir(consensus_wd)
@@ -372,7 +374,10 @@ def main():
         final_files.append(gff3_stat_file)
 
         if not args.short_reads and not args.long_reads:
-            last_gff3 = grs.newNames(evm_gff3)
+            last_gff3 = grs.genename(evm_gff3, args.prefix_gene, args.verbose, evm_output_dir)
+            annot = iprscan.iprscan(ref, last_gff3, interproscan_out_dir, args.threads)
+            final_files.append(last_gff3)
+            final_files.append(annot)
             #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
@@ -383,17 +388,14 @@ def main():
             round_n += 1
             finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
                                                ref, trinity_out, evm_gff3, args.verbose)
-            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
-            updatedGff3 = grs.newNames(final_update)
+            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose, evm_output_dir)
             #score_gff3 = score.score(updatedGff3, evm_inputs)
-            annot = iprscan.iprscan(ref, updatedGff3, interproscan_out_dir, args.threads)
-            final_files.append(updatedGff3)
+            annot = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
+            final_files.append(final_update)
             final_files.append(annot)
         else:
             updatedGff3 = evm_gff3
 
-
-        #score_gff3 = score.score(evm_gff3, evm_inputs)
 
         if args.long_reads == '':
             final_output_dir = wd + 'output/'
@@ -477,8 +479,8 @@ def main():
         tmp_assembly_all = collect.cat_assembled_all(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
-        merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
-        collect.add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename)
+
+        merged_fasta_filename, evm_only_gene = collect.add_EVM(updatedGff3, tmp_assembly, consensus_wd, ref, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
@@ -490,16 +492,12 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
 
-        strand_mapped_gff3 = grs.strand(evm_gff3, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
-        gff_pasa = grs.appendID(strand_mapped_gff3)
-        no_overl = grs.removeOverlap(gff_pasa, args.verbose)
-        no_disc = grs.removeDiscrepancy(no_overl, evm_gff3, args.verbose)
-        uniq_gene = grs.newNames(no_disc)
+        strand_mapped_gff3 = grs.strand(evm_gff3, consensus_mapped_gff3, evm_only_gene, gmap_wd, args.verbose)
+        #sys.stdout.write(("\n###DONE THE STRAND RIGHT\t" + now + "\t###\n"))
+        gff = grs.exonerate(ref, strand_mapped_gff3, threads_use, exonerate_wd, args.verbose)
+        gff = grs.collaps_locus(gff, gmap_wd, args.verbose)
+        finalupdate3 = grs.genename(gff, args.prefix_gene, args.verbose, gmap_wd)
 
-        finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose)
-        print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
-        finalupdate4 = grs.exonerate(ref, finalupdate3, threads_use, exonerate_wd, args.verbose)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
@@ -510,12 +508,11 @@ def main():
         round_n += 1
 
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
-                                           fasta_all, finalupdate5, args.verbose)
+                                           fasta_all, finalupdate3, args.verbose)
         round_n += 1
-        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
+        final_update = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                             fasta_all, finalupdate, args.verbose)
-        final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
-        #score_gff3 = score.score(final_update, evm_inputs)
+
 
         final_files.append(final_update)
 

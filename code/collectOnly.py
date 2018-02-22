@@ -1,12 +1,17 @@
 #!/usr/bin/python3
 
 import os
+import subprocess
 import sys
+import tempfile
+
 from Bio import SeqIO
 
 count_sequences = 0
 length_cluster = 0
 
+
+GFFREAD_W = 'gffread -g %s -w %s %s'
 
 
 def parse_only(threshold_float, wd, verbose):
@@ -18,7 +23,7 @@ def parse_only(threshold_float, wd, verbose):
         sys.stderr.write('Executing: Parse assembled consensus and EVM\n')
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
-            if 'output' in direc:
+            if direc.endswith('output'):
                 outputDir = wd + direc + '/'
                 if outputDir:
                     parse_contigs(outputDir, threshold_float, verbose)
@@ -50,6 +55,8 @@ def parse_contigs(output_assembly, threshold_float, verbose):
     fname = output_assembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
     if fname_exists:
+        location_list = output_assembly.split("/")[-2].split(".")[0].split("_")[:-1]
+        location = "_".join(location_list)
         # part all the files in the tmp assembly folder
         contigInfo = open(output_assembly + 'contig_member', 'r')
         contigs = {}
@@ -76,14 +83,14 @@ def parse_contigs(output_assembly, threshold_float, verbose):
             # to retrieve only supported assembly
             if len(element) == 2:
                 if element[0] >= threshold and 'evm' in element[1]:
-                    real_contigs[key] = element[1] + ' ' + str(
+                    real_contigs[key] = element[1] + '_' + location + ' ' + str(
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                 elif element[0] < threshold and 'evm' in element[1]:
-                    real_contigs[key] = element[1] + ' ' + str(
+                    real_contigs[key] = element[1] + '_' + location + ' ' + str(
                         element[0]) + '_below_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
             elif len(element) == 1:
                 if element[0] >= threshold:
-                    real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + ' ' + str(
+                    real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + '_' + location + ' ' + str(
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                     count_unitigs += 1
         # writes the outputs
@@ -106,7 +113,7 @@ def cat_assembled(wd):
     """
     sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     wd_tmp = wd
-    fileName = wd_tmp + 'assembly.fasta_tmp1'
+    fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
 
     for root, dirs, files in os.walk(wd_tmp):
@@ -161,42 +168,65 @@ def cat_assembled_all(wd):
     return fileName
 
 
-def add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename):
+def add_EVM(updatedGff3, tmp_assembly, consensus_wd, ref, verbose):
 
     """
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
     """
+
+    out = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
+
+    merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
+
     sys.stdout.write('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
-    whole_fasta = open(gffread_fasta_file, 'r')
+
     out_fasta_file = open(tmp_assembly, 'r')
-    outputMerged = open(merged_fasta_filename, 'w')
+    com = GFFREAD_W % (ref, out.name, updatedGff3)
 
-    wholeDict = SeqIO.to_dict(SeqIO.parse(whole_fasta, 'fasta'))
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % com)
+    call = subprocess.Popen(com, stdout=log, cwd = consensus_wd, stderr=err, shell=True)
+    call.communicate()
+
+    evm_common = []
+    evm_all = []
+    evm_fasta = open(out.name, 'r')
+    evm_dict = SeqIO.to_dict(SeqIO.parse(evm_fasta, 'fasta'))
+    for key in evm_dict:
+        evm_all.append(key)
+    new_dict = {}
     count = 0
-    dictOut = {}
-    outFasta = SeqIO.parse(out_fasta_file, 'fasta')
-    for record in outFasta:
-        if record.id in dictOut:
-            dictOut[str(record.id) + '_' + str(count)] = str(record.seq)
-            count += 1
+    assembly_dict = SeqIO.to_dict(SeqIO.parse(out_fasta_file, 'fasta'))
+    for record in assembly_dict:
+        if record.startswith('evm'):
+            original = record.split('_')[:-3]
+            if original[0] in evm_dict:
+                evm_common.append(original[0])
+                new_dict[record] = assembly_dict[record]
         else:
-            dictOut[record.id] = str(record.seq)
-    for key in list(wholeDict.keys()):
-        if 'evm' in key and key not in dictOut:
-            ident = '>Gene' + str(count) + '_' + key
-            outputMerged.write(
-                ident + '\n' + str(wholeDict[key].seq) + '\n')
             count += 1
-    for key, element in list(dictOut.items()):
-        ident = '>Gene' + str(count) + '_' + key
-        outputMerged.write(ident + '\n' + str(element) + '\n')
-        count += 1
+            name = 'Gene' + str(count) + '_' + assembly_dict[record].id
+            assembly_dict[record].id = name
+            new_dict[record] = assembly_dict[record]
 
-    whole_fasta.close()
-    outFasta.close()
-    outputMerged.close()
+
+    diff = list(set(evm_common)^set(evm_all))
+
+    with open(merged_fasta_filename, 'w') as fh:
+        SeqIO.write(new_dict.values(), fh, 'fasta')
+
+    out = tempfile.NamedTemporaryFile(delete=False,  mode="w", prefix="gffreads", dir=consensus_wd)
+    for item in diff:
+        out.write(item + "\n")
+
+    if verbose:
+        sys.stderr.write('ONLY PRESENT IN EVM ARE LOCATED AT: %s\n\n' % out.name)
+
+    return merged_fasta_filename, out.name
 
 if __name__ == '__main__':
-    cat_assembled(*sys.argv[1:])
+    add_EVM(*sys.argv[1:])
