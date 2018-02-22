@@ -510,10 +510,10 @@ def main():
         finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                            fasta_all, finalupdate3, args.verbose)
         round_n += 1
-        final_update = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
+        finalupdate3 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                             fasta_all, finalupdate, args.verbose)
 
-
+        final_update = grs.genename(finalupdate3, args.prefix_gene, args.verbose, gmap_wd)
         final_files.append(final_update)
 
         final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
