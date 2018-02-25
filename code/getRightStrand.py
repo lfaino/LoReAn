@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
 import os
 import re
 import shutil
@@ -7,12 +9,9 @@ import subprocess
 import sys
 import tempfile
 import warnings
-from multiprocessing import Pool
-
-import gffutils
-import gffutils.gffwriter as gffwriter
 from Bio import Seq
 from Bio import SeqIO
+from multiprocessing import Pool
 
 #======================================================================================================================
 
@@ -514,7 +513,10 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     for record in SeqIO.parse(prot_file_out, "fasta"):
         listTotal.append(record.id)
-        dictIncomplete[record.id] = record.id
+        if record.seq.startswith("M"):
+            listComplete.append(record.id)
+        else:
+            dictIncomplete[record.id] = record.id
     for record in SeqIO.parse(exon_file_out, "fasta"):
         listFields = record.description.split(' ')
         for elem in listFields:
