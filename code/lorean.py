@@ -368,14 +368,16 @@ def main():
         final_files.append(evm_gff3)
         final_files.append(gff3_stat_file)
 
+        round_n = 1
+
         if not args.short_reads and not args.long_reads:
             last_gff3 = grs.newNames(evm_gff3)
             #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
 
-        round_n = 1
-        if args.short_reads and not args.long_reads:
+        else:
+        #if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
             round_n += 1
@@ -385,8 +387,8 @@ def main():
             updatedGff3 = grs.newNames(final_update)
             #score_gff3 = score.score(updatedGff3, evm_inputs)
             final_files.append(updatedGff3)
-        else:
-            updatedGff3 = evm_gff3
+        #else:
+            #updatedGff3 = evm_gff3
 
 
         #score_gff3 = score.score(evm_gff3, evm_inputs)
