@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
+import progressbar
 import re
 import shutil
 import subprocess
@@ -7,13 +10,9 @@ import sys
 import tempfile
 import time
 import warnings
-from multiprocessing import Pool, Manager
-
-import gffutils
-import gffutils.gffwriter as gffwriter
-import progressbar
 from Bio import Seq
 from Bio import SeqIO
+from multiprocessing import Pool, Manager
 
 #======================================================================================================================
 
@@ -140,7 +139,6 @@ def appendID(gff):
 
 
 def longest(gff_file, fasta, proc, wd, verbose):
-    outputFilename = wd + 'finalAnnotation.strand.gff3'
     outputFilenameLeft = tempfile.NamedTemporaryFile(delete=False, dir=wd, prefix="longest.")
     gff_out = gffwriter.GFFWriter(outputFilenameLeft.name)
 

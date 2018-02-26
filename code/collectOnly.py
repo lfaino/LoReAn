@@ -2,7 +2,6 @@
 
 import os
 import sys
-
 from Bio import SeqIO
 
 count_sequences = 0
@@ -107,18 +106,35 @@ def cat_assembled(wd):
     """
     sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     wd_tmp = wd
-    fileName = wd_tmp + 'assembly.fasta'
+    fileName = wd_tmp + 'assembly.fasta_tmp1'
     testFasta = open(fileName, 'w')
+
     for root, dirs, files in os.walk(wd_tmp):
         for name in files:
             wd_fasta = os.path.join(root, name)
-            if 'assembled.fasta' in wd_fasta:
-                t_file = open(wd_fasta, 'r')
-                for line in t_file:
-                    testFasta.write(line)
-                t_file.close()
+            if wd_fasta.endswith('_assembled.fasta'):
+                input_file = open(wd_fasta)
+                fasta_dict = SeqIO.to_dict(SeqIO.parse(input_file, "fasta"))
+                evm = [key for key in fasta_dict if "evm" in key]
+                above = [key for key in fasta_dict if "above" in fasta_dict[key].description]
+                if len(fasta_dict) > 1:
+                    if len(evm) > 0 and len(above) > 0:
+                        if evm[0] in above:
+                            SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
+                        else:
+                            fasta_dict[above[0]].id = fasta_dict[evm[0]].id
+                            SeqIO.write(fasta_dict[above[0]], testFasta, "fasta")
+                    elif len(evm) > 1:
+                        SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
+                    elif len(above) > 1:
+                        SeqIO.write(fasta_dict[above[0]], testFasta, "fasta")
 
-    testFasta.close()
+                elif len(evm) > 0:
+                    SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
+                elif len(above) > 0:
+                    SeqIO.write(fasta_dict[above[0]], testFasta, "fasta")
+
+
     return fileName
 
 
@@ -145,16 +161,18 @@ def cat_assembled_all(wd):
     return fileName
 
 
-def add_EVM(whole_fasta_name, output_filename, output_merged_fasta_name):
+def add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename):
+
     """
     this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
     support
     """
     sys.stdout.write('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
     '''Adds the EVM records that are not present in the final contig evidence'''
-    whole_fasta = open(whole_fasta_name, 'r')
-    out_fasta_file = open(output_filename, 'r')
-    outputMerged = open(output_merged_fasta_name, 'w')
+    whole_fasta = open(gffread_fasta_file, 'r')
+    out_fasta_file = open(tmp_assembly, 'r')
+    outputMerged = open(merged_fasta_filename, 'w')
+
     wholeDict = SeqIO.to_dict(SeqIO.parse(whole_fasta, 'fasta'))
     count = 0
     dictOut = {}
@@ -180,3 +198,5 @@ def add_EVM(whole_fasta_name, output_filename, output_merged_fasta_name):
     outFasta.close()
     outputMerged.close()
 
+if __name__ == '__main__':
+    cat_assembled(*sys.argv[1:])

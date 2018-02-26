@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
 import os
+import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-from multiprocessing import Pool, Manager
-
-import progressbar
 from Bio import SeqIO
+from multiprocessing import Pool, Manager
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -68,7 +67,7 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
         sys.stdout.write("\t ###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
 
     else:
-        btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
+        btmerge1 = BEDTOOLS_MERGE % (str(dist))
         sys.stdout.write("\t###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
 
     btsort2 = BEDTOOLS_SORT
@@ -88,6 +87,7 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % btsort2)
     outputBT = btsort2_call.communicate()[0]
+
     final_output = outputBT.splitlines()
     return final_output
 
@@ -208,3 +208,6 @@ def iAssembler(new_commands):
         return False
     log.close()
     return outputDir
+
+if __name__ == '__main__':
+    cluster_pipeline(*sys.argv[1:])

@@ -4,11 +4,11 @@ import datetime
 import os
 import subprocess
 import sys
+from Bio import SeqIO
+from Bio.Seq import reverse_complement
 from multiprocessing import Pool
 
 import ssw_lib
-from Bio import SeqIO
-from Bio.Seq import reverse_complement
 
 
 def to_int(seq, lEle, dEle2Int):
@@ -171,7 +171,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             for adpter in list_seq_adap:
                 list_command.append([record_dict[key], adpter])
         with Pool(processes=int(threads), maxtasksperchild=1000) as p:
-            align_resul = p.map(align_call, list_command)
+            align_resul = p.map(align_call, list_command, chunksize=1)
         for aling_res in align_resul:
             if len(aling_res) == 0:
                 next
@@ -201,7 +201,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             for adpter in list_seq_adap:
                 list_command.append([record_dict[key], adpter])
         with Pool(processes=int(threads), maxtasksperchild=1000) as p:
-            align_resul = p.map(align_call, list_command)
+            align_resul = p.map(align_call, list_command, chunksize=1)
         for aling_res in align_resul:
             if len(aling_res) == 0:
                 next
