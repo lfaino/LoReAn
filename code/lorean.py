@@ -373,6 +373,8 @@ def main():
         final_files.append(evm_gff3)
         final_files.append(gff3_stat_file)
 
+        round_n = 1
+
         if not args.short_reads and not args.long_reads:
             last_gff3 = grs.genename(evm_gff3, args.prefix_gene, args.verbose, evm_output_dir)
             annot = iprscan.iprscan(ref, last_gff3, interproscan_out_dir, args.threads)
@@ -381,20 +383,20 @@ def main():
             #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
-        round_n = 1
-        if args.short_reads and not args.long_reads:
+
+        else:
+        #if args.short_reads and not args.long_reads:
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
             round_n += 1
             finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
                                                ref, trinity_out, evm_gff3, args.verbose)
-            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose, evm_output_dir)
+            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
+            updatedGff3 = grs.newNames(final_update)
             #score_gff3 = score.score(updatedGff3, evm_inputs)
-            annot = iprscan.iprscan(ref, final_update, interproscan_out_dir, args.threads)
-            final_files.append(final_update)
-            final_files.append(annot)
-        else:
-            updatedGff3 = evm_gff3
+            final_files.append(updatedGff3)
+        #else:
+            #updatedGff3 = evm_gff3
 
 
         if args.long_reads == '':
