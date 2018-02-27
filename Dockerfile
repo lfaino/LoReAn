@@ -24,7 +24,7 @@ RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir 
     cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
     cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
-RUN git clone -b master --single-branch https://github.com/lfaino/LoReAn.git  && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
+RUN git clone -b dev --single-branch https://github.com/lfaino/LoReAn.git  && git clone https://github.com/mengyao/Complete-Striped-Smith-Waterman-Library.git && \
     mv Complete-Striped-Smith-Waterman-Library SW && cd SW/src/ && make && cp ssw_lib.py  /opt/LoReAn/code/ && cp libssw.so  /opt/LoReAn/code/
 
 WORKDIR /opt/LoReAn/third_party/software/
@@ -34,30 +34,46 @@ RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATp
 
 RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
 
-RUN wget https://github.com/PASApipeline/PASApipeline/archive/v2.1.0.tar.gz && tar -zxvf v2.1.0.tar.gz && rm v2.1.0.tar.gz &&\
+COPY v2.1.0.tar.gz ./
+
+RUN tar -zxvf v2.1.0.tar.gz && rm v2.1.0.tar.gz &&\
     mv PASApipeline-2.1.0 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
     cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ &&\
     chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
-RUN wget http://bioinf.uni-greifswald.de/augustus/binaries/augustus.current.tar.gz && \
-    tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
+COPY augustus.current.tar.gz ./
 
-RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.5.1.tar.gz && tar -zxvf Trinity-v2.5.1.tar.gz && \
+RUN tar -zxvf augustus.current.tar.gz && rm augustus.current.tar.gz && cd augustus  && make clean && make
+
+COPY Trinity-v2.5.1.tar.gz ./
+
+RUN tar -zxvf Trinity-v2.5.1.tar.gz && \
     mv trinityrnaseq-Trinity-v2.5.1 Trinity &&rm Trinity-v2.5.1.tar.gz && cd Trinity && make && make plugins
 
 RUN git clone https://github.com/alexdobin/STAR.git
 
-RUN wget https://github.com/TransDecoder/TransDecoder/archive/v3.0.1.tar.gz &&  tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
+COPY v3.0.1.tar.gz ./
+
+RUN tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
     cd TransDecoder-3.0.1 && make
 
-RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-06-20.tar.gz && tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz && \
+COPY gmap-gsnap-2017-06-20.tar.gz ./
+
+RUN tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz && \
     mv gmap-2017-06-20/ gmap && cd gmap/ && ./configure && make && sudo make install
 
-RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8e.tar.gz && tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
+COPY fasta-36.3.8e.tar.gz ./
+
+RUN tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
-RUN wget http://exon.gatech.edu/Braker/BRAKER2.tar.gz && tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER && \
- wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
+COPY BRAKER2.tar.gz ./
+
+RUN tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER
+
+COPY v1.1.1.tar.gz ./
+
+RUN tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric && sudo cpan -f -i File::Which
@@ -65,7 +81,9 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
-RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+COPY genometools-1.5.9.tar.gz ./
+
+RUN tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
 
@@ -76,6 +94,36 @@ RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
+
+COPY interproscan-5.27-66.0-64-bit.tar.gz ./
+
+RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
+
+WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+
+RUN mkdir cddblast
+
+COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
+
+RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
+
+COPY signalp-4.1f.Linux.tar.gz ./
+
+RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
+
+COPY signalp-4.1/signalp bin/signalp/4.1/
+
+RUN mkdir /data_panther
+
+COPY tmhmm-2.0c.Linux.tar.gz ./
+RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
+     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
+
+RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
+
+WORKDIR /opt/LoReAn/
+
+RUN chmod a+w /opt/
 
 WORKDIR /data/
 
