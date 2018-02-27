@@ -1,12 +1,17 @@
 #!/usr/bin/python3
 
 import os
+import subprocess
 import sys
+import tempfile
+
 from Bio import SeqIO
 
 count_sequences = 0
 length_cluster = 0
 
+
+GFFREAD_W = 'gffread -g %s -w %s %s'
 
 
 def parse_only(threshold_float, wd, verbose):
@@ -18,7 +23,7 @@ def parse_only(threshold_float, wd, verbose):
         sys.stderr.write('Executing: Parse assembled consensus and EVM\n')
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
-            if 'output' in direc:
+            if direc.endswith('output'):
                 outputDir = wd + direc + '/'
                 if outputDir:
                     parse_contigs(outputDir, threshold_float, verbose)
@@ -50,6 +55,8 @@ def parse_contigs(output_assembly, threshold_float, verbose):
     fname = output_assembly + 'contig_member'
     fname_exists = os.path.isfile(fname)
     if fname_exists:
+        location_list = output_assembly.split("/")[-2].split(".")[0].split("_")[:-1]
+        location = "_".join(location_list)
         # part all the files in the tmp assembly folder
         contigInfo = open(output_assembly + 'contig_member', 'r')
         contigs = {}
@@ -76,14 +83,14 @@ def parse_contigs(output_assembly, threshold_float, verbose):
             # to retrieve only supported assembly
             if len(element) == 2:
                 if element[0] >= threshold and 'evm' in element[1]:
-                    real_contigs[key] = element[1] + ' ' + str(
+                    real_contigs[key] = element[1] + '_' + location + ' ' + str(
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                 elif element[0] < threshold and 'evm' in element[1]:
-                    real_contigs[key] = element[1] + ' ' + str(
+                    real_contigs[key] = element[1] + '_' + location + ' ' + str(
                         element[0]) + '_below_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
             elif len(element) == 1:
                 if element[0] >= threshold:
-                    real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + ' ' + str(
+                    real_contigs[key] = 'Unitig' + str(count_sequences) + '_' + str(count_unitigs) + '_' + location + ' ' + str(
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                     count_unitigs += 1
         # writes the outputs
@@ -106,7 +113,7 @@ def cat_assembled(wd):
     """
     sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
     wd_tmp = wd
-    fileName = wd_tmp + 'assembly.fasta_tmp1'
+    fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
 
     for root, dirs, files in os.walk(wd_tmp):
@@ -122,7 +129,7 @@ def cat_assembled(wd):
                         if evm[0] in above:
                             SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
                         else:
-                            fasta_dict[above[0]].id = fasta_dict[evm[0]].id
+                            SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")
                             SeqIO.write(fasta_dict[above[0]], testFasta, "fasta")
                     elif len(evm) > 1:
                         SeqIO.write(fasta_dict[evm[0]], testFasta, "fasta")

@@ -23,6 +23,7 @@ import dirsAndFiles as logistic
 import evmPipeline
 import getRightStrand as grs
 import handlers as handler
+import interproscan as iprscan
 import manipulateSeq as mseq
 import mapping
 import multithreadLargeFasta as multiple
@@ -115,6 +116,8 @@ def main():
         evm_inputs_dir = wd + '/evm_inputs/'
         braker_folder = wd + '/braker/'
         evm_output_dir = wd + '/evm_output/'
+        interproscan_out_dir = wd + 'interproscan'
+
 
         logistic.check_create_dir(evm_inputs_dir)
         logistic.check_create_dir(evm_output_dir)
@@ -122,6 +125,7 @@ def main():
         logistic.check_create_dir(star_out)
         logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
+        logistic.check_create_dir(interproscan_out_dir)
         logistic.check_create_dir(exonerate_wd)
         if args.long_reads:
             consensus_wd = (wd + '/consensus/')
@@ -358,22 +362,24 @@ def main():
 
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
-            evm_gff3, gff3_stat_file = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
-            evm_gff3, gff3_stat_file = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
         # KEEP THIS OUTPUT
-        final_files.append(evm_gff3)
-        final_files.append(gff3_stat_file)
+
 
         round_n = 1
 
         if not args.short_reads and not args.long_reads:
-            last_gff3 = grs.newNames(evm_gff3)
+            last_gff3 = grs.genename(evm_gff3)
+            final_update_stats= evmPipeline.gff3_stats(last_gff3, pasa_dir)
             #score_gff3 = score.score(last_gff3, evm_inputs)
             now = datetime.datetime.now().strftime(fmtdate)
+            final_files.append(last_gff3)
+            final_files.append(final_update_stats)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
 
         else:
@@ -384,9 +390,12 @@ def main():
             finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
                                                ref, trinity_out, evm_gff3, args.verbose)
             final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
-            updatedGff3 = grs.newNames(final_update)
-            #score_gff3 = score.score(updatedGff3, evm_inputs)
-            final_files.append(updatedGff3)
+            final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
+            #score_gff3 = score.score(last_gff3, evm_inputs)
+            now = datetime.datetime.now().strftime(fmtdate)
+            final_files.append(final_update)
+            final_files.append(final_update_stats)
+
         #else:
             #updatedGff3 = evm_gff3
 
@@ -423,11 +432,9 @@ def main():
                 fileName = consensus_wd + 'mergedGmapEvm.beforeAssembly.gff3'
                 # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
                 # ORIGINAL FILE
-                if os.path.isfile(updatedGff3):
+                if os.path.isfile(final_update):
                     # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, updatedGff3, fileName, args.verbose)
-                else:
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, evm_gff3, fileName, args.verbose)
+                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, final_update, fileName, args.verbose)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -488,10 +495,10 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
 
-        strand_mapped_gff3 = grs.strand(evm_gff3, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
+        strand_mapped_gff3 = grs.strand(final_update, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
         gff_pasa = grs.appendID(strand_mapped_gff3)
         no_overl = grs.removeOverlap(gff_pasa, args.verbose)
-        no_disc = grs.removeDiscrepancy(no_overl, evm_gff3, args.verbose)
+        no_disc = grs.removeDiscrepancy(no_overl, final_update, args.verbose)
         uniq_gene = grs.newNames(no_disc)
 
         finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose)
@@ -512,14 +519,17 @@ def main():
         round_n += 1
         finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                             fasta_all, finalupdate, args.verbose)
-        final_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
+        final_update_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
         #score_gff3 = score.score(final_update, evm_inputs)
 
-        final_files.append(final_update)
+        final_files.append(final_update_update)
 
-        final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
+        final_update_stats= evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
+        annot, bad_models = iprscan.iprscan(ref, final_update_update, interproscan_out_dir, args.threads)
+        final_files.append(annot)
+        final_files.append(bad_models)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
