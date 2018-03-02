@@ -109,7 +109,6 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
 
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
-
     '''Updates the gff3 file with the PASA database'''
     sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
@@ -153,7 +152,6 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
     database with the same name -the one of the reference-.'''
 
     align_pasa_conf = pasa_configuration(pasa_dir, pasa_db, verbose)
-
     cmd = LAUNCH_PASA % (align_pasa_conf, reference, transcripts, max_intron_length, threads)
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     # sys.stdout.write out_file, os.path.isfile(out_file)

@@ -67,8 +67,10 @@ def change_ids(update, wd, verbose):
     return (new_name_update.name)
 
 
-def catTwoBeds(gmap, evm_orig, outFilename, verbose):
+def catTwoBeds(gmap, evm_orig, verbose, wd):
     '''convert in to bed12 and concatenates the two bed12 files'''
+
+    outFilename = wd + 'mergedGmapEvm.beforeAssembly.gff3'
 
     evm = evm_orig
     gtf = evm + ".gtf"

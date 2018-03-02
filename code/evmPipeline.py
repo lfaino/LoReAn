@@ -50,9 +50,8 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
 
     # Combine the different chromosomes
     evm_gff3 = combine_gff3(working_dir)
-    gff3_stat_file = gff3_stats(evm_gff3, working_dir)
 
-    return evm_gff3, gff3_stat_file
+    return evm_gff3
 
 
 def gff3_stats(gff3_file, working_dir):

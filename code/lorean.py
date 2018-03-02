@@ -237,8 +237,7 @@ def main():
             # Create PASA folder and configuration file
             #align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
-            pasa_gff3 = pasa.pasa_call(pasa_dir, args.pasa_db, ref, trinity_out,
-                                       args.max_intron_length, threads_use, args.verbose)
+            pasa_gff3 = pasa.pasa_call(pasa_dir, args.pasa_db, ref, trinity_out, args.max_intron_length, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
@@ -350,126 +349,97 @@ def main():
             else:
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
                               'AAT': merged_prot_gff3, 'gmap': trinity_path}
-
-
-
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE
 
         list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(evm_inputs_dir, evm_inputs)
         weight_file = inputEvm.evm_weight(evm_inputs_dir, weights_dic, list_soft, pasa_name, gmap_name)
         # EVM PIPELINE
-
+        round_n = 1
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
+            now = datetime.datetime.now().strftime(fmtdate)
+            sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
+            round_n += 1
+            final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref, trinity_out,
+                                                evm_gff3, args.verbose)
+            final_update = grs.genename(final_output, args.prefix_gene, args.verbose, pasa_dir)
+            final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
+            final_files.append(final_update)
+            final_files.append(final_update_stats)
+            final_update = grs.genename_evm(final_update, args.verbose, pasa_dir)
+            if args.long_reads == '':
+                final_output_dir = wd + 'output/'
+                logistic.check_create_dir(final_output_dir)
+                for filename in final_files:
+                    if filename != '':
+                        logistic.copy_file(filename, final_output_dir)
+                cmdstring = "chmod -R 775 %s" % wd
+                os.system(cmdstring)
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
+
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, genome_gmap, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size, args.verbose)
-        # KEEP THIS OUTPUT
-
-
-        round_n = 1
-
-        if not args.short_reads and not args.long_reads:
-            last_gff3 = grs.genename(evm_gff3)
-            final_update_stats= evmPipeline.gff3_stats(last_gff3, pasa_dir)
-            #score_gff3 = score.score(last_gff3, evm_inputs)
+            last_gff3 = grs.genename(evm_gff3, args.prefix_gene, args.verbose, pasa_dir)
+            final_update_stats = evmPipeline.gff3_stats(last_gff3, pasa_dir)
             now = datetime.datetime.now().strftime(fmtdate)
             final_files.append(last_gff3)
             final_files.append(final_update_stats)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
 
+        now = datetime.datetime.now().strftime(fmtdate)
+        sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
+
+        if not long_sorted_bam:
+            long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, 'samse',
+                                    args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                    args.verbose, Fflag=False)
+            long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
+            final_files.append(long_sorted_bam)
+
+            # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
+            # FILE
+        # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
+        # ORIGINAL FILE
+
+        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_update, args.verbose, consensus_wd)
+        now = datetime.datetime.now().strftime(fmtdate)
+        sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
+
+        # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
+        # REFERENCE
+        gffread_fasta_file = consensus.gffread(mergedmap_gff3, ref, consensus_wd, args.verbose)
+        # HERE WE STORE THE SEQUENCE IN A DICTIONARY
+        fake = []
+        long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read, consensus_wd,
+                                          fake, threads_use, a=False)
+        gffreadDict = consensus.fasta2Dict(gffread_fasta_file)
+        now = datetime.datetime.now().strftime(fmtdate)
+        sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
+
+        # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME POSITION
+        cluster_list = consensus.cluster_pipeline(mergedmap_gff3, args.assembly_overlap_length, args.stranded, args.verbose)
+        now = datetime.datetime.now().strftime(fmtdate)
+
+        sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
+
+        # HERE WE MAKE CONSENSUS FOR EACH CLUSTER
+        tmp_wd = consensus_wd + 'tmp/'
+        logistic.check_create_dir(tmp_wd)
+        tmp_assembly_file = tmp_wd + 'assembly.fasta'
+        if os.path.isfile(tmp_assembly_file):
+            sys.stdout.write('No assembly')
         else:
-        #if args.short_reads and not args.long_reads:
-            now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
-            round_n += 1
-            finalOutput = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,
-                                               ref, trinity_out, evm_gff3, args.verbose)
-            final_update = grs.genename(finalOutput, args.prefix_gene, args.verbose)
-            final_update_stats= evmPipeline.gff3_stats(final_update, pasa_dir)
-            #score_gff3 = score.score(last_gff3, evm_inputs)
-            now = datetime.datetime.now().strftime(fmtdate)
-            final_files.append(final_update)
-            final_files.append(final_update_stats)
-
-        #else:
-            #updatedGff3 = evm_gff3
-
-
-        #score_gff3 = score.score(evm_gff3, evm_inputs)
-
-        if args.long_reads == '':
-            final_output_dir = wd + 'output/'
-            logistic.check_create_dir(final_output_dir)
-            for filename in final_files:
-                if filename != '':
-                    logistic.copy_file(filename, final_output_dir)
-            cmdstring = "chmod -R 775 %s" % wd
-            os.system(cmdstring)
-            now = datetime.datetime.now().strftime(fmtdate)
-            sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
-
-        else:
-            now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
-
-            if args.long_reads:
-                # Means there are long reads to map and user wants to run
-                # this pipeline
-                if not long_sorted_bam:
-                    long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, 'samse',
-                                            args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-                                            args.verbose, Fflag=False)
-                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
-                    final_files.append(long_sorted_bam)
-
-                    # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE
-                    # FILE
-                fileName = consensus_wd + 'mergedGmapEvm.beforeAssembly.gff3'
-                # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
-                # ORIGINAL FILE
-                if os.path.isfile(final_update):
-                    # HERE WE MERGE THE TWO FILES
-                    mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, final_update, fileName, args.verbose)
-                now = datetime.datetime.now().strftime(fmtdate)
-                sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
-
-                # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
-                # REFERENCE
-                gffread_fasta_file = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
-                # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-                fake = []
-                long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length,
-                                                                args.max_long_read, consensus_wd, fake, threads_use,
-                                                                a=False)
-
-                gffreadDict = consensus.fasta2Dict(gffread_fasta_file)
-                now = datetime.datetime.now().strftime(fmtdate)
-                sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
-
-                # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME
-                # POSITION
-                cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlap_length, args.stranded, args.verbose)
-                now = datetime.datetime.now().strftime(fmtdate)
-
-                sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
-
-                # HERE WE MAKE CONSENSUS FOR EACH CLUSTER
-                tmp_wd = consensus_wd + 'tmp/'
-                logistic.check_create_dir(tmp_wd)
-                tmp_assembly_file = tmp_wd + 'assembly.fasta'
-                if os.path.isfile(tmp_assembly_file):
-                    sys.stdout.write('No assembly')
-                else:
-                    consensus.generate_fasta(cluster_list, gffreadDict, args.cluster_min_evidence,
-                                             args.cluster_max_evidence, args.assembly_overlap_length, tmp_wd)
-                    consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
-                                       args.verbose)
-                    utrs.lengthSupport(tmp_wd, threads_use)
+            consensus.generate_fasta(cluster_list, gffreadDict, args.cluster_min_evidence,
+                                     args.cluster_max_evidence, args.assembly_overlap_length, tmp_wd)
+            consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
+                               args.verbose)
+            utrs.lengthSupport(tmp_wd, threads_use)
 
         # WITH THE ELSE, WE ALLOW THE USER TO DECIDE TO CHANGE THE ASSEMBLY
         # PARAMETERS AND COLLECT DIFFERENT ASSEMBLED SEQUENCES WITHOT RUNNING
@@ -482,16 +452,14 @@ def main():
         tmp_assembly_all = collect.cat_assembled_all(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
-        merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
-        collect.add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename)
+        merged_fasta_filename = collect.add_EVM(tmp_assembly, final_update, ref, consensus_wd, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
         consensus_mapped_gff3 = mapping.gmap('cons', genome_gmap, merged_fasta_filename, threads_use, 'gff3_gene',
                                              args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-                                             args.verbose,
-                                             Fflag=True)
+                                             args.verbose, Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
 
@@ -501,10 +469,10 @@ def main():
         no_disc = grs.removeDiscrepancy(no_overl, final_update, args.verbose)
         uniq_gene = grs.newNames(no_disc)
 
-        finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose)
+        finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose, gmap_wd)
         print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, threads_use, exonerate_wd, args.verbose)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
+        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose, exonerate_wd)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
@@ -519,8 +487,7 @@ def main():
         round_n += 1
         finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
                                             fasta_all, finalupdate, args.verbose)
-        final_update_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose)
-        #score_gff3 = score.score(final_update, evm_inputs)
+        final_update_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose, pasa_dir)
 
         final_files.append(final_update_update)
 
