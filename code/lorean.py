@@ -133,7 +133,7 @@ def main():
         logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                             args.verbose)
 
-        augustus_species, err_augustus = logistic.augustus_species_func()
+        augustus_species, err_augustus = logistic.augustus_species_func(home)
 
         protein_loc = os.path.abspath(args.proteins)
 
@@ -486,8 +486,8 @@ def main():
         final_update_stats= evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
-        iprscan_err, iprscan_log = iprscan.check_iprscan()
-        if iprscan_log:
+        iprscan_log = iprscan.check_iprscan()
+        if not "command" in (iprscan_log.decode("utf-8")):
             annot, bad_models = iprscan.iprscan(ref, final_update_update, interproscan_out_dir, args.threads)
             final_files.append(annot)
             final_files.append(bad_models)

@@ -17,15 +17,16 @@ GFFREAD = 'gffread -C -g %s -y %s %s'
 
 IPRSCAN = 'interproscan.sh -i %s -cpu %s'
 
-IPRSCAN_HELP = 'interproscan.sh -h'
+IPRSCAN_HELP = 'interproscan.sh -version'
 
 #======================================================================================================================
 
 
 def check_iprscan():
     com = IPRSCAN_HELP
-    call = subprocess.Popen(com, shell=True)
+    call = subprocess.Popen(com, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     err, log = call.communicate()
+    return log
 
 def iprscan(ref, gff_file, wd, threads):
 

@@ -184,7 +184,7 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
             print('\033[0m')
 
 
-def augustus_species_func():
+def augustus_species_func(home):
     check_species = 'augustus --species=help'
     process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out_augustus, err_augustus = process.communicate()
