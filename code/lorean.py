@@ -8,7 +8,6 @@
 import datetime
 import multiprocessing
 import os
-import subprocess
 import sys
 import tempfile
 import time
@@ -134,15 +133,8 @@ def main():
         logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                             args.verbose)
 
-        check_species = 'augustus --species=help'
-        process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        out_augustus, err_augustus = process.communicate()
-        list_file = [os.path.join(home, o) for o in os.listdir(home) if os.path.isfile(os.path.join(home, o)) and ".bashrc" == o]
-        with open(list_file[0]) as bashrc:
-            for path in bashrc:
-                if "AUGUSTUS_CONFIG_PATH" in path:
-                    augustus_specie_dir = path.split("=~")[1].rsplit()[0]
-                    augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
+        augustus_species, err_augustus = logistic.augustus_species_func()
+
         protein_loc = os.path.abspath(args.proteins)
 
         if args.repeat_masked:
@@ -494,9 +486,11 @@ def main():
         final_update_stats= evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
-        annot, bad_models = iprscan.iprscan(ref, final_update_update, interproscan_out_dir, args.threads)
-        final_files.append(annot)
-        final_files.append(bad_models)
+        iprscan_err, iprscan_log = iprscan.check_iprscan()
+        if iprscan_log:
+            annot, bad_models = iprscan.iprscan(ref, final_update_update, interproscan_out_dir, args.threads)
+            final_files.append(annot)
+            final_files.append(bad_models)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
@@ -515,7 +509,9 @@ def main():
             temp_dir.cleanup()
         sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
     else:
-        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN AND SPECIES OPTION HAVE BOTH AN ARGUMENT. CHECK THAT THE gm_key IS IN THE FOLDER#####\n")
+        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN AND SPECIES OPTION HAVE BOTH AN ARGUMENT. CHECK THAT "
+                 "THE gm_key IS IN THE FOLDER#####\n")
+
 
 if __name__ == '__main__':
     realstart = time.perf_counter()

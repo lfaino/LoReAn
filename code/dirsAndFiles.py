@@ -182,3 +182,17 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
         else:
             print("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
             print('\033[0m')
+
+
+def augustus_species_func():
+    check_species = 'augustus --species=help'
+    process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    out_augustus, err_augustus = process.communicate()
+    list_file = [os.path.join(home, o) for o in os.listdir(home) if
+                 os.path.isfile(os.path.join(home, o)) and ".bashrc" == o]
+    with open(list_file[0]) as bashrc:
+        for path in bashrc:
+            if "AUGUSTUS_CONFIG_PATH" in path:
+                augustus_specie_dir = path.split("=~")[1].rsplit()[0]
+                augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
+    return augustus_species, err_augustus
