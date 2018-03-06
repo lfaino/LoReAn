@@ -87,7 +87,6 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % btsort2)
     outputBT = btsort2_call.communicate()[0]
-
     final_output = outputBT.splitlines()
     return final_output
 

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
 import os
+import pybedtools
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import warnings
-from multiprocessing import Pool
-
-import gffutils
-import gffutils.gffwriter as gffwriter
 from Bio import Seq
 from Bio import SeqIO
+from multiprocessing import Pool
 
 #======================================================================================================================
 
@@ -40,8 +40,15 @@ GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
 
 GT_GFF3TOGTF = 'gt gff3_to_gtf %s'
 
+BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
+
+CAT = 'cat %s'
+
 #======================================================================================================================
 
+gene_count = 0
+exon_cds_count = 0
+chrold = ""
 
 def removeDiscrepancy(gff, evmFile, verbose):
     badName = []
@@ -366,9 +373,6 @@ def genename(gff_filename, prefix, verbose, wd):
 
     return (out.name)
 
-gene_count = 0
-exon_cds_count = 0
-chrold = ""
 
 def transform_name(f):
     global gene_count
@@ -692,6 +696,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     return orintedFIleN
 
+
 def collaps_locus(orintedFIleN, wd, verbose):
 
     log = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", dir=wd)
@@ -872,7 +877,35 @@ def genename_evm(gff_filename, verbose, wd):
     return out.name
 
 
+def add_removed_evm(exon, pasa, wd):
+    """
+    here the clusters of sequence from the same locus are prepared
+    """
 
+    exonerate_output = pybedtools.BedTool(exon)
+    exon_gene = pybedtools.BedTool(f for f in exonerate_output if "gene" in f[2])
+    pasa_output = pybedtools.BedTool(pasa)
+    pasa_gene = pybedtools.BedTool(f for f in pasa_output if "gene" in f[2])
+    left = pasa_gene.intersect(exon_gene, v=True)
+    test = [key.split("=")[1] for line in left for key in line[8].split(";") if "ID" in key]
+    db_exon = gffutils.create_db(exon, ':memory:', merge_strategy='create_unique', keep_order=True)
+    ids = [gene.attributes["ID"] for gene in db_exon.features_of_type("gene")]
+    db_pasa = gffutils.create_db(pasa, ':memory:', merge_strategy='create_unique', keep_order=True)
+
+    outfile = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix= ".gff3", dir = wd)
+    gff_out_s = gffwriter.GFFWriter(outfile.name)
+
+    for name in test:
+        for i in db_pasa.children(name, order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db_pasa[name])
+    for name in ids:
+        for i in db_exon.children(name[0], order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db_exon[name[0]])
+    gff_out_s.close()
+
+    return outfile.name
 
 
 
@@ -880,4 +913,4 @@ def genename_evm(gff_filename, verbose, wd):
 if __name__ == '__main__':
     #strand(*sys.argv[1:])
     #exonerate(fasta, outputFilename, proc, gmap_wd, verbose)
-    genename_evm(*sys.argv[1:])
+    add_removed_evm(*sys.argv[1:])

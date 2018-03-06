@@ -359,9 +359,9 @@ def main():
                                                 evm_gff3, args.verbose)
             final_update = grs.genename(final_output, args.prefix_gene, args.verbose, pasa_dir)
             final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
+            final_update = grs.genename_evm(final_update, args.verbose, pasa_dir)
             final_files.append(final_update)
             final_files.append(final_update_stats)
-            final_update = grs.genename_evm(final_update, args.verbose, pasa_dir)
             if args.long_reads == '':
                 final_output_dir = wd + 'output/'
                 logistic.check_create_dir(final_output_dir)
@@ -444,28 +444,31 @@ def main():
         tmp_assembly_all = collect.cat_assembled_all(tmp_consensus)
         # HERE WE COLLECT THE NEW ASSEMBLED SEQUENCES AND WE COLLECT THE OLD
         # EVM DATA
-        merged_fasta_filename = collect.add_EVM(tmp_assembly, final_update, ref, consensus_wd, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
-        consensus_mapped_gff3 = mapping.gmap('cons', genome_gmap, merged_fasta_filename, threads_use, 'gff3_gene',
+        consensus_mapped_gff3 = mapping.gmap('cons', genome_gmap, tmp_assembly, threads_use, 'gff3_gene',
                                              args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                              args.verbose, Fflag=True)
+
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
 
         strand_mapped_gff3 = grs.strand(final_update, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
-        gff_pasa = grs.appendID(strand_mapped_gff3)
+        merged_gff3 = collect.add_EVM(final_update, gmap_wd, strand_mapped_gff3)
+        gff_pasa = grs.appendID(merged_gff3)
         no_overl = grs.removeOverlap(gff_pasa, args.verbose)
         no_disc = grs.removeDiscrepancy(no_overl, final_update, args.verbose)
-        uniq_gene = grs.newNames(no_disc)
+        uniq_gene = grs.genename(no_disc, args.prefix_gene, args.verbose, exonerate_wd)
 
-        finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose, gmap_wd)
+        update1 = grs.genename(uniq_gene, args.prefix_gene, args.verbose, gmap_wd)
         print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
-        finalupdate4 = grs.exonerate(ref, finalupdate3, threads_use, exonerate_wd, args.verbose)
-        finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose, exonerate_wd)
+        update2 = grs.exonerate(ref, update1, threads_use, exonerate_wd, args.verbose)
+        update3 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
 
+        update4 = grs.add_removed_evm(update3, final_update, exonerate_wd)
+        update4_1 = grs.genename(update4, args.prefix_gene, args.verbose, exonerate_wd)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
@@ -474,16 +477,16 @@ def main():
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
 
-        finalupdate = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
-                                           fasta_all, finalupdate5, args.verbose)
+        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref, fasta_all, update4_1,
+                                       args.verbose)
         round_n += 1
-        finalupdate2 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref,
-                                            fasta_all, finalupdate, args.verbose)
-        final_update_update = grs.genename(finalupdate2, args.prefix_gene, args.verbose, pasa_dir)
+        update6 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref, fasta_all, update5,
+                                       args.verbose)
+        final_update_update = grs.genename(update6, args.prefix_gene, args.verbose, pasa_dir)
 
         final_files.append(final_update_update)
 
-        final_update_stats= evmPipeline.gff3_stats(final_update_update, pasa_dir)
+        final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
         iprscan_log = iprscan.check_iprscan()

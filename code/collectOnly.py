@@ -1,11 +1,12 @@
 #!/usr/bin/python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
 import os
 import re
 import subprocess
 import sys
 import tempfile
-
 from Bio import SeqIO
 
 count_sequences = 0
@@ -63,10 +64,10 @@ def parse_contigs(output_assembly, threshold_float, verbose):
         location_list = output_assembly.split("/")[-2].split(".")[0].split("_")[:-1]
         location = "_".join(location_list)
         # part all the files in the tmp assembly folder
-        contigInfo = open(output_assembly + 'contig_member', 'r')
+        contig_info = open(output_assembly + 'contig_member', 'r')
         contigs = {}
         total_reads = 0
-        for line in contigInfo:
+        for line in contig_info:
             line = line.strip()
             line = line.split('\t')
             # count the reads for each assembled Unitig
@@ -78,7 +79,7 @@ def parse_contigs(output_assembly, threshold_float, verbose):
                 contigs[line[0]] = [read_number]
             # sum all the reads whitin one cluster
             total_reads += read_number
-        contigInfo.close()
+        contig_info.close()
         # calculate the number of reads considering the threshold
         threshold = total_reads * float(threshold_float)
         global count_sequences
@@ -99,16 +100,16 @@ def parse_contigs(output_assembly, threshold_float, verbose):
                         element[0]) + '_above_threshold_' + str(threshold) + ' loc_' + str(count_sequences)
                     count_unitigs += 1
         # writes the outputs
-        fileAssembly = output_assembly + 'unigene_seq.new.fasta'
-        contigSeq = open(fileAssembly, 'r')
-        contigDict = SeqIO.to_dict(SeqIO.parse(contigSeq, 'fasta'))
+        file_assembly = output_assembly + 'unigene_seq.new.fasta'
+        contig_seq = open(file_assembly, 'r')
+        contig_dict = SeqIO.to_dict(SeqIO.parse(contig_seq, 'fasta'))
         output_filename = output_assembly[:-1] + '_assembled.fasta'
-        outputFile = open(output_filename, 'w')
+        output_file = open(output_filename, 'w')
         for iden, write_iden in list(real_contigs.items()):
-            if iden in contigDict:
-                outputFile.write('>' + write_iden + '\n' + str(contigDict[iden].seq) + '\n')
-        contigSeq.close()
-        outputFile.close()
+            if iden in contig_dict:
+                output_file.write('>' + write_iden + '\n' + str(contig_dict[iden].seq) + '\n')
+        contig_seq.close()
+        output_file.close()
     return
 
 
@@ -170,65 +171,39 @@ def cat_assembled_all(wd):
     return fileName
 
 
-def add_EVM(tmp_assembly, final_update, ref, consensus_wd, verbose):
+def add_EVM(final_update, wd, consensus_mapped_gff3):
 
     """
-    this module looks for genes that were not used in the consensus stage. usually are gene models without long reads
-    support
     """
 
-    out = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
-    err = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
-    log = tempfile.NamedTemporaryFile(delete=False, prefix="gffreads", dir=consensus_wd)
+    db_evm = gffutils.create_db(final_update, ':memory:', merge_strategy='create_unique', keep_order=True)
+    ids_evm = [gene.attributes["ID"][0] for gene in db_evm.features_of_type("mRNA")]
 
-    merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
+    db_gmap = gffutils.create_db(consensus_mapped_gff3, ':memory:', merge_strategy='create_unique', keep_order=True)
+    ids_gmap_full = [gene.attributes["ID"][0] for gene in db_gmap.features_of_type("gene")]
+    ids_gmap = [gene.attributes["ID"][0].split("_")[0] for gene in db_gmap.features_of_type("gene")]
 
-    sys.stdout.write('\t###APPEND EVM NOT USED FROM CONTIGS BUILDING###\n')
+    uniq_evm = [evm for evm in ids_evm if not evm in ids_gmap]
 
+    mRNA = []
+    for evm in uniq_evm:
+        for line in db_evm.parents(evm, order_by='start'):
+            mRNA.append(line.attributes["ID"][0])
+    mRNA_uniq = list(set(mRNA))
+    outfile = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
+    gff_out_s = gffwriter.GFFWriter(outfile.name)
 
-    com = GFFREAD_W % (ref, out.name, final_update)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % com)
-    call = subprocess.Popen(com, stdout=log, cwd = consensus_wd, stderr=err, shell=True)
-    call.communicate()
+    for name in mRNA_uniq:
+        for i in db_evm.children(name, order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db_evm[name])
+    for name in ids_gmap_full:
+        for i in db_gmap.children(name, order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db_gmap[name])
+    gff_out_s.close()
 
-    evm_common = []
-    evm_all = []
-    evm_fasta = open(out.name, 'r')
-    evm_dict = SeqIO.to_dict(SeqIO.parse(evm_fasta, 'fasta'))
-    for key in evm_dict:
-        evm_all.append(key)
-    new_dict = {}
-    count = 0
-
-    out_fasta_file = open(tmp_assembly, 'r')
-    assembly_dict = SeqIO.to_dict(SeqIO.parse(out_fasta_file, 'fasta'))
-    for record in assembly_dict:
-        if record.startswith('evm'):
-            original = record.split('_')[:-3]
-            if original[0] in evm_dict:
-                evm_common.append(original[0])
-                new_dict[record] = assembly_dict[record]
-        else:
-            count += 1
-            name = 'Gene' + str(count) + '_' + assembly_dict[record].id
-            assembly_dict[record].id = name
-            new_dict[record] = assembly_dict[record]
-
-
-    diff = list(set(evm_common)^set(evm_all))
-
-    with open(merged_fasta_filename, 'w') as fh:
-        SeqIO.write(new_dict.values(), fh, 'fasta')
-        for item in diff:
-            desc = evm_dict[item].description.split(" ")[2]
-            evm_dict[item].description = ""
-            loc = re.split(":|\||-", desc)
-            region = "_".join([loc[1], loc[2], loc[3]])
-            id = evm_dict[item].id + "_" + region
-            evm_dict[item].id = id
-            SeqIO.write(evm_dict[item], fh, 'fasta')
-    return merged_fasta_filename
+    return outfile.name
 
 
 if __name__ == '__main__':
