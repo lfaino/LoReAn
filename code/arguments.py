@@ -29,6 +29,8 @@ def setting():
                              "of the same adapter need to be used in the file []")
     parser.add_argument("-rp","--repeat_masked", nargs="?", default="", help="GFF or GFF3 or GTF or BED file containing "
                                                                              "repeats coordinates []", metavar='GFF_file')
+    parser.add_argument("-rl","--repeat_lenght", nargs="?", default="400", help="Minimum length of a repeat to be masked",
+                        metavar='N')
     parser.add_argument("-ex","--external", nargs="?", default="", help="GFF3 of FASTA file containing external annotation "
                                                                         "information []", metavar='GFF_file')
     parser.add_argument("-up","--upgrade", nargs="?", default="", help="GFF3 to upgrade using long reads [and short read]"

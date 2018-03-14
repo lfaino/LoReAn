@@ -10,6 +10,18 @@ from multiprocessing import Pool
 
 import ssw_lib
 
+#==========================================================================================================
+# COMMANDS LIST
+
+BEDTOOLS_SORT = 'bedtools sort -i %s'
+
+BEDTOOLS_MERGE = 'bedtools merge -d 20 '
+
+BEDTOOLS_MASK = 'bedtools maskfasta -fi %s -bed %s -fo %s'
+
+AWK = 'awk \'{if ($3 - $2 > %s) print $0} \''
+
+#==========================================================================================================
 
 def to_int(seq, lEle, dEle2Int):
     """
@@ -263,7 +275,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     return out_filename
 
 
-def maskedgenome(wd, ref , gff3):
+def maskedgenome(wd, ref, gff3, length):
     """
     this module is used to mask the genome when a gff or bed file is provided
     """
@@ -274,11 +286,17 @@ def maskedgenome(wd, ref , gff3):
         out_name = wd + "/" +  ref + '.masked.fasta'
     outmerged = wd + "/" + gff3 + '.masked.gff3'
     outputmerge = open(outmerged, 'w')
-    cat = subprocess.Popen(['cat', gff3], stdout = subprocess.PIPE)
-    bedsort = subprocess.Popen(['bedtools', 'sort'], stdin = cat.stdout, stdout = subprocess.PIPE)
-    bedmerge = subprocess.Popen(['bedtools', 'merge'], stdout = outputmerge, stdin = bedsort.stdout)
-    bedmerge.communicate()
+    bedsort = subprocess.Popen(BEDTOOLS_SORT % gff3, stdout=subprocess.PIPE, shell=True)
+    bedmerge = subprocess.Popen(BEDTOOLS_MERGE, stdout=subprocess.PIPE, stdin=bedsort.stdout, shell=True)
+    awk = subprocess.Popen(AWK % length, stdin=bedmerge.stdout, stdout=outputmerge, shell=True)
+    awk.communicate()
     outputmerge.close()
-    maskfasta = subprocess.Popen(['bedtools', 'maskfasta', '-fi', ref , '-bed', outmerged, '-fo', out_name])
+
+    cmd = BEDTOOLS_MASK % (ref, outmerged, out_name)
+    maskfasta = subprocess.Popen(cmd, shell=True)
     maskfasta.communicate()
     return out_name
+
+
+if __name__ == '__main__':
+    maskedgenome(*sys.argv[1:])
