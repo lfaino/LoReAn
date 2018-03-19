@@ -131,14 +131,20 @@ def main():
 
         augustus_species, err_augustus = logistic.augustus_species_func(home)
 
-        if args.repeat_masked:
-            masked_ref = mseq.maskedgenome(gmap_wd, ref_link, args.repeat_masked, args.repeat)
+        if args.repeat_masked != "":
+            sys.stdout.write(('\n###MASKING THE GENOME STARTED AT:\t' + now + '\t###\n'))
+            masked_ref = mseq.maskedgenome(gmap_wd, ref_link, args.repeat_masked, args.repeat_lenght)
         else:
             masked_ref = ref_link
 
         # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
-        list_fasta_names, dict_ref_name = multiple.single_fasta(masked_ref, wd)
+        list_fasta_names, dict_ref_name, ref_rename = multiple.single_fasta(masked_ref, wd)
+
         if args.short_reads or args.long_reads:
+            if int(threads_use) > 1:
+                trinity_cpu = int(int(threads_use) / int(2))
+            else:
+                trinity_cpu = int(threads_use)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
             # SHORT READS
@@ -151,26 +157,37 @@ def main():
                 else:
                     short_reads_file = os.path.abspath(args.short_reads)
                 # Map with STAR
-                short_bam = mapping.star(masked_ref, short_reads_file, threads_use, args.max_intron_length, star_out,
+                short_bam = mapping.star(ref_rename, short_reads_file, threads_use, args.max_intron_length, star_out,
                                          args.verbose)
                 short_sorted_bam = mapping.samtools_sort(short_bam, threads_use, wd, args.verbose)
                 # Keep the output
                 final_files.append(short_sorted_bam)
+                # TRANSCRIPT ASSEMBLY
+                # TRINITY
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.stdout.write(('\n###TRINITY STARTS AT:\t' + now + '\t###\n'))
+                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
+                                    args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                    args.verbose, Fflag=True)
+                trinity_path = trinity_gff3
+                long_sorted_bam = False
             # BAM SORTED FILES GET IN HERE
             elif args.short_reads.endswith("bam"):
                 logistic.check_create_dir(star_out)
                 short_sorted_bam = os.path.abspath(args.short_reads)
-                bam_file = short_sorted_bam.split("/")
-                short_bam = star_out + "/" + bam_file[-1]
-                if not os.path.exists(ref_link):
-                    os.link(short_sorted_bam, short_bam)
-
-            else:
-                short_sorted_bam = False
-                sys.stdout.write("\n\033[31m ### NO SHORT READS ### \033[0m\n")
-
+                # TRANSCRIPT ASSEMBLY
+                # TRINITY
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.stdout.write(('\n###TRINITY STARTS AT:\t' + now + '\t###\n'))
+                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
+                                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                        args.verbose, Fflag=True)
+                trinity_path = trinity_gff3
+                long_sorted_bam = False
             # LONG READS
-            if 'fastq' in args.long_reads or 'fq' in args.long_reads or 'fasta' in args.long_reads or 'fa' in args.long_reads:
+            elif args.long_reads.endswith(fastq) or args.long_reads.endswith(fasta):
                 # with this operation, reads are filtered for their length.
                 # Nanopore reads can be chimaras or sequencing artefacts.
                 # filtering on length reduces the amount of sequencing
@@ -179,49 +196,41 @@ def main():
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
                 long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                                   args.adapter, threads_use,  a=True)
-                if not short_sorted_bam:
+
                     # If short reads have been mapped dont do it
-                    now = datetime.datetime.now().strftime(fmtdate)
-                    sys.stdout.write(('\n###GMAP\t' + now + 't###\n'))
-                    long_sam = mapping.gmap('sam', masked_ref, long_fasta, threads_use, 'samse',
-                                            args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-                                            args.verbose, Fflag=False)
-                    # Convert to sorted BAM
-                    long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
-
-                    # Keep the output
-                    final_files.append(long_sorted_bam)
-                else:
-                    long_sorted_bam = False
-
-            else:
                 now = datetime.datetime.now().strftime(fmtdate)
-                sys.stdout.write(('\n###NO LONG READS FILE\t' + now + '\t###\n'))
-                long_sorted_bam = False
-            if short_sorted_bam:  # If there are short reads, these will serve to the transcript assembly pipeline
-                default_bam = short_sorted_bam
-            else:
-                default_bam = long_sorted_bam
-            # TRANSCRIPT ASSEMBLY
-            # TRINITY
-            now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('\n###TRINITY STARTS AT:\t' + now + '\t###\n'))
-            if int(threads_use) > 1:
-                trinity_cpu = int(int(threads_use) / int(2))
-            else:
-                trinity_cpu = int(threads_use)
-            trinity_out = transcripts.trinity(default_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
-            trinity_gff3 = mapping.gmap('trin', masked_ref, trinity_out, threads_use, 'gff3_gene',
+                sys.stdout.write(('\n###GMAP\t' + now + 't###\n'))
+                long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
+                                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                        args.verbose, Fflag=False)
+                # Convert to sorted BAM
+                long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
+
+                # Keep the output
+                final_files.append(long_sorted_bam)
+                # TRANSCRIPT ASSEMBLY
+                # TRINITY
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.stdout.write(('\n###TRINITY STARTS AT:\t' + now + '\t###\n'))
+                trinity_out = transcripts.trinity(long_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=True)
-            trinity_path = trinity_gff3
+                trinity_path = trinity_gff3
+            else:
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.stdout.write(('\n###NO LONG READS FILE OR SHORT READS\t' + now + '\t###\n'))
+
+
+
+
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###PASA STARTS AT:\t' + now + '\t###\n'))
             # Create PASA folder and configuration file
             #align_pasa_conf = pasa.pasa_configuration(pasa_dir, args.pasa_db, args.verbose)
             # Launch PASA
-            pasa_gff3 = pasa.pasa_call(pasa_dir, args.pasa_db, masked_ref, trinity_out, args.max_intron_length, threads_use, args.verbose)
+            pasa_gff3 = pasa.pasa_call(pasa_dir, args.pasa_db, ref_rename, trinity_out, args.max_intron_length, threads_use, args.verbose)
 
             # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
             if args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
@@ -231,7 +240,7 @@ def main():
                 for software in range(3):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(3):
-                        t = Thread(target=handler.august_gmes_aat, args=(queue, masked_ref, args.species, protein_loc,
+                        t = Thread(target=handler.august_gmes_aat, args=(queue, ref_rename, args.species, protein_loc,
                                                                        threads_use, args.fungus, list_fasta_names, wd,
                                                                        args.verbose))
                         t.daemon = True
@@ -251,7 +260,7 @@ def main():
                 for software in range(2):
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
-                        t = Thread(target=handler.braker_aat, args=(queue, masked_ref, default_bam, args.species, protein_loc,
+                        t = Thread(target=handler.braker_aat, args=(queue, ref_rename, default_bam, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                     braker_folder, args.verbose))
                         t.daemon = True
@@ -272,7 +281,7 @@ def main():
                     queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                     for software in range(2):
                         t = Thread(target=handler.braker_aat,
-                                   args=(queue, masked_ref, long_sorted_bam, args.species, protein_loc,
+                                   args=(queue, ref_rename, long_sorted_bam, args.species, protein_loc,
                                          threads_use, args.fungus, list_fasta_names, wd, braker_folder, args.verbose))
                         t.daemon = True
                         t.start()
@@ -289,7 +298,7 @@ def main():
             for software in range(3):
                 queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                 for software in range(3):
-                    t = Thread(target=handler.august_gmes_aat, args=(queue, masked_ref, args.species, protein_loc,
+                    t = Thread(target=handler.august_gmes_aat, args=(queue, ref_rename, args.species, protein_loc,
                                                                    threads_use, args.fungus, list_fasta_names, wd,
                                                                    args.verbose))
                     t.daemon = True
@@ -311,7 +320,7 @@ def main():
         if not args.short_reads and not args.long_reads:
             if external_file:
                 if external_file.endswith(fasta):
-                    external_file_gff3 = mapping.gmap('ext', masked_ref, external_file, threads_use, 'gff3_gene',
+                    external_file_gff3 = mapping.gmap('ext', ref_rename, external_file, threads_use, 'gff3_gene',
                                                       args.min_intron_length, args.max_intron_length, args.end_exon,
                                                       gmap_wd, args.verbose, Fflag=True)
                     external_file_changed = update.external(external_file_gff3, gmap_wd, args.verbose)
@@ -325,7 +334,7 @@ def main():
             if args.external:
                 external_file = args.external
                 if external_file.endswith(fasta):
-                    external_file_gff3 = mapping.gmap('ext', masked_ref, external_file, threads_use, 'gff3_gene',
+                    external_file_gff3 = mapping.gmap('ext', ref_rename, external_file, threads_use, 'gff3_gene',
                                                       args.min_intron_length, args.max_intron_length, args.end_exon,
                                                       gmap_wd, args.verbose, Fflag=True)
                     external_file_changed = update.external(external_file_gff3, gmap_wd, args.verbose)
@@ -345,24 +354,32 @@ def main():
         round_n = 1
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
-            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, masked_ref, weight_file, pred_file,
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size,
                                                 args.verbose)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
             round_n += 1
-            final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref_link, trinity_out,
+            final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref_rename, trinity_out,
                                                 evm_gff3, args.verbose)
             final_update = grs.genename(final_output, args.prefix_gene, args.verbose, pasa_dir)
-            final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
-            final_update = grs.genename_evm(final_update, args.verbose, pasa_dir)
-            final_files.append(final_update)
-            final_files.append(final_update_stats)
-            if "command" not in (iprscan_log.decode("utf-8")):
-                annot, bad_models = iprscan.iprscan(ref_link, final_update, interproscan_out_dir, args.threads)
-                final_files.append(annot)
-                final_files.append(bad_models)
             if args.long_reads == '':
+                final_update_all = grs.genename_last(final_update, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+                final_update = grs.genename(final_update_all, args.prefix_gene, args.verbose, pasa_dir)
+                final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
+                final_files.append(final_update)
+                final_files.append(final_update_stats)
+            else:
+                final_update_all = grs.genename_evm(final_update, args.verbose, pasa_dir)
+                final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
+                final_files.append(final_update_all)
+                final_files.append(final_update_stats)
+
+            if args.long_reads == '':
+                if "command" not in (iprscan_log.decode("utf-8")):
+                    annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
+                    final_files.append(annot)
+                    final_files.append(bad_models)
                 final_output_dir = wd + 'output/'
                 logistic.check_create_dir(final_output_dir)
                 for filename in final_files:
@@ -375,16 +392,17 @@ def main():
 
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
-            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, masked_ref, weight_file, pred_file,
+            evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size,
                                                 args.verbose)
-            last_gff3 = grs.genename(evm_gff3, args.prefix_gene, args.verbose, pasa_dir)
-            final_update_stats = evmPipeline.gff3_stats(last_gff3, pasa_dir)
-            now = datetime.datetime.now().strftime(fmtdate)
-            final_files.append(last_gff3)
+            final_update_all = grs.genename_last(evm_gff3, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+            final_update = grs.genename(final_update_all, args.prefix_gene, args.verbose, pasa_dir)
+            final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
+            final_files.append(final_update)
             final_files.append(final_update_stats)
+            now = datetime.datetime.now().strftime(fmtdate)
             if "command" not in (iprscan_log.decode("utf-8")):
-                annot, bad_models = iprscan.iprscan(ref_link, last_gff3, interproscan_out_dir, args.threads)
+                annot, bad_models = iprscan.iprscan(masked_ref, final_update, interproscan_out_dir, args.threads)
                 final_files.append(annot)
                 final_files.append(bad_models)
             final_output_dir = wd + 'output/'
@@ -401,7 +419,9 @@ def main():
         sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
 
         if not long_sorted_bam:
-            long_sam = mapping.gmap('sam', masked_ref, long_fasta, threads_use, 'samse',
+            long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read,
+                                              gmap_wd, args.adapter, threads_use, a=True)
+            long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=False)
             long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
@@ -417,7 +437,7 @@ def main():
 
         # HERE WE TRANSFORM THE COODINATES INTO SEQUENCES USING THE
         # REFERENCE
-        gffread_fasta_file = consensus.gffread(mergedmap_gff3, masked_ref, consensus_wd, args.verbose)
+        gffread_fasta_file = consensus.gffread(mergedmap_gff3, ref_rename, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
         fake = []
         long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read,
@@ -460,14 +480,14 @@ def main():
         sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
 
         # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
-        consensus_mapped_gff3 = mapping.gmap('cons', masked_ref, tmp_assembly, threads_use, 'gff3_gene',
+        consensus_mapped_gff3 = mapping.gmap('cons', ref_rename, tmp_assembly, threads_use, 'gff3_gene',
                                              args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                              args.verbose, Fflag=True)
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
 
-        strand_mapped_gff3 = grs.strand(final_update, consensus_mapped_gff3, masked_ref, threads_use, gmap_wd, args.verbose)
+        strand_mapped_gff3 = grs.strand(final_update, consensus_mapped_gff3, ref_rename, threads_use, gmap_wd, args.verbose)
         merged_gff3 = collect.add_EVM(final_update, gmap_wd, strand_mapped_gff3)
         gff_pasa = grs.appendID(merged_gff3)
         no_overl = grs.removeOverlap(gff_pasa, args.verbose)
@@ -476,7 +496,7 @@ def main():
 
         update1 = grs.genename(uniq_gene, args.prefix_gene, args.verbose, gmap_wd)
         print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
-        update2 = grs.exonerate(masked_ref, update1, threads_use, exonerate_wd, args.verbose)
+        update2 = grs.exonerate(ref_rename, update1, threads_use, exonerate_wd, args.verbose)
         update3 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
 
         update4 = grs.add_removed_evm(update3, final_update, exonerate_wd)
@@ -489,20 +509,20 @@ def main():
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
 
-        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_link, fasta_all, update4_1,
+        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update4_1,
                                        args.verbose)
         round_n += 1
-        update6 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_link, fasta_all, update5,
+        update6 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update5,
                                        args.verbose)
-        final_update_update = grs.genename(update6, args.prefix_gene, args.verbose, pasa_dir)
+        final_update_update = grs.genename_last(update6, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+        update6 = grs.genename(final_update_update, args.prefix_gene, args.verbose, exonerate_wd)
+        final_files.append(update6)
 
-        final_files.append(final_update_update)
-
-        final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
+        final_update_stats = evmPipeline.gff3_stats(update6, pasa_dir)
         final_files.append(final_update_stats)
 
         if "command" not in (iprscan_log.decode("utf-8")):
-            annot, bad_models = iprscan.iprscan(ref_link, final_update_update, interproscan_out_dir, args.threads)
+            annot, bad_models = iprscan.iprscan(masked_ref, update6, interproscan_out_dir, args.threads)
             final_files.append(annot)
             final_files.append(bad_models)
         now = datetime.datetime.now().strftime(fmtdate)

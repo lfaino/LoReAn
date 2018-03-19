@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
 import os
-import pybedtools
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import warnings
+from multiprocessing import Pool
+
+import gffutils
+import gffutils.gffwriter as gffwriter
+import pybedtools
 from Bio import Seq
 from Bio import SeqIO
-from multiprocessing import Pool
 
 #======================================================================================================================
 
@@ -331,6 +332,58 @@ def removeOverlap(gff, verbose):
     return outputFilename
 
 
+def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name):
+
+    global prefix_name
+    prefix_name = prefix
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir= wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    gt_com = GT_GFF3 % gff_filename
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
+    gt_call.communicate()
+
+    db1 = gffutils.create_db(out.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_name)
+    gene_count = 0
+    list_mrna = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('mRNA')]
+    out_gff = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix=".gff3", dir=wd)
+    gff_out = gffwriter.GFFWriter(out_gff.name)
+    gene_name = []
+    for evm in list_mrna:
+        for i in db1.children(evm, featuretype='CDS', order_by='start'):
+            if i.chrom in dict_ref_name:
+                i.chrom = dict_ref_name[i.chrom]
+            gff_out.write_rec(i)
+        i = db1[evm]
+        if i.chrom in dict_ref_name:
+            i.chrom = dict_ref_name[i.chrom]
+        gff_out.write_rec(i)
+        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+            if i.chrom in dict_ref_name:
+                i.chrom = dict_ref_name[i.chrom]
+            id_gene = i.attributes['ID'][0]
+            if not id_gene in gene_name:
+                gff_out.write_rec(i)
+                gene_name.append(id_gene)
+        for i in db1.children(evm, featuretype='exon', order_by='start'):
+            if i.chrom in dict_ref_name:
+                i.chrom = dict_ref_name[i.chrom]
+            gff_out.write_rec(i)
+    gff_out.close()
+
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir = wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w" , dir = wd)
+    gt_com = GT_RETAINID % out_gff.name
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
+    gt_call.communicate()
+    if verbose:
+        print(out.name)
+    return out.name
+
+
 def genename(gff_filename, prefix, verbose, wd):
 
     global prefix_name
@@ -344,6 +397,7 @@ def genename(gff_filename, prefix, verbose, wd):
     gt_call.communicate()
 
     db1 = gffutils.create_db(out.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_name)
+    gene_count = 0
     list_mrna = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('mRNA')]
     out_gff = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix=".gff3", dir=wd)
     gff_out = gffwriter.GFFWriter(out_gff.name)

@@ -5,9 +5,12 @@ import math
 import os
 import subprocess
 import sys
-from Bio import SeqIO
+import tempfile
 
 import dirsAndFiles as logistic
+import gffutils
+import gffutils.gffwriter as gffwriter
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -34,6 +37,9 @@ SAMTOOLS_VIEW = 'samtools view -bS -o %s %s'
 
 SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
 
+GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
+
+
 #==========================================================================================================
 
 
@@ -47,43 +53,139 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         elif type_out == 'sam':
             filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':
+        rev_com_file = working_dir + "/rev_com." + type_out + ".fasta"
+        record_dict = SeqIO.to_dict(SeqIO.parse(reads, "fasta"))
+        for read in record_dict:
+            seq = record_dict[read].seq
+            seq_rev_comp=seq.reverse_complement()
+            record_dict[read].seq = seq_rev_comp
+        with open(rev_com_file, "w") as handle:
+            SeqIO.write(record_dict.values(), handle, "fasta")
         if type_out == 'cons':
+            filenamest = working_dir + 'gmap.cluster_consensus.ST.gff3'
+            filenamerc = working_dir + 'gmap.cluster_consensus.RC.gff3'
             filename = working_dir + 'gmap.cluster_consensus.gff3'
+            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'trin':
+            filenamest = working_dir + 'gmap.trinity.ST.gff3'
+            filenamerc = working_dir + 'gmap.trinity.RC.gff3'
             filename = working_dir + 'gmap.trinity.gff3'
+            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'ext':
+            filenamest = working_dir + 'external.ST.gff3'
+            filenamerc = working_dir + 'external.RC.gff3'
             filename = working_dir + 'external.gff3'
+            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
 
     else:
         raise NameError(
             'Unknown format: ' + out_format + 'for GMAP. Accepted are samse or 2 (gff3_gene)')
-    if os.path.isfile(filename) and os.path.getsize(filename) > 1:  # If the ref is there do not build it again
-        sys.stdout.write(('GMAP index existed already: ' + filename + ' --- skipping'))
-    else:
+
+    if out_format == 'samse' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif out_format == '2' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif out_format == 'gff3_gene' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif not Fflag:
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
-        if not Fflag:
-            cmd = GMAP_SAM % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
-            try:
-                if verbose:
-                    sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
-                gmapmap.communicate()
-            except:
-                raise NameError('')
-        else:
-            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
-            try:
-                if verbose:
-                    sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
-                gmapmap.communicate()
-            except:
-                raise NameError('')
+        cmd = GMAP_SAM % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
+        try:
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % cmd)
+            gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
+            gmapmap.communicate()
+        except:
+            raise NameError('')
         out_f.close()
         log.close()
+    else:
+        for combination in list_fasta:
+            out_f = open(combination[1], 'w')
+            log_name = working_dir + 'gmap_map.log'
+            log = open(log_name, 'w')
+            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, combination[0])
+            try:
+                if verbose:
+                    sys.stderr.write('Executing: %s\n\n' % cmd)
+                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
+                gmapmap.communicate()
+            except:
+                raise NameError('')
+            out_f.close()
+            log.close()
+
+        filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
+
+
+def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
+    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=wd)
+    gff_out = gffwriter.GFFWriter(outputFilename.name)
+    outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=wd)
+    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
+
+    gt_com = GT_RETAINID % gff_file
+    file = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=wd)
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=wd)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+        sys.stderr.write('Log file is: %s %s\n\n' % (file.name, err1.name))
+    gt_call = subprocess.Popen(gt_com, stdout=file, stderr=err1, shell=True)
+    gt_call.communicate()
+
+    filerc = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")
+    gt_com = GT_RETAINID % gff_filerc
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+        sys.stderr.write('Log file is: %s %s\n\n' % (filerc.name, err1.name))
+    gt_call = subprocess.Popen(gt_com, stdout=filerc, stderr=err1, shell=True)
+    gt_call.communicate()
+
+    db = gffutils.create_db(file.name, ':memory:', merge_strategy='create_unique', keep_order=True)
+    dbrc = gffutils.create_db(filerc.name, ':memory:', merge_strategy='create_unique', keep_order=True)
+    list_mrna = [mRNA.attributes["ID"][0] for mRNA in db.features_of_type('mRNA')]
+    list_mrna_rc = [mRNA.attributes["ID"][0] for mRNA in dbrc.features_of_type('mRNA')]
+    list_all = list(set(list_mrna + list_mrna_rc))
+
+    list_db = []
+    list_db_rc = []
+    for mrna_id in list_all:
+        cds_len = [int(i.end) - int(i.start) for i in db.children(mrna_id, featuretype='CDS', order_by='start')]
+        cds_len_rc = [int(i.end) - int(i.start) for i in dbrc.children(mrna_id, featuretype='CDS', order_by='start')]
+        if cds_len == cds_len_rc:
+            list_db.append(mrna_id)
+        elif cds_len > cds_len_rc:
+            list_db.append(mrna_id)
+        else:
+            list_db_rc.append(mrna_id)
+    gff_out = gffwriter.GFFWriter(filename)
+    for evm in list_db:
+        for i in db.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        i = db[evm]
+        gff_out.write_rec(i)
+        for i in db.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in db.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    for evm in list_db_rc:
+        for i in dbrc.children(evm, featuretype='CDS', order_by='start'):
+            gff_out.write_rec(i)
+        i = dbrc[evm]
+        gff_out.write_rec(i)
+        for i in dbrc.parents(evm, featuretype='gene', order_by='start'):
+            gff_out.write_rec(i)
+        for i in dbrc.children(evm, featuretype='exon', order_by='start'):
+            gff_out.write_rec(i)
+    gff_out.close()
+    if verbose:
+        print (filename)
+    return filename
+
 
 
 def star_build(reference, genome_dir, threads, wd, verbose):
@@ -306,3 +408,6 @@ def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     sys.stdout.write('\t###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)
     return s_bam_filename
+
+if __name__ == '__main__':
+    longest_cds(*sys.argv[1:])

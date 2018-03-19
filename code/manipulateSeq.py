@@ -4,18 +4,19 @@ import datetime
 import os
 import subprocess
 import sys
-from Bio import SeqIO
-from Bio.Seq import reverse_complement
+import tempfile
 from multiprocessing import Pool
 
 import ssw_lib
+from Bio import SeqIO
+from Bio.Seq import reverse_complement
 
 #==========================================================================================================
 # COMMANDS LIST
 
 BEDTOOLS_SORT = 'bedtools sort -i %s'
 
-BEDTOOLS_MERGE = 'bedtools merge -d 20 '
+BEDTOOLS_MERGE = 'bedtools merge -d 1'
 
 BEDTOOLS_MASK = 'bedtools maskfasta -fi %s -bed %s -fo %s'
 
@@ -280,22 +281,17 @@ def maskedgenome(wd, ref, gff3, length):
     this module is used to mask the genome when a gff or bed file is provided
     """
 
-    if '/' in ref:
-        out_name = wd + "/" +  ref.split('/')[-1] + '.masked.fasta'
-    else:
-        out_name = wd + "/" +  ref + '.masked.fasta'
-    outmerged = wd + "/" + gff3 + '.masked.gff3'
-    outputmerge = open(outmerged, 'w')
+    outputmerge = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genome.", suffix=".masked.gff3", dir=wd)
     bedsort = subprocess.Popen(BEDTOOLS_SORT % gff3, stdout=subprocess.PIPE, shell=True)
     bedmerge = subprocess.Popen(BEDTOOLS_MERGE, stdout=subprocess.PIPE, stdin=bedsort.stdout, shell=True)
     awk = subprocess.Popen(AWK % length, stdin=bedmerge.stdout, stdout=outputmerge, shell=True)
     awk.communicate()
-    outputmerge.close()
 
-    cmd = BEDTOOLS_MASK % (ref, outmerged, out_name)
-    maskfasta = subprocess.Popen(cmd, shell=True)
+    masked = ref + ".masked.fasta"
+    cmd = BEDTOOLS_MASK % (ref, outputmerge.name, masked)
+    maskfasta=subprocess.Popen(cmd, cwd=wd, shell=True)
     maskfasta.communicate()
-    return out_name
+    return masked
 
 
 if __name__ == '__main__':

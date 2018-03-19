@@ -4,10 +4,11 @@ import os
 import shutil
 import subprocess
 import sys
-from Bio import SeqIO
 from multiprocessing import Pool
 
 import dirsAndFiles as logistic
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 
 count_sequences = 0
 count_sequences_aat = 0
@@ -34,17 +35,20 @@ def single_fasta(ref, wd):
     single_fasta_list = []
     count = 0
     dict_ref_name = {}
-    for record in SeqIO.parse(fasta_file, "fasta"):
-        count += 1
-        new_name = "seq" + str(count)
-        dict_ref_name[new_name] = record.id
-        record.id = new_name
-        fasta_name = wd_split + '/' + new_name + '.fasta'
-        single_fasta_list.append(fasta_name)
-        output_handle = open(fasta_name, "w")
-        SeqIO.write(record, output_handle, "fasta")
-        output_handle.close()
-    return single_fasta_list, dict_ref_name
+    ref_rename = ref + ".rename.fasta"
+    with open(ref_rename, "w") as fh:
+        for record in SeqIO.parse(fasta_file, "fasta"):
+            count += 1
+            new_name = "seq" + str(count)
+            dict_ref_name[new_name] = record.id
+            new_rec = SeqRecord(record.seq, new_name, '', '')
+            fasta_name = wd_split + '/' + new_name + '.fasta'
+            single_fasta_list.append(fasta_name)
+            output_handle = open(fasta_name, "w")
+            SeqIO.write(new_rec, output_handle, "fasta")
+            SeqIO.write(new_rec, fh, "fasta")
+            output_handle.close()
+    return single_fasta_list, dict_ref_name, ref_rename
 
 
 def augustus_multi(threads, species, single_fasta_list, wd, verbose):
@@ -175,3 +179,6 @@ def parseAAT(wd):
     stdout_file.close()
     return outFilenameGff
 
+
+if __name__ == '__main__':
+    single_fasta(*sys.argv[1:])
