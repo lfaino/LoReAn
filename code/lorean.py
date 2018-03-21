@@ -503,7 +503,7 @@ def main():
         final_files.append(final_update_stats)
 
         if "command" not in (iprscan_log.decode("utf-8")):
-            annot, bad_models = iprscan.iprscan(masked_ref, update6, interproscan_out_dir, args.threads)
+            annot, bad_models = iprscan.iprscan(masked_ref, final_update_update, interproscan_out_dir, args.threads)
             final_files.append(annot)
             final_files.append(bad_models)
         now = datetime.datetime.now().strftime(fmtdate)
