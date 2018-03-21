@@ -160,6 +160,7 @@ def main():
                 short_bam = mapping.star(ref_rename, short_reads_file, threads_use, args.max_intron_length, star_out,
                                          args.verbose)
                 short_sorted_bam = mapping.samtools_sort(short_bam, threads_use, wd, args.verbose)
+                default_bam = short_sorted_bam
                 # Keep the output
                 final_files.append(short_sorted_bam)
                 # TRANSCRIPT ASSEMBLY
@@ -176,6 +177,7 @@ def main():
             elif args.short_reads.endswith("bam"):
                 logistic.check_create_dir(star_out)
                 short_sorted_bam = os.path.abspath(args.short_reads)
+                default_bam = short_sorted_bam
                 # TRANSCRIPT ASSEMBLY
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -205,7 +207,7 @@ def main():
                                         args.verbose, Fflag=False)
                 # Convert to sorted BAM
                 long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
-
+                default_bam = long_sorted_bam
                 # Keep the output
                 final_files.append(long_sorted_bam)
                 # TRANSCRIPT ASSEMBLY
@@ -220,10 +222,6 @@ def main():
             else:
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###NO LONG READS FILE OR SHORT READS\t' + now + '\t###\n'))
-
-
-
-
             # PASA Pipeline
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###PASA STARTS AT:\t' + now + '\t###\n'))
@@ -252,7 +250,7 @@ def main():
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
 
-            elif args.short_reads:  # USING PROTEINS AND SHORT READS
+            elif args.short_reads or args.long_reads:  # USING PROTEINS AND SHORT READS
                 logistic.check_create_dir(braker_folder)
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###BRAKER1 (USING SHORT READS) AND AAT STARTED AT:\t' + now + '\t###\n'))
@@ -362,20 +360,11 @@ def main():
             round_n += 1
             final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref_rename, trinity_out,
                                                 evm_gff3, args.verbose)
-            final_update = grs.genename(final_output, args.prefix_gene, args.verbose, pasa_dir)
             if args.long_reads == '':
-                final_update_all = grs.genename_last(final_update, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
-                final_update = grs.genename(final_update_all, args.prefix_gene, args.verbose, pasa_dir)
-                final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
-                final_files.append(final_update)
+                final_update_all = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+                final_update_stats = evmPipeline.gff3_stats(final_output, pasa_dir)
+                final_files.append(final_output)
                 final_files.append(final_update_stats)
-            else:
-                final_update_all = grs.genename_evm(final_update, args.verbose, pasa_dir)
-                final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
-                final_files.append(final_update_all)
-                final_files.append(final_update_stats)
-
-            if args.long_reads == '':
                 if "command" not in (iprscan_log.decode("utf-8")):
                     annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                     final_files.append(annot)
@@ -390,15 +379,22 @@ def main():
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
+            else:
+                final_update_all = grs.genename_evm(final_output, args.verbose, pasa_dir)
+                final_update_stats = evmPipeline.gff3_stats(final_output, pasa_dir)
+                final_files.append(final_update_all)
+                final_files.append(final_update_stats)
+
+
+
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size,
                                                 args.verbose)
             final_update_all = grs.genename_last(evm_gff3, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
-            final_update = grs.genename(final_update_all, args.prefix_gene, args.verbose, pasa_dir)
-            final_update_stats = evmPipeline.gff3_stats(final_update, pasa_dir)
-            final_files.append(final_update)
+            final_update_stats = evmPipeline.gff3_stats(final_update_all, pasa_dir)
+            final_files.append(final_update_all)
             final_files.append(final_update_stats)
             now = datetime.datetime.now().strftime(fmtdate)
             if "command" not in (iprscan_log.decode("utf-8")):
@@ -431,7 +427,7 @@ def main():
         # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
         # ORIGINAL FILE
 
-        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_update, args.verbose, consensus_wd)
+        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_output, trinity_path, args.verbose, consensus_wd)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -486,39 +482,24 @@ def main():
 
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
-
-        strand_mapped_gff3 = grs.strand(final_update, consensus_mapped_gff3, ref_rename, threads_use, gmap_wd, args.verbose)
-        merged_gff3 = collect.add_EVM(final_update, gmap_wd, strand_mapped_gff3)
-        gff_pasa = grs.appendID(merged_gff3)
-        no_overl = grs.removeOverlap(gff_pasa, args.verbose)
-        no_disc = grs.removeDiscrepancy(no_overl, final_update, args.verbose)
-        uniq_gene = grs.genename(no_disc, args.prefix_gene, args.verbose, exonerate_wd)
-
-        update1 = grs.genename(uniq_gene, args.prefix_gene, args.verbose, gmap_wd)
-        print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
-        update2 = grs.exonerate(ref_rename, update1, threads_use, exonerate_wd, args.verbose)
-        update3 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
-
-        update4 = grs.add_removed_evm(update3, final_update, exonerate_wd)
-        update4_1 = grs.genename(update4, args.prefix_gene, args.verbose, exonerate_wd)
+        merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
+        update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
+        #update3 = grs.add_removed_evm(final_output, update2, exonerate_wd)
+        update4 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
-
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
-
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
-
-        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update4_1,
+        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update4,
                                        args.verbose)
         round_n += 1
         update6 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update5,
                                        args.verbose)
         final_update_update = grs.genename_last(update6, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
-        update6 = grs.genename(final_update_update, args.prefix_gene, args.verbose, exonerate_wd)
-        final_files.append(update6)
+        final_files.append(final_update_update)
 
-        final_update_stats = evmPipeline.gff3_stats(update6, pasa_dir)
+        final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
         if "command" not in (iprscan_log.decode("utf-8")):

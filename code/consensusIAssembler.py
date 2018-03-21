@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
 import os
-import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-from Bio import SeqIO
 from multiprocessing import Pool, Manager
+
+import progressbar
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -193,7 +194,6 @@ def iAssembler(new_commands):
     """
 
     cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])
-    new_commands[5].put(cmd)
     outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
     log_name = new_commands[3] + "Assembly.log"
     log = open(log_name, 'w')
@@ -206,6 +206,7 @@ def iAssembler(new_commands):
     except:
         return False
     log.close()
+    new_commands[5].put(cmd)
     return outputDir
 
 if __name__ == '__main__':

@@ -67,11 +67,10 @@ def change_ids(update, wd, verbose):
     return (new_name_update.name)
 
 
-def catTwoBeds(gmap, evm_orig, verbose, wd):
+def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     '''convert in to bed12 and concatenates the two bed12 files'''
 
     outFilename = wd + 'mergedGmapEvm.beforeAssembly.gff3'
-
     evm = evm_orig
     gtf = evm + ".gtf"
     bed12_evm = evm + ".bed12"
@@ -88,17 +87,36 @@ def catTwoBeds(gmap, evm_orig, verbose, wd):
     evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
     evm_call.communicate()
     #bed12_evm = tmp.name
-    bed12_gmap = gmap + ".bed12"
+
+    gtf = trinity + ".gtf"
+    bed12_trinity = trinity + ".bed12"
+    bed12file = open(bed12_trinity, "w")
+    gtffile = open(gtf, "w")
+    gffread_con = GFFREAD % trinity
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gffread_con)
+    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=True)
+    gffread_call.communicate()
+    gft2bed = GTF2BED % gtf
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gft2bed)
+    trin_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
+    trin_call.communicate()
+    #bed12_evm = tmp.name
+
+
+    bed12_gmap = gmap_bam + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
-    bedtools = BEDTOOLS % gmap
+    bedtools = BEDTOOLS % gmap_bam
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % bedtools)
     bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, shell=True)
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
     inFile2 = open(bed12_evm, 'r')
+    inFile3 = open(bed12_trinity, 'r')
     outFile = open(outFilename, 'w')
-    for File in [inFile1, inFile2]:
+    for File in [inFile1, inFile2, inFile3]:
         for line in File:
             outFile.write(line)
     inFile1.close()
