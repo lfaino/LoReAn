@@ -42,9 +42,9 @@ GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 #==========================================================================================================
 
 
-def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
-    '''Calls gmap to map reads to reference
-    Out_format can be samse of gff3 (2)'''
+def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
+             working_dir, Fflag, type_out, verbose):
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
         if type_out == 'test':
@@ -59,7 +59,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             SeqIO.write(record_dict.values(), handle, "fasta")
         for read in record_dict:
             seq = record_dict[read].seq
-            seq_rev_comp=seq.reverse_complement()
+            seq_rev_comp = seq.reverse_complement()
             record_dict[read].seq = seq_rev_comp
         with open(rev_com_file, "w") as handle:
             SeqIO.write(record_dict.values(), handle, "fasta")
@@ -78,7 +78,6 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             filenamerc = working_dir + 'external.RC.gff3'
             filename = working_dir + 'external.gff3'
             list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
-
     else:
         raise NameError(
             'Unknown format: ' + out_format + 'for GMAP. Accepted are samse or 2 (gff3_gene)')
@@ -108,7 +107,8 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             out_f = open(combination[1], 'w')
             log_name = working_dir + 'gmap_map.log'
             log = open(log_name, 'w')
-            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, combination[0])
+            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length,
+                              threads, out_format, combination[0])
             try:
                 if verbose:
                     sys.stderr.write('Executing: %s\n\n' % cmd)
@@ -118,6 +118,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                 raise NameError('')
             out_f.close()
             log.close()
+        print (list_fasta[0][1], list_fasta[1][1])
         filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
 
@@ -140,7 +141,6 @@ def parse_fasta(fasta):
 
 
 def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
-
     db = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
     dbrc = gffutils.create_db(gff_filerc, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
     list_mrna = [mRNA.attributes["ID"][0] for mRNA in db.features_of_type('mRNA')]
