@@ -67,10 +67,8 @@ def main():
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
         os.link(ref_orig, ref_link)
-
     if args.upgrade:
         update.upgrade()
-
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
         fasta = (".fasta", ".fa", ".fas", ".fsta")
         fastq = (".fastq", ".fq")
@@ -361,9 +359,9 @@ def main():
             final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref_rename, trinity_out,
                                                 evm_gff3, args.verbose)
             if args.long_reads == '':
-                final_update_all = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
-                final_update_stats = evmPipeline.gff3_stats(final_output, pasa_dir)
-                final_files.append(final_output)
+                final_update_all = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir,dict_ref_name)
+                final_update_stats = evmPipeline.gff3_stats(final_update_all, pasa_dir)
+                final_files.append(final_update_all)
                 final_files.append(final_update_stats)
                 if "command" not in (iprscan_log.decode("utf-8")):
                     annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
@@ -381,12 +379,10 @@ def main():
 
             else:
                 final_update_all = grs.genename_evm(final_output, args.verbose, pasa_dir)
-                final_update_stats = evmPipeline.gff3_stats(final_output, pasa_dir)
-                final_files.append(final_update_all)
-                final_files.append(final_update_stats)
-
-
-
+                final_keep = grs.genename_last(final_update_all, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+                final_keep_stats = evmPipeline.gff3_stats(final_keep, pasa_dir)
+                final_files.append(final_keep)
+                final_files.append(final_keep_stats)
         elif not args.short_reads and not args.long_reads:  # WE HAVE PROTEINS BUT NOT SHORT READS
             transcript_file = ''
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
@@ -398,7 +394,7 @@ def main():
             final_files.append(final_update_stats)
             now = datetime.datetime.now().strftime(fmtdate)
             if "command" not in (iprscan_log.decode("utf-8")):
-                annot, bad_models = iprscan.iprscan(masked_ref, final_update, interproscan_out_dir, args.threads)
+                annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                 final_files.append(annot)
                 final_files.append(bad_models)
             final_output_dir = wd + 'output/'
@@ -483,15 +479,15 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
         merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
-        update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
-        #update3 = grs.add_removed_evm(final_output, update2, exonerate_wd)
-        update4 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
+        update1 = grs.genename(merged_gff3, args.prefix_gene, args.verbose, exonerate_wd)
+        update2 = grs.exonerate(ref_rename, update1, threads_use, exonerate_wd, args.verbose)
+        update3 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
-        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update4,
+        update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update3,
                                        args.verbose)
         round_n += 1
         update6 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all, update5,

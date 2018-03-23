@@ -602,6 +602,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     warnings.filterwarnings("ignore")
 
+
     exon_file_out = gff_file + ".exons.fasta"
     prot_file_out = gff_file + ".prot.fasta"
     errorFile = gff_file + ".gffread_err.log"

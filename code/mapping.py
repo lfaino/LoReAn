@@ -5,7 +5,6 @@ import math
 import os
 import subprocess
 import sys
-import tempfile
 
 import dirsAndFiles as logistic
 import gffutils
@@ -15,13 +14,13 @@ from Bio import SeqIO
 #==========================================================================================================
 # COMMANDS LIST
 
-GMAP_BULD  = 'gmap_build -k 13 -d %s -D %s %s'
+GMAP_BULD  = 'gmap_build -d %s -D %s %s'
 
-GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 3 --min-intronlength %s -n  5 \
+GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species -B 3 --min-intronlength %s -n  5 \
 --microexon-spliceprob 1 -F -K  %s -t %s -f %s %s'
 
-GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 3 --min-intronlength %s -n  1 \
---microexon-spliceprob 1 -K  %s -t %s -f %s %s'
+GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species -B 3 --min-intronlength %s -n  1 \
+--microexon-spliceprob 1 -K %s -t %s -f %s %s'
 
 STAR_SINGLE = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s ' \
        '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
@@ -53,8 +52,11 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         elif type_out == 'sam':
             filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':
-        rev_com_file = working_dir + "/rev_com." + type_out + ".fasta"
-        record_dict = SeqIO.to_dict(SeqIO.parse(reads, "fasta"))
+        rev_com_file = working_dir + "/rev_com_uniq." + type_out + ".fasta"
+        file_orig = working_dir + "/uniq." + type_out + ".fasta"
+        record_dict = parse_fasta(reads)
+        with open(file_orig, "w") as handle:
+            SeqIO.write(record_dict.values(), handle, "fasta")
         for read in record_dict:
             seq = record_dict[read].seq
             seq_rev_comp=seq.reverse_complement()
@@ -65,17 +67,17 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             filenamest = working_dir + 'gmap.cluster_consensus.ST.gff3'
             filenamerc = working_dir + 'gmap.cluster_consensus.RC.gff3'
             filename = working_dir + 'gmap.cluster_consensus.gff3'
-            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'trin':
             filenamest = working_dir + 'gmap.trinity.ST.gff3'
             filenamerc = working_dir + 'gmap.trinity.RC.gff3'
             filename = working_dir + 'gmap.trinity.gff3'
-            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'ext':
             filenamest = working_dir + 'external.ST.gff3'
             filenamerc = working_dir + 'external.RC.gff3'
             filename = working_dir + 'external.gff3'
-            list_fasta = [[reads, filenamest],[rev_com_file, filenamerc]]
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
 
     else:
         raise NameError(
@@ -116,41 +118,34 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                 raise NameError('')
             out_f.close()
             log.close()
-
         filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
 
 
+def parse_fasta(fasta):
+    fasta_dict = {}
+    with open(fasta, "r") as fh:
+        for record in SeqIO.parse(fh, "fasta"):
+            if record.id in fasta_dict:
+                id_rec = record.id
+                elem = id_rec.split("_")
+                new = elem[0] + "a"
+                elem[0] = new
+                id_rec = "_".join(elem)
+                record.id = id_rec
+                fasta_dict[record.id] = record
+            else:
+                fasta_dict[record.id] = record
+    return fasta_dict
+
+
 def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
-    outputFilename = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=wd)
-    gff_out = gffwriter.GFFWriter(outputFilename.name)
-    outputFilenameGmap = tempfile.NamedTemporaryFile(delete=False, prefix="grs", dir=wd)
-    gff_out_s = gffwriter.GFFWriter(outputFilenameGmap.name)
 
-    gt_com = GT_RETAINID % gff_file
-    file = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=wd)
-    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="grs", dir=wd)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-        sys.stderr.write('Log file is: %s %s\n\n' % (file.name, err1.name))
-    gt_call = subprocess.Popen(gt_com, stdout=file, stderr=err1, shell=True)
-    gt_call.communicate()
-
-    filerc = tempfile.NamedTemporaryFile(delete=False, mode="w")
-    err1 = tempfile.NamedTemporaryFile(delete=False, mode="w")
-    gt_com = GT_RETAINID % gff_filerc
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-        sys.stderr.write('Log file is: %s %s\n\n' % (filerc.name, err1.name))
-    gt_call = subprocess.Popen(gt_com, stdout=filerc, stderr=err1, shell=True)
-    gt_call.communicate()
-
-    db = gffutils.create_db(file.name, ':memory:', merge_strategy='create_unique', keep_order=True)
-    dbrc = gffutils.create_db(filerc.name, ':memory:', merge_strategy='create_unique', keep_order=True)
+    db = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
+    dbrc = gffutils.create_db(gff_filerc, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
     list_mrna = [mRNA.attributes["ID"][0] for mRNA in db.features_of_type('mRNA')]
     list_mrna_rc = [mRNA.attributes["ID"][0] for mRNA in dbrc.features_of_type('mRNA')]
     list_all = list(set(list_mrna + list_mrna_rc))
-
     list_db = []
     list_db_rc = []
     for mrna_id in list_all:
@@ -183,9 +178,13 @@ def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
             gff_out.write_rec(i)
     gff_out.close()
     if verbose:
-        print (filename)
+        print(filename)
     return filename
 
+
+def transform(f):
+    f.frame = "."
+    return f
 
 
 def star_build(reference, genome_dir, threads, wd, verbose):
