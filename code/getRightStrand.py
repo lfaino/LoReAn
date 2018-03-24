@@ -385,6 +385,39 @@ def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name):
     return out.name
 
 
+def uniq_id(final_orig, verbose, wd):
+    db1 = gffutils.create_db(final_orig, ':memory:', merge_strategy='create_unique', keep_order=True, transform=evm_tr)
+    list_gene = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('gene')]
+    out_gff = tempfile.NamedTemporaryFile(delete=False, prefix="final_evm.", suffix=".gff3", dir=wd)
+    gff_out = gffwriter.GFFWriter(out_gff.name)
+    for evm in list_gene:
+        for i in db1.children(evm, order_by='start'):
+            gff_out.write_rec(i)
+        gff_out.write_rec(db1[evm])
+    gff_out.close()
+    if verbose:
+        print(out_gff.name)
+
+    return out_gff.name
+
+
+def evm_tr(f):
+    global exon_cds_count
+    if "CDS" in f.featuretype or "exon" in f.featuretype:
+        exon_cds_count += 1
+        for field in f.attributes:
+            if "Parent" in field:
+                parent = f.attributes["Parent"]
+        f.attributes = ""
+        code = {}
+        code["Parent"] = parent
+        code["ID"] = "LoReAn-" + str(exon_cds_count)
+        f.attributes = code
+    else:
+        f = f
+    return f
+
+
 def genename(gff_filename, prefix, verbose, wd):
     global prefix_name
     prefix_name = prefix
