@@ -388,7 +388,8 @@ def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name):
 def genename(gff_filename, prefix, verbose, wd):
     global prefix_name
     prefix_name = prefix
-    db1 = gffutils.create_db(gff_filename, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_name)
+    db1 = gffutils.create_db(gff_filename, ':memory:', merge_strategy='create_unique', keep_order=True,
+                             transform=transform_name)
     gene_count = 0
     list_gene = [mRNA.attributes["ID"][0] for mRNA in db1.features_of_type('gene')]
     out_gff = tempfile.NamedTemporaryFile(delete=False, prefix="gffread", suffix=".gff3", dir=wd)
@@ -463,7 +464,6 @@ def transform_name(f):
         code["Parent"] = parent
         code["ID"] = "LoReAn-" + str(exon_cds_count)
         f.attributes = code
-
     return f
 
 
