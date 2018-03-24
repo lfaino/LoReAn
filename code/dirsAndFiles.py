@@ -70,6 +70,7 @@ def change_ids(update, wd, verbose):
 def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     '''convert in to bed12 and concatenates the two bed12 files'''
 
+    err = tempfile.NamedTemporaryFile()
     outFilename = wd + 'mergedGmapEvm.beforeAssembly.gff3'
     evm = evm_orig
     gtf = evm + ".gtf"
@@ -79,12 +80,13 @@ def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     gffread_con = GFFREAD % evm
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gffread_con)
-    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=True)
+    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, stderr=err, shell=True)
     gffread_call.communicate()
+    err = tempfile.NamedTemporaryFile()
     gft2bed = GTF2BED % gtf
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gft2bed)
-    evm_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
+    evm_call = subprocess.Popen(gft2bed, stdout=bed12file, stderr=err, shell=True)
     evm_call.communicate()
     #bed12_evm = tmp.name
 
@@ -93,24 +95,24 @@ def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     bed12file = open(bed12_trinity, "w")
     gtffile = open(gtf, "w")
     gffread_con = GFFREAD % trinity
+    err = tempfile.NamedTemporaryFile()
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gffread_con)
-    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, shell=True)
+    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, stderr=err, shell=True)
     gffread_call.communicate()
     gft2bed = GTF2BED % gtf
+    err = tempfile.NamedTemporaryFile()
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gft2bed)
-    trin_call = subprocess.Popen(gft2bed, stdout=bed12file, shell=True)
-    trin_call.communicate()
-    #bed12_evm = tmp.name
-
+    trin_call = subprocess.Popen(gft2bed, stdout=bed12file, stderr=err, shell=True)
 
     bed12_gmap = gmap_bam + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap_bam
+    err = tempfile.NamedTemporaryFile()
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % bedtools)
-    bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, shell=True)
+    bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, stderr=err, shell=True)
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
     inFile2 = open(bed12_evm, 'r')
