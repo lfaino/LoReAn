@@ -353,7 +353,7 @@ def main():
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size,
                                                 args.verbose)
-            final_evm = grs.uniq_id(evm_gff3, args.verbose, evm_output_dir)
+            final_evm = grs.genename_evm(evm_gff3, args.verbose, evm_output_dir)
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('\n###UPDATE WITH PASA DATABASE STARTED AT:\t ' + now + '\t###\n'))
             round_n += 1
@@ -379,8 +379,7 @@ def main():
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
             else:
-                final_update_all = grs.uniq_id(final_output, args.verbose, pasa_dir)
-                final_keep = grs.genename_last(final_update_all, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+                final_keep = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
                 final_keep_stats = evmPipeline.gff3_stats(final_keep, pasa_dir)
                 final_files.append(final_keep)
                 final_files.append(final_keep_stats)
@@ -480,17 +479,8 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
         merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
-        if args.verbose:
-            sys.stdout.write(merged_gff3)
-        update1 = grs.genename(merged_gff3, args.prefix_gene, args.verbose, exonerate_wd)
-        if args.verbose:
-            sys.stdout.write(update1)
-        update2 = grs.exonerate(ref_rename, update1, threads_use, exonerate_wd, args.verbose)
-        if args.verbose:
-            sys.stdout.write(update2)
-        update3 = grs.genename(update2, args.prefix_gene, args.verbose, exonerate_wd)
-        if args.verbose:
-            sys.stdout.write(update3)
+        update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
+        update3 = grs.genename_lorean(update2, args.verbose, exonerate_wd)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))

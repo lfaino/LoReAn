@@ -113,9 +113,7 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
     sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
     create_pasa_database(annot_conf_file, pasa_dir, verbose)
-
     align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
-
     sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
     load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
     sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
@@ -177,7 +175,7 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
 
 def create_pasa_database(conf_file, pasa_dir, verbose):
 
-    cmd = CREATE_DATABASE % (conf_file)
+    cmd = CREATE_DATABASE % conf_file
     log_name = pasa_dir + 'create_databae.log'
     log = open(log_name, 'w')
     log_out_name = pasa_dir + 'create_databae.out.log'
