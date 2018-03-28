@@ -109,6 +109,17 @@ def move_single_file(filename, key, evm_dir, new_file_d):
         raise NameError('')
 
 
+def braker_folder_find(location):
+    for root, dirs, file in os.walk(location):
+        for loc in file:
+            if "braker.log" in loc:
+                with open(loc, "r") as fh:
+                    for line in fh:
+                        if "gtf2gff" in line:
+                            path = "/".join(line.split(" ")[1].split("/")[:-1])
+    return path
+
+
 def move_cat_files(file_list, key, evm_dir, new_file_d):
     """
     Moves and concatenate files to evm dir (case of GFF3 when using long
@@ -253,3 +264,8 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_file.close()
 
     return w_filename
+
+if __name__ == '__main__':
+    #strand(*sys.argv[1:])
+    #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
+    braker_folder_find(*sys.argv[1:])

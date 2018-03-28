@@ -262,9 +262,10 @@ def main():
                         t.daemon = True
                         t.start()
                 queue.join()
-                augustus_file = braker_folder + 'augustus.gff'
+                braker_folder_new = inputEvm.braker_folder_find(braker_folder)
+                augustus_file = braker_folder_new + '/augustus.gff'
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_folder + 'GeneMark-ET/genemark.gtf'
+                genemark_file = braker_folder_new + '/GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
 
@@ -282,9 +283,10 @@ def main():
                         t.daemon = True
                         t.start()
                 queue.join()
-                augustus_file = braker_folder + 'augustus.gff'
+                braker_folder_new = inputEvm.braker_folder_find(braker_folder)
+                augustus_file = braker_folder_new + 'augustus.gff'
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_folder + 'GeneMark-ET/genemark.gtf'
+                genemark_file = braker_folder_new + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
         elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
