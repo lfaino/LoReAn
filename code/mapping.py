@@ -159,23 +159,25 @@ def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
             list_db_rc.append(mrna_id)
     gff_out = gffwriter.GFFWriter(filename)
     for evm in list_db:
-        for i in db.children(evm, featuretype='CDS', order_by='start'):
+        if evm in list_mrna:
+            for i in db.children(evm, featuretype='CDS', order_by='start'):
+                gff_out.write_rec(i)
+            i = db[evm]
             gff_out.write_rec(i)
-        i = db[evm]
-        gff_out.write_rec(i)
-        for i in db.parents(evm, featuretype='gene', order_by='start'):
-            gff_out.write_rec(i)
-        for i in db.children(evm, featuretype='exon', order_by='start'):
-            gff_out.write_rec(i)
+            for i in db.parents(evm, featuretype='gene', order_by='start'):
+                gff_out.write_rec(i)
+            for i in db.children(evm, featuretype='exon', order_by='start'):
+                gff_out.write_rec(i)
     for evm in list_db_rc:
-        for i in dbrc.children(evm, featuretype='CDS', order_by='start'):
+        if evm in list_mrna_rc:
+            for i in dbrc.children(evm, featuretype='CDS', order_by='start'):
+                gff_out.write_rec(i)
+            i = dbrc[evm]
             gff_out.write_rec(i)
-        i = dbrc[evm]
-        gff_out.write_rec(i)
-        for i in dbrc.parents(evm, featuretype='gene', order_by='start'):
-            gff_out.write_rec(i)
-        for i in dbrc.children(evm, featuretype='exon', order_by='start'):
-            gff_out.write_rec(i)
+            for i in dbrc.parents(evm, featuretype='gene', order_by='start'):
+                gff_out.write_rec(i)
+            for i in dbrc.children(evm, featuretype='exon', order_by='start'):
+                gff_out.write_rec(i)
     gff_out.close()
     if verbose:
         print(filename)
