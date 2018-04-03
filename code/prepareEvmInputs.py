@@ -113,7 +113,8 @@ def braker_folder_find(location):
     for root, dirs, file in os.walk(location):
         for loc in file:
             if "braker.log" in loc:
-                with open(loc, "r") as fh:
+                loc_file = os.path.join(root, loc)
+                with open(loc_file, "r") as fh:
                     for line in fh:
                         if "gtf2gff" in line:
                             path = "/".join(line.split(" ")[1].split("/")[:-1])
