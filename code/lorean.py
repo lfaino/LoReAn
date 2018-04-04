@@ -117,7 +117,8 @@ def main():
         logistic.check_create_dir(star_out)
         logistic.check_create_dir(pasa_dir)
         logistic.check_create_dir(gmap_wd)
-        logistic.check_create_dir(interproscan_out_dir)
+        if args.interproscan:
+            logistic.check_create_dir(interproscan_out_dir)
 
         if args.long_reads:
             logistic.check_create_dir(exonerate_wd)
@@ -366,7 +367,7 @@ def main():
                 final_update_stats = evmPipeline.gff3_stats(final_update_all, pasa_dir)
                 final_files.append(final_update_all)
                 final_files.append(final_update_stats)
-                if "command" not in (iprscan_log.decode("utf-8")):
+                if "command" not in (iprscan_log.decode("utf-8")) and args.interproscan:
                     annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                     final_files.append(annot)
                     final_files.append(bad_models)
@@ -395,7 +396,7 @@ def main():
             final_files.append(final_update_all)
             final_files.append(final_update_stats)
             now = datetime.datetime.now().strftime(fmtdate)
-            if "command" not in (iprscan_log.decode("utf-8")):
+            if "command" not in (iprscan_log.decode("utf-8")) and args.interproscan:
                 annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                 final_files.append(annot)
                 final_files.append(bad_models)
@@ -503,7 +504,7 @@ def main():
         final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
         final_files.append(final_update_stats)
 
-        if "command" not in (iprscan_log.decode("utf-8")):
+        if "command" not in (iprscan_log.decode("utf-8")) and args.interproscan:
             annot, bad_models = iprscan.iprscan(masked_ref, final_update_update, interproscan_out_dir, args.threads)
             final_files.append(annot)
             final_files.append(bad_models)

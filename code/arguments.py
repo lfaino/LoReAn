@@ -17,7 +17,8 @@ def setting():
     parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
                              "config folder", default="", required = True)
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
-    parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES)  [FALSE]",
+    parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')
+    parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES) [FALSE]",
                         action='store_true')
     parser.add_argument("-k","--keep_tmp", help="Keep temporary files [FALSE]", action='store_true')
     parser.add_argument("-sr","--short_reads", nargs="?", default="", metavar='FASTQ_file',
