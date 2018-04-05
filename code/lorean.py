@@ -159,9 +159,10 @@ def main():
                 short_bam = mapping.star(ref_rename, short_reads_file, threads_use, args.max_intron_length, star_out,
                                          args.verbose)
                 short_sorted_bam = mapping.samtools_sort(short_bam, threads_use, wd, args.verbose)
+                final_mapping_star = mapping.change_chr(short_sorted_bam, dict_ref_name, star_out, threads_use, args.verbose)
                 default_bam = short_sorted_bam
                 # Keep the output
-                final_files.append(short_sorted_bam)
+                final_files.append(final_mapping_star)
                 # TRANSCRIPT ASSEMBLY
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -204,11 +205,14 @@ def main():
                 long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=False)
+
                 # Convert to sorted BAM
-                long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
+                long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, gmap_wd, args.verbose)
+                sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose)
                 default_bam = long_sorted_bam
                 # Keep the output
-                final_files.append(long_sorted_bam)
+
+                final_files.append(sam_orig_id)
                 # TRANSCRIPT ASSEMBLY
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -420,7 +424,8 @@ def main():
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=False)
             long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
-            final_files.append(long_sorted_bam)
+            sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose)
+            final_files.append(sam_orig_id)
 
         # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE            # FILE
         # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM

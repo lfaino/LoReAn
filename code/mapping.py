@@ -5,11 +5,13 @@ import math
 import os
 import subprocess
 import sys
+from collections import OrderedDict
 
 import dirsAndFiles as logistic
 import gffutils
 import gffutils.gffwriter as gffwriter
 from Bio import SeqIO
+from simplesam import Reader, Writer
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -40,7 +42,6 @@ GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
 
 #==========================================================================================================
-
 
 def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
              working_dir, Fflag, type_out, verbose):
@@ -410,5 +411,34 @@ def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)
     return s_bam_filename
 
+
+def change_chr(long_sam, dict_chr_split, wd, threads, verbose):
+
+    outfile = long_sam + '.test.sam'
+    out_file = open(outfile, 'w')
+    in_file = open(long_sam, "r")
+    in_sam = Reader(in_file)
+    header = in_sam.header
+    sq = header['@SQ']
+    dict_chr = {}
+    for c in sq:
+        single_elm = c.split(":")
+        if single_elm[1] in dict_chr_split:
+            single_elm[1] = dict_chr_split[single_elm[1]]
+            change_chr = ":".join(single_elm)
+            dict_chr[change_chr] = sq[c]
+    header_new = OrderedDict({'@CO': header['@CO'], '@HD': header['@HD'],'@PG': header['@PG'],'@SQ': OrderedDict(dict_chr)})
+    out_sam = Writer(out_file, header_new)
+    for line in in_sam:
+        if line.rname in dict_chr_split:
+            name = dict_chr_split[line.rname]
+            line.rname = name
+            out_sam.write(line)
+    out_sam.close()
+
+    bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+
+    return bam_final
+
 if __name__ == '__main__':
-    longest_cds(*sys.argv[1:])
+    change_chr(*sys.argv[1:])
