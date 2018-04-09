@@ -333,11 +333,11 @@ def removeOverlap(gff, verbose):
     return outputFilename
 
 
-def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name):
+def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name, step):
 
     global prefix_name
     prefix_name = prefix
-    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir= wd)
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, mode="w")
     gt_com = GT_GFF3 % gff_filename
     if verbose:
@@ -372,17 +372,25 @@ def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name):
                 i.chrom = dict_ref_name[i.chrom]
             gff_out.write_rec(i)
     gff_out.close()
-
-    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir = wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w" , dir = wd)
-    gt_com = GT_RETAINID % out_gff.name
+    if "pasa" in step:
+        out_name = os.path.join(wd, "Final.evm.update.gff3")
+        with open(out_name, "w") as fh:
+            gt_com = GT_RETAINID % out_gff.name
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % gt_com)
+            gt_call = subprocess.Popen(gt_com, stdout=fh, stderr=err, shell=True)
+            gt_call.communicate()
+    if "lorean" in step:
+        out_name = os.path.join(wd, "Final.LoReAn.update.gff3")
+        with open(out_name, "w") as fh:
+            gt_com = GT_RETAINID % out_gff.name
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % gt_com)
+            gt_call = subprocess.Popen(gt_com, stdout=fh, stderr=err, shell=True)
+            gt_call.communicate()
     if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
-    gt_call.communicate()
-    if verbose:
-        print(out.name)
-    return out.name
+        print(out_name)
+    return out_name
 
 
 def genename(gff_filename, prefix, verbose, wd):

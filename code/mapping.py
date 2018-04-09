@@ -119,7 +119,8 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
                 raise NameError('')
             out_f.close()
             log.close()
-        print (list_fasta[0][1], list_fasta[1][1])
+        if verbose:
+            print(list_fasta[0][1], list_fasta[1][1])
         filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
 
@@ -412,9 +413,12 @@ def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     return s_bam_filename
 
 
-def change_chr(long_sam, dict_chr_split, wd, threads, verbose):
+def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
 
-    outfile = long_sam + '.test.sam'
+    if "long" in type_reads:
+        outfile = os.path.join(wd, 'long_reads_mapped')
+    if "short" in type_reads:
+        outfile = os.path.join(wd, 'short_reads_mapped')
     out_file = open(outfile, 'w')
     in_file = open(long_sam, "r")
     in_sam = Reader(in_file)

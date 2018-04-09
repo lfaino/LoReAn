@@ -159,7 +159,7 @@ def main():
                 short_bam = mapping.star(ref_rename, short_reads_file, threads_use, args.max_intron_length, star_out,
                                          args.verbose)
                 short_sorted_bam = mapping.samtools_sort(short_bam, threads_use, wd, args.verbose)
-                final_mapping_star = mapping.change_chr(short_sorted_bam, dict_ref_name, star_out, threads_use, args.verbose)
+                final_mapping_star = mapping.change_chr(short_sorted_bam, dict_ref_name, star_out, threads_use, args.verbose, "short")
                 default_bam = short_sorted_bam
                 # Keep the output
                 final_files.append(final_mapping_star)
@@ -208,7 +208,7 @@ def main():
 
                 # Convert to sorted BAM
                 long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, gmap_wd, args.verbose)
-                sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose)
+                sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose, "long")
                 default_bam = long_sorted_bam
                 # Keep the output
 
@@ -267,10 +267,8 @@ def main():
                         t.daemon = True
                         t.start()
                 queue.join()
-                braker_folder_new = inputEvm.braker_folder_find(braker_folder)
-                augustus_file = braker_folder_new + '/augustus.gff'
+                augustus_file, genemark_file = inputEvm.braker_folder_find(braker_folder)
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_folder_new + '/GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
 
@@ -288,10 +286,8 @@ def main():
                         t.daemon = True
                         t.start()
                 queue.join()
-                braker_folder_new = inputEvm.braker_folder_find(braker_folder)
-                augustus_file = braker_folder_new + 'augustus.gff'
+                augustus_file, genemark_file = inputEvm.braker_folder_find(braker_folder)
                 augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
-                genemark_file = braker_folder_new + 'GeneMark-ET/genemark.gtf'
                 genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                 merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
         elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
@@ -367,7 +363,7 @@ def main():
             final_output = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db, ref_rename, trinity_out,
                                               final_evm, args.verbose)
             if args.long_reads == '':
-                final_update_all = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir,dict_ref_name)
+                final_update_all = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name, "pasa")
                 final_update_stats = evmPipeline.gff3_stats(final_update_all, pasa_dir)
                 final_files.append(final_update_all)
                 final_files.append(final_update_stats)
@@ -375,7 +371,7 @@ def main():
                     annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                     final_files.append(annot)
                     final_files.append(bad_models)
-                final_output_dir = wd + 'output/'
+                final_output_dir = os.path.join(output_dir, args.species + '_output')
                 logistic.check_create_dir(final_output_dir)
                 for filename in final_files:
                     if filename != '':
@@ -386,7 +382,7 @@ def main():
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
             else:
-                final_keep = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+                final_keep = grs.genename_last(final_output, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name, "pasa")
                 final_keep_stats = evmPipeline.gff3_stats(final_keep, pasa_dir)
                 final_files.append(final_keep)
                 final_files.append(final_keep_stats)
@@ -395,7 +391,7 @@ def main():
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
                                                 transcript_file, protein_file, args.segmentSize, args.overlap_size,
                                                 args.verbose)
-            final_update_all = grs.genename_last(evm_gff3, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+            final_update_all = grs.genename_last(evm_gff3, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name, "pasa")
             final_update_stats = evmPipeline.gff3_stats(final_update_all, pasa_dir)
             final_files.append(final_update_all)
             final_files.append(final_update_stats)
@@ -404,7 +400,7 @@ def main():
                 annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                 final_files.append(annot)
                 final_files.append(bad_models)
-            final_output_dir = wd + 'output/'
+            final_output_dir = os.path.join(output_dir, args.species + '_output')
             logistic.check_create_dir(final_output_dir)
             for filename in final_files:
                 if filename != '':
@@ -424,7 +420,7 @@ def main():
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=False)
             long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
-            sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose)
+            sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose, "long")
             final_files.append(sam_orig_id)
 
         # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE            # FILE
@@ -503,7 +499,7 @@ def main():
                                        update5, args.verbose)
         if args.verbose:
             sys.stdout.write(update6)
-        final_update_update = grs.genename_last(update6, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name)
+        final_update_update = grs.genename_last(update6, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name, "lorean")
         final_files.append(final_update_update)
 
         final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
@@ -516,7 +512,7 @@ def main():
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
 
-        final_output_dir = os.path.join(output_dir,  args.species + '_output' )
+        final_output_dir = os.path.join(output_dir,  args.species + '_output')
 
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)

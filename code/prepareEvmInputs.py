@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from glob import glob
 
 
 def convert_augustus(aug_file, wd):
@@ -110,15 +111,10 @@ def move_single_file(filename, key, evm_dir, new_file_d):
 
 
 def braker_folder_find(location):
-    for root, dirs, file in os.walk(location):
-        for loc in file:
-            if "braker.log" in loc:
-                loc_file = os.path.join(root, loc)
-                with open(loc_file, "r") as fh:
-                    for line in fh:
-                        if "gtf2gff" in line:
-                            path = "/".join(line.split(" ")[1].split("/")[:-1])
-    return path
+
+    gff = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "augustus.gff"))][0]
+    gtf = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "genemark.gtf"))][0]
+    return gff, gtf
 
 
 def move_cat_files(file_list, key, evm_dir, new_file_d):
