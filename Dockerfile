@@ -16,7 +16,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama
+    psutil memory_profiler pathlib colorama simplesam
 
 WORKDIR /opt/
 
@@ -57,10 +57,10 @@ COPY v3.0.1.tar.gz ./
 RUN tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
     cd TransDecoder-3.0.1 && make
 
-COPY gmap-gsnap-2017-06-20.tar.gz ./
+COPY gmap-gsnap-2017-11-15.tar.gz ./
 
-RUN tar -zxvf gmap-gsnap-2017-06-20.tar.gz && rm gmap-gsnap-2017-06-20.tar.gz && \
-    mv gmap-2017-06-20/ gmap && cd gmap/ && ./configure && make && sudo make install
+RUN tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz  && \
+    mv gmap-2017-11-15  gmap && cd gmap/ && ./configure && make && sudo make install
 
 COPY fasta-36.3.8e.tar.gz ./
 
@@ -116,10 +116,45 @@ COPY signalp-4.1/signalp bin/signalp/4.1/
 RUN mkdir /data_panther
 
 COPY tmhmm-2.0c.Linux.tar.gz ./
+
 RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
      cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
 RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
+
+WORKDIR /usr/local/bin
+
+RUN apt-get install -y -q hmmer
+
+COPY trf /usr/bin/
+
+WORKDIR /usr/local
+
+RUN mkdir nseg && cd nseg && wget ftp://ftp.ncbi.nih.gov/pub/seg/nseg/* && make && mv nseg ../bin && mv nmerge ../bin
+
+COPY RepeatScout-1.0.5.tar.gz ./
+
+RUN tar -xvf RepeatScout* && rm RepeatScout*.tar.gz && mv RepeatScout* RepeatScout && cd RepeatScout && make
+
+RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/rmblast/2.2.28/ncbi-rmblastn-2.2.28-x64-linux.tar.gz && \
+    tar -xzvf ncbi-rmblastn* && rm ncbi-rmblastn*.tar.gz && mv ncbi-rmblastn*/bin/rmblastn bin && rm -rf ncbi-rmblastn
+
+
+RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.6.0+-x64-linux.tar.gz && \
+    tar -xzvf ncbi-blast* && find ncbi-blast* -type f -executable -exec mv {} bin \; &&  rm -rf ncbi-blast*
+
+RUN sudo perl -MCPAN -e shell && sudo cpan -f -i Text::Soundex
+
+COPY RepeatMasker-open-4-0-7.tar.gz ./
+
+RUN tar -xzvf RepeatMasker-open*.tar.gz \
+	&& rm -f RepeatMasker-open*.tar.gz && perl -0p -e 's/\/usr\/local\/hmmer/\/usr\/bin/g;' -e 's/\/usr\/local\/rmblast/\/usr\/local\/bin/g;' \
+    -e 's/DEFAULT_SEARCH_ENGINE = "crossmatch"/DEFAULT_SEARCH_ENGINE = "ncbi"/g;' \
+    -e 's/TRF_PRGM = ""/TRF_PRGM = "\/usr\/local\/bin\/trf"/g;' RepeatMasker/RepeatMaskerConfig.tmpl > RepeatMasker/RepeatMaskerConfig.pm
+
+RUN cd /usr/local/RepeatMasker && perl -i -0pe 's/^#\!.*perl.*/#\!\/usr\/bin\/env perl/g' \
+	RepeatMasker DateRepeats ProcessRepeats RepeatProteinMask DupMasker util/queryRepeatDatabase.pl \
+	util/queryTaxonomyDatabase.pl util/rmOutToGFF3.pl util/rmToUCSCTables.pl
 
 WORKDIR /opt/LoReAn/
 
