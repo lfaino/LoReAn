@@ -111,6 +111,8 @@ def main():
         braker_folder = wd + '/braker/'
         evm_output_dir = wd + '/evm_output/'
         interproscan_out_dir = wd + 'interproscan'
+        wd_split = wd + '/split/'
+        logistic.check_create_dir(wd_split)
         logistic.check_create_dir(evm_inputs_dir)
         logistic.check_create_dir(evm_output_dir)
         logistic.check_create_dir(trin_dir)
@@ -127,17 +129,17 @@ def main():
 
         logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                             args.verbose)
-
         augustus_species, err_augustus = logistic.augustus_species_func(home)
 
         if args.repeat_masked != "":
             sys.stdout.write(('\n###MASKING THE GENOME STARTED AT:\t' + now + '\t###\n'))
-            masked_ref = mseq.maskedgenome(gmap_wd, ref_link, args.repeat_masked, args.repeat_lenght)
+            masked_ref = mseq.maskedgenome(wd_split, ref_link, args.repeat_masked, args.repeat_lenght, args.verbose)
+        elif args.mask_genome:
+            sys.stdout.write(('\n###RUNNNG REPEATSCOUT AND REPEATMASK TO MASK THE GENOME STARTED AT:\t' + now + '\t###\n'))
+            masked_ref = mseq.repeatsfind(ref_link, wd_split, args.repeat_lenght, threads_use, args.verbose)
         else:
             masked_ref = ref_link
-
-        # COLLECT ONLY ONLY RUNS PART OF THE CONSENSUS PIPELINE
-        list_fasta_names, dict_ref_name, ref_rename = multiple.single_fasta(masked_ref, wd)
+        list_fasta_names, dict_ref_name, ref_rename = multiple.single_fasta(masked_ref, wd_split)
 
         if args.short_reads or args.long_reads:
             if int(threads_use) > 1:

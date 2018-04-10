@@ -146,7 +146,8 @@ def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
 
 def cat_two_fasta(trinity, consens, long_fasta, wd):
     '''Concatenates the two fasta file into one output'''
-    fastas = [trinity, consens, long_fasta]
+    fastas = [trinity, consens, long_fasta[0]]
+    print (fastas)
     outFileFasta = wd + "/allFasta.fasta.clean"
     with open(outFileFasta, 'wb') as outfile:
         for fasta in fastas:

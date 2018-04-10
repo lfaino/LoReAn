@@ -6,7 +6,6 @@ import subprocess
 import sys
 from multiprocessing import Pool
 
-import dirsAndFiles as logistic
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 
@@ -25,12 +24,11 @@ AAT = 'AAT.pl -P -b -q %s -s %s r"--dps" r" \'-f 100 -i 30 -a 200\'" r"--filter"
 #==========================================================================================================
 
 
-def single_fasta(ref, wd):
+def single_fasta(ref, wd_split):
     """
     From a fasta file make single files with each sequence
     """
-    wd_split = wd + '/split/'
-    logistic.check_create_dir(wd_split)
+
     fasta_file = open(ref, 'r')
     single_fasta_list = []
     count = 0

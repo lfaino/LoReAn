@@ -126,7 +126,7 @@ WORKDIR /usr/local/bin
 
 RUN apt-get install -y -q hmmer
 
-COPY trf /usr/bin/
+COPY trf ./
 
 WORKDIR /usr/local
 
@@ -155,6 +155,8 @@ RUN tar -xzvf RepeatMasker-open*.tar.gz \
 RUN cd /usr/local/RepeatMasker && perl -i -0pe 's/^#\!.*perl.*/#\!\/usr\/bin\/env perl/g' \
 	RepeatMasker DateRepeats ProcessRepeats RepeatProteinMask DupMasker util/queryRepeatDatabase.pl \
 	util/queryTaxonomyDatabase.pl util/rmOutToGFF3.pl util/rmToUCSCTables.pl
+
+RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 

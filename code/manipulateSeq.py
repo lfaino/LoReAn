@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from glob import glob
 from multiprocessing import Pool
 
 import ssw_lib
@@ -21,6 +22,13 @@ BEDTOOLS_MERGE = 'bedtools merge -d 1'
 BEDTOOLS_MASK = 'bedtools maskfasta -fi %s -bed %s -fo %s'
 
 AWK = 'awk \'{if ($3 - $2 > %s) print $0} \''
+
+BUILD_TABLE  = 'build_lmer_table -sequence  %s -freq %s'
+
+REPEAT_SCOUT =  'RepeatScout -sequence %s -output %s -freq %s'
+
+REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
+
 
 #==========================================================================================================
 
@@ -276,22 +284,68 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     return out_filename
 
 
-def maskedgenome(wd, ref, gff3, length):
+def maskedgenome(wd, ref, gff3, length, verbose):
     """
     this module is used to mask the genome when a gff or bed file is provided
     """
 
     outputmerge = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genome.", suffix=".masked.gff3", dir=wd)
-    bedsort = subprocess.Popen(BEDTOOLS_SORT % gff3, stdout=subprocess.PIPE, shell=True)
-    bedmerge = subprocess.Popen(BEDTOOLS_MERGE, stdout=subprocess.PIPE, stdin=bedsort.stdout, shell=True)
-    awk = subprocess.Popen(AWK % length, stdin=bedmerge.stdout, stdout=outputmerge, shell=True)
+    cmd = BEDTOOLS_SORT % gff3
+    cmd1 = BEDTOOLS_MERGE
+    cmd2 = AWK % length
+    if verbose:
+        print(cmd)
+        print(cmd1)
+        print(cmd2)
+    bedsort = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+    bedmerge = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stdin=bedsort.stdout, shell=True)
+    awk = subprocess.Popen(cmd2, stdin=bedmerge.stdout, stdout=outputmerge, shell=True)
     awk.communicate()
 
     masked = ref + ".masked.fasta"
     cmd = BEDTOOLS_MASK % (ref, outputmerge.name, masked)
+    if verbose:
+        print(cmd)
     maskfasta=subprocess.Popen(cmd, cwd=wd, shell=True)
     maskfasta.communicate()
     return masked
+
+
+def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
+
+    freq_file = working_dir + genome.split("/")[-1] + ".freq"
+    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+    cmd = BUILD_TABLE % (genome, freq_file)
+    if verbose:
+        print(cmd)
+    build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+    build.communicate()
+
+    fasta_out = working_dir + genome.split("/")[-1] + ".repeats.fasta"
+    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+    cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
+    if verbose:
+        print(cmd)
+    scout = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+    scout.communicate()
+
+    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+    cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
+    if verbose:
+        print(cmd)
+    mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+    mask.communicate()
+    name_gff = genome.split("/")[-1] + ".out.gff"
+    gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))]
+
+    genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
+    return genome_masked
 
 
 if __name__ == '__main__':
