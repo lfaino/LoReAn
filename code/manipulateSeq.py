@@ -342,7 +342,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
     mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
     mask.communicate()
     name_gff = genome.split("/")[-1] + ".out.gff"
-    gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))]
+    gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
 
     genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
     return genome_masked
