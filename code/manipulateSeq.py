@@ -7,6 +7,7 @@ import sys
 import tempfile
 from glob import glob
 from multiprocessing import Pool
+from pathlib import Path
 
 import ssw_lib
 from Bio import SeqIO
@@ -313,36 +314,41 @@ def maskedgenome(wd, ref, gff3, length, verbose):
 
 def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
-    freq_file = working_dir + genome.split("/")[-1] + ".freq"
-    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-
-    cmd = BUILD_TABLE % (genome, freq_file)
-    if verbose:
-        print(cmd)
-    build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
-    build.communicate()
-
-    fasta_out = working_dir + genome.split("/")[-1] + ".repeats.fasta"
-    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-
-    cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
-    if verbose:
-        print(cmd)
-    scout = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
-    scout.communicate()
-
-    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-
-    cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
-    if verbose:
-        print(cmd)
-    mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
-    mask.communicate()
     name_gff = genome.split("/")[-1] + ".out.gff"
-    gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
+    gff_path = Path(working_dir + "/" + genome.split("/")[-1] + ".out.gff")
+
+    if gff_path.is_file():
+        gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
+    else:
+        freq_file = working_dir + genome.split("/")[-1] + ".freq"
+        log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+        err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+        cmd = BUILD_TABLE % (genome, freq_file)
+        if verbose:
+            print(cmd)
+        build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+        build.communicate()
+
+        fasta_out = working_dir + genome.split("/")[-1] + ".repeats.fasta"
+        log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+        err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+        cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
+        if verbose:
+            print(cmd)
+        scout = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+        scout.communicate()
+
+        log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+        err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+        cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
+        if verbose:
+            print(cmd)
+        mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+        mask.communicate()
+        gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
 
     genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
     return genome_masked
