@@ -152,7 +152,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     final_seq = []
     list_seq_adap = []
     record_dict = {}
-    max_score = 0
+
     if a and not adapter:
         out_filename = wd + fastq_filename + '.longreads.filtered.fasta'
     elif a and adapter:
@@ -162,7 +162,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     filter_count = 0
     if os.path.isfile(out_filename):
             sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
-            return out_filename, 0
+            return out_filename
     if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
         for record in SeqIO.parse(fastq_filename, "fastq"):
             if len(str(record.seq)) > int(min_length) < int(max_length):
@@ -183,7 +183,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         for adpt in SeqIO.parse(adapter, "fasta"):
             listA_adapter.append(adpt.id)
             list_seq_adap.append(adpt)
-    outFile = open(out_filename, 'w')
 
     filter_count = 0
     if len(listA_adapter) == 1:
@@ -279,9 +278,10 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
 
-    sys.stdout.write(("###FINISHED FILTERING AT:\t" + now +
-                      "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) + "\033[0m\tREADS AFTER LENGTH FILTERING###\n"))
+    sys.stdout.write("###FINISHED FILTERING AT:\t" + now +
+                      "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) + "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
 
+    print(out_filename)
     return out_filename
 
 
