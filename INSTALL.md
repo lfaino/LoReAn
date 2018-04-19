@@ -23,12 +23,12 @@ https://docs.docker.com/engine/installation/
 
 After Docker installation, you can download  LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data -v /path/to/panther/folder/panther:/data_panther lfaino/lorean:iprscan createUser.py $USER $UID
+docker run -it --rm -v $PWD:/data -v /path/to/panther/folder/panther:/data_panther lfaino/lorean:iprscan_rpMask createUser.py $USER $UID
 ```
 
 or
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean:iprscan createUser.py $USER $UID
+docker run -it --rm -v $PWD:/data lfaino/lorean:iprscan_rpMask createUser.py $USER $UID
 ```
 if panther is not present
 
