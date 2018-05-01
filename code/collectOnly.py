@@ -1,12 +1,11 @@
 #!/usr/bin/python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
 import os
-import re
-import subprocess
 import sys
 import tempfile
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 from Bio import SeqIO
 
 count_sequences = 0
@@ -101,15 +100,16 @@ def parse_contigs(output_assembly, threshold_float, verbose):
                     count_unitigs += 1
         # writes the outputs
         file_assembly = output_assembly + 'unigene_seq.new.fasta'
-        contig_seq = open(file_assembly, 'r')
-        contig_dict = SeqIO.to_dict(SeqIO.parse(contig_seq, 'fasta'))
-        output_filename = output_assembly[:-1] + '_assembled.fasta'
-        output_file = open(output_filename, 'w')
-        for iden, write_iden in list(real_contigs.items()):
-            if iden in contig_dict:
-                output_file.write('>' + write_iden + '\n' + str(contig_dict[iden].seq) + '\n')
-        contig_seq.close()
-        output_file.close()
+        if os.path.exists(file_assembly)
+            contig_seq = open(file_assembly, 'r')
+            contig_dict = SeqIO.to_dict(SeqIO.parse(contig_seq, 'fasta'))
+            output_filename = output_assembly[:-1] + '_assembled.fasta'
+            output_file = open(output_filename, 'w')
+            for iden, write_iden in list(real_contigs.items()):
+                if iden in contig_dict:
+                    output_file.write('>' + write_iden + '\n' + str(contig_dict[iden].seq) + '\n')
+            contig_seq.close()
+            output_file.close()
     return
 
 
@@ -162,12 +162,13 @@ def cat_assembled_all(wd):
             wd_dir = os.path.join(root, name)
             if 'fasta_output' in wd_dir:
                 wd_fasta = os.path.join(wd_dir, "unigene_seq.new.fasta")
-                fasta_sequences = SeqIO.parse(open(wd_fasta),'fasta')
-                for fasta in fasta_sequences:
-                    fasta_name = ">assembled_" + str(count_seq_ass)
-                    count_seq_ass += 1
-                    cdna = fasta_name + "\n" + str(fasta.seq) + "\n"
-                    out_file.write(cdna)
+                if os.path.exists(wd_fasta):
+                    fasta_sequences = SeqIO.parse(open(wd_fasta),'fasta')
+                    for fasta in fasta_sequences:
+                        fasta_name = ">assembled_" + str(count_seq_ass)
+                        count_seq_ass += 1
+                        cdna = fasta_name + "\n" + str(fasta.seq) + "\n"
+                        out_file.write(cdna)
     return fileName
 
 
