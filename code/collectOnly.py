@@ -100,7 +100,7 @@ def parse_contigs(output_assembly, threshold_float, verbose):
                     count_unitigs += 1
         # writes the outputs
         file_assembly = output_assembly + 'unigene_seq.new.fasta'
-        if os.path.exists(file_assembly)
+        if os.path.exists(file_assembly):
             contig_seq = open(file_assembly, 'r')
             contig_dict = SeqIO.to_dict(SeqIO.parse(contig_seq, 'fasta'))
             output_filename = output_assembly[:-1] + '_assembled.fasta'
