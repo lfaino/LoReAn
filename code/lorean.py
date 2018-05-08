@@ -429,7 +429,7 @@ def main():
         # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
         # ORIGINAL FILE
 
-        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_output, trinity_path, args.verbose, consensus_wd)
+        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_output, args.verbose, consensus_wd)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 

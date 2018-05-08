@@ -67,7 +67,7 @@ def change_ids(update, wd, verbose):
     return (new_name_update.name)
 
 
-def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
+def catTwoBeds(gmap_bam, evm_orig, verbose, wd):
     '''convert in to bed12 and concatenates the two bed12 files'''
 
     err = tempfile.NamedTemporaryFile()
@@ -90,22 +90,6 @@ def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     evm_call.communicate()
     #bed12_evm = tmp.name
 
-    gtf = trinity + ".gtf"
-    bed12_trinity = trinity + ".bed12"
-    bed12file = open(bed12_trinity, "w")
-    gtffile = open(gtf, "w")
-    gffread_con = GFFREAD % trinity
-    err = tempfile.NamedTemporaryFile()
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gffread_con)
-    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, stderr=err, shell=True)
-    gffread_call.communicate()
-    gft2bed = GTF2BED % gtf
-    err = tempfile.NamedTemporaryFile()
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gft2bed)
-    trin_call = subprocess.Popen(gft2bed, stdout=bed12file, stderr=err, shell=True)
-
     bed12_gmap = gmap_bam + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap_bam
@@ -116,9 +100,9 @@ def catTwoBeds(gmap_bam, evm_orig, trinity, verbose, wd):
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
     inFile2 = open(bed12_evm, 'r')
-    inFile3 = open(bed12_trinity, 'r')
+
     outFile = open(outFilename, 'w')
-    for File in [inFile1, inFile2, inFile3]:
+    for File in [inFile1, inFile2]:
         for line in File:
             outFile.write(line)
     inFile1.close()
