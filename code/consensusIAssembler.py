@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
 import os
+import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-from multiprocessing import Pool, Manager
-
-import progressbar
 from Bio import SeqIO
+from multiprocessing import Pool, Manager
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -18,9 +17,9 @@ ASSEMBLY  = 'iAssembler.pl -i %s -h %s  -p %s -o %s_output  2> %s.log'
 
 BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
 
-BEDTOOLS_MERGE_ST = 'bedtools merge -s -d %s -c 4,4 -o count,distinct'
+BEDTOOLS_MERGE_ST = 'bedtools merge -s -c 4,4 -o count,distinct'
 
-BEDTOOLS_MERGE = 'bedtools merge -d %s -c 4,4 -o count,distinct'
+BEDTOOLS_MERGE = 'bedtools merge  -c 4,4 -o count,distinct'
 
 CAT = 'cat %s'
 
@@ -54,7 +53,7 @@ def gffread(gff3_file, reference, working_dir, verbose):
     return out_name
 
 
-def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
+def cluster_pipeline(gff3_file, strand, verbose):
     """
     here the clusters of sequence from the same locus are prepared
     """
@@ -62,13 +61,12 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     cat = CAT % gff3_file
     btsort1 = BEDTOOLS_SORT
 
-    dist = '-' + str(merge_distance)
     if strand:
-        btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
+        btmerge1 = BEDTOOLS_MERGE_ST
         sys.stdout.write("\t ###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
 
     else:
-        btmerge1 = BEDTOOLS_MERGE % (str(dist))
+        btmerge1 = BEDTOOLS_MERGE
         sys.stdout.write("\t###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
 
     btsort2 = BEDTOOLS_SORT

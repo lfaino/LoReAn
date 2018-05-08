@@ -445,7 +445,7 @@ def main():
         sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
 
         # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME POSITION
-        cluster_list = consensus.cluster_pipeline(mergedmap_gff3, args.assembly_overlap_length, args.stranded, args.verbose)
+        cluster_list = consensus.cluster_pipeline(mergedmap_gff3, args.stranded, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
 
         sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
