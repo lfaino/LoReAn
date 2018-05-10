@@ -24,7 +24,7 @@ BEDTOOLS_GET_FASTA = 'bedtools getfasta -fi %s -bed %s -fo %s'
 
 GFFREAD_W = 'gffread -W -g %s -w %s -y %s %s'
 
-GFFREAD_M = 'gffread -F -M -C -K -Q -Z -o %s %s'
+GFFREAD_M = 'gffread -F -M -C -K -Q -Z --force-exons -o %s %s'
 
 EXONERATE = 'exonerate --model coding2genome --bestn 1 --refine region --showtargetgff yes --query %s --target %s'
 
@@ -922,7 +922,7 @@ other_lorean = "LoReAn.other."
 
 def genename_lorean(gff_filename, verbose, wd):
 
-    out = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd)
+    out = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".gff3", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, mode="w")
     gt_com = GT_GFF3 % gff_filename
     if verbose:
@@ -941,7 +941,17 @@ def genename_lorean(gff_filename, verbose, wd):
     gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
     gffread.communicate()
 
-    db_gffread = gffutils.create_db(out.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_cds)
+    out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "gt_gff3.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
+
+    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_final.name, outfile_gff.name)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
+    gt_call.communicate()
+
+    db_gffread = gffutils.create_db(out_final.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_cds)
     outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.final.", suffix=".gff3", dir=wd)
     gff_out_s = gffwriter.GFFWriter(outfile_out.name)
 
@@ -949,23 +959,39 @@ def genename_lorean(gff_filename, verbose, wd):
         gff_out_s.write_rec(db_gffread[gene])
         for i in db_gffread.children(gene, order_by='start'):
             gff_out_s.write_rec(i)
-    return outfile_out.name
+
+    if verbose:
+        print(outfile_out.name)
+
+    out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="gt_gff3.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
+
+    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
+    gt_call.communicate()
+    return out_1.name
+
 
 cds_count_lorean = 0
 
 def transform_cds(x):
     global cds_count_lorean
     cds_count_lorean += 1
-    if 'gene' in x.featuretype:
-        x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['Name'][0].split("_")[0]}
+    if 'locus' in x.featuretype:
+        x.featuretype = "gene"
+        x.attributes['ID'] = x.attributes['locus']
+        x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['geneIDs'][0].split("_")[0]}
         x.source = "LoReAn"
         return x
     elif 'mRNA' in x.featuretype:
         x.source = "LoReAn"
+        x.attributes['Parent'] = x.attributes['locus']
         x.attributes = {'ID': x.attributes['ID'], 'Parent': x.attributes['Parent']}
         return x
     elif 'CDS' in x.featuretype:
-
         x.attributes = {'ID': cds_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
@@ -974,6 +1000,7 @@ def transform_cds(x):
         x.source = "LoReAn"
         return x
     else:
+        print(x.attributes )
         x.attributes = {'ID': other_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
