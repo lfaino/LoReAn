@@ -458,7 +458,7 @@ def main():
             sys.stdout.write('No assembly')
         else:
             consensus.generate_fasta(cluster_list, gffread_dict, args.cluster_min_evidence,
-                                     args.cluster_max_evidence, args.assembly_overlap_length, tmp_wd)
+                                     args.cluster_max_evidence, args.assembly_overlap_length, args.stranded, tmp_wd)
             consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
                                args.verbose)
             utrs.lengthSupport(tmp_wd, threads_use)

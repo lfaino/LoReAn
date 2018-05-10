@@ -68,7 +68,7 @@ def setting():
                                                                                      "and TRINITY [1000]", metavar='N')
     parser.add_argument("-ee", "--end_exon", nargs="?", default="20", help="Minimal length for end exon with GMAP [20]",
                         metavar='N')
-    parser.add_argument("-cme","--cluster_min_evidence", nargs="?", default="5", help="Minimal evidence needed to form a"
+    parser.add_argument("-cme","--cluster_min_evidence", nargs="?", default="", help="Minimal evidence needed to form a"
                                                                                       " cluster [5]", metavar='N')
     parser.add_argument("-cMe","--cluster_max_evidence", nargs="?", default="5000", metavar='N',
                         help="Maximal evidence to form a cluster.Prevents the clustering or rRNA genes i.e. [5000]")
