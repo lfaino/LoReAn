@@ -486,14 +486,14 @@ def main():
         sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
         merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
         update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
-        update3 = grs.genename_lorean(update2, args.verbose, exonerate_wd)
+        #update3 = grs.genename_lorean(update2, args.verbose, exonerate_wd)
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
         sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
         update5 = pasa.update_database(threads_use, str(round_n), pasa_dir, args.pasa_db,  ref_rename, fasta_all,
-                                       update3, args.verbose)
+                                       update2, args.verbose)
         if args.verbose:
             sys.stdout.write(update5)
         round_n += 1

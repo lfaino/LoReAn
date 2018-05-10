@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -15,6 +16,8 @@ length_cluster = 0
 # COMMANDS LIST
 
 GFFREAD_W = 'gffread -g %s -W -w %s %s'
+
+GFFREAD_M = 'gffread -M -F -o %s %s'
 
 #==========================================================================================================
 
@@ -203,8 +206,43 @@ def add_EVM(final_update, wd, consensus_mapped_gff3):
             gff_out_s.write_rec(i)
         gff_out_s.write_rec(db_gmap[name])
     gff_out_s.close()
+    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
 
-    return outfile.name
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".err", dir=wd)
+
+    cmd = GFFREAD_M % (outfile_gff.name, outfile.name)
+
+    gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
+    gffread.communicate()
+    db_gffread = gffutils.create_db(outfile_gff.name, ':memory:', merge_strategy='create_unique', keep_order=True,
+                                    transform=transform_func)
+
+    outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="additional.final.", suffix=".gff3", dir=wd)
+    gff_out_s = gffwriter.GFFWriter(outfile_out.name)
+
+    for gene in db_gffread.features_of_type("gene"):
+        for i in db_gffread.children(gene, order_by='start'):
+            gff_out_s.write_rec(i)
+        gff_out_s.write_rec(db_gffread[gene])
+
+    return outfile_out.name
+
+
+def transform_func(x):
+
+     if 'locus' in x.featuretype:
+         x.featuretype = "gene"
+         x.attributes['ID'] = x.attributes['locus']
+         x.source = "LoReAn"
+         return x
+     elif 'mRNA' in x.featuretype:
+         x.attributes['Parent'] = x.attributes['locus']
+         x.source = "LoReAn"
+         return x
+     else:
+         x.source = "LoReAn"
+         return x
 
 
 if __name__ == '__main__':
