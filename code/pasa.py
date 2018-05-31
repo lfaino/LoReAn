@@ -27,7 +27,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf_file = pasa_dir + 'annotCompare.config'
     conf = open(conf_file, 'w')
     lines = [
-        'MYSQLDB=' + pasa_db,
+        'DATABASE=' + pasa_db,
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP=<__MIN_PERCENT_OVERLAP__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_PROT_CODING=<__MIN_PERCENT_PROT_CODING__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERID_PROT_COMPARE=<__MIN_PERID_PROT_COMPARE__>',
@@ -135,7 +135,7 @@ def pasa_configuration(pasa_dir, pasa_db, verbose):
         return conf_file
     conf = open(conf_file, 'w')
     lines = [
-        'MYSQLDB=' + pasa_db,
+        'DATABASE=' + pasa_db,
         'validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>',
         'validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>',
         'subcluster_builder.dbi:-m=50']
