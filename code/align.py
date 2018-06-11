@@ -85,7 +85,9 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
     for key in dict_aln:
         if (float(dict_aln[key].split(",")[9])) > alignm_score_out:
             seq_to_keep[key] = dict_aln[key]
-    with open("./example.fasta", "w") as output_handle:
+
+    name_out = read_sequence + "oriented.fasta"
+    with open(name_out, "w") as output_handle:
         for sequence in SeqIO.parse(read_sequence, "fastq"):
             if sequence.id in seq_to_keep:
                 if seq_to_keep[sequence.id].split(",")[1].endswith("rev"):
@@ -93,7 +95,7 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
                     SeqIO.write(rev_seq, output_handle, "fasta")
                 else:
                     SeqIO.write(sequence, output_handle, "fasta")
-    return
+    return name_out
 
 
 def align(command_in):
