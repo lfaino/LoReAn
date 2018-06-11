@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """
 Copyright 2017 Ryan Wick (rrwick@gmail.com)
 https://github.com/rrwick/Porechop
@@ -14,14 +16,13 @@ details. You should have received a copy of the GNU General Public License along
 not, see <http://www.gnu.org/licenses/>.
 """
 
+import numpy as np
 import os
 import sys
-from ctypes import CDLL, cast, c_char_p, c_int, c_void_p
-from multiprocessing.dummy import Pool as ThreadPool
-
-import numpy as np
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+from ctypes import CDLL, cast, c_char_p, c_int, c_void_p
+from multiprocessing.dummy import Pool as ThreadPool
 
 SO_FILE = 'cpp_functions.so'
 SO_FILE_FULL = os.path.join(os.path.dirname(os.path.realpath(__file__)), SO_FILE)
