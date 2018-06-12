@@ -974,7 +974,6 @@ def genename_lorean(gff_filename, verbose, wd):
     gt_call.communicate()
     return out_1.name
 
-
 cds_count_lorean = 0
 
 def transform_cds(x):
@@ -1004,7 +1003,6 @@ def transform_cds(x):
         x.attributes = {'ID': other_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
-
 
 
 def add_removed_evm(pasa, exon, wd):

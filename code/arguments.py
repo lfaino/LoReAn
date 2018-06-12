@@ -2,9 +2,6 @@
 
 import argparse
 
-###############
-###FUNCTIONS###
-###############
 
 def setting():
     '''Parses the arguments from the program invocation'''
@@ -15,7 +12,7 @@ def setting():
     parser.add_argument("reference", help="Path to reference file")
     parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []")
     parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
-                             "config folder", default="", required = True)
+                             "config folder", default="", required=True)
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
     parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')
     parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES) [FALSE]",
@@ -35,11 +32,16 @@ def setting():
                         metavar='N')
     parser.add_argument("-ex","--external", nargs="?", default="", help="GFF3 of FASTA file containing external annotation "
                                                                         "information []", metavar='GFF_file')
-    parser.add_argument("-up","--upgrade", nargs="?", default="", help="GFF3 to upgrade using long reads [and short read]"
+    parser.add_argument("-up", "--upgrade", nargs="?", default="", help="GFF3 to upgrade using long reads [and short read]"
                                                                         "information []", metavar='GFF_file')
-    parser.add_argument("-m","--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
+    parser.add_argument("-m", "--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
                                                                                "(longer reads may affect mapping and "
                              "assembling) [20000]", type=int)
+    parser.add_argument("-am", "--adapter_match_score", nargs="?", default="", help="Score value for an adapter to match a "
+                                                                                   "read. Lower values keep more reads but "
+                                                                                   "the orientation is less reliable [0-100]. "
+                                                                                   "If left empty, the value is automatically "
+                                                                                   "calculated)", type=int)
     parser.add_argument("-pasa","--pasa_db", nargs="?", default="annotation", help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene", nargs="?", default="species", help="Prefix to add to the final Gff3 gene "
                                                                                  "name [specie]")
@@ -77,7 +79,7 @@ def setting():
     parser.add_argument("-api","--assembly_percent_identity", nargs="?", default="97", help="Minimal identity for the "
                                                                                             "ASSEMBLY (95-100) [97]", metavar='N')
     parser.add_argument("-art","--assembly_read_threshold", nargs="?", default="0.3",metavar='F',
-                        help="Fraction of reads supporting an assembled UNITIG to keep on the ASSEMBLY (0.1-1) [0.3]")
+                        help="Fraction of reads supporting an assembled UNITIG to keep(0.1-1) [0.3]")
     parser.add_argument("-v","--verbose", help="Prints out the commands used in LoReAn[FALSE]", action='store_true')
 
     args = parser.parse_args()
