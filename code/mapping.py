@@ -43,6 +43,7 @@ GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
 #==========================================================================================================
 
+
 def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
              working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
@@ -444,5 +445,40 @@ def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
 
     return bam_final
 
+
+def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
+
+    outfile = short_reads + ".changed.sorted.sam"
+    dict_invert_seq = {}
+    for key in dict_ref_name:
+        dict_invert_seq[dict_ref_name[key]] = key
+
+    out_file = open(outfile, 'w')
+    in_file = open(short_reads, "r")
+    in_sam = Reader(in_file)
+    header = in_sam.header
+    sq = header['@SQ']
+    dict_chr = {}
+    for c in sq:
+        single_elm = c.split(":")
+        if single_elm[1] in dict_invert_seq:
+            single_elm[1] = dict_invert_seq[single_elm[1]]
+            change_chr = ":".join(single_elm)
+            dict_chr[change_chr] = sq[c]
+    header_new = OrderedDict({'@CO': header['@CO'], '@HD': header['@HD'],'@PG': header['@PG'],'@SQ': OrderedDict(dict_chr)})
+    out_sam = Writer(out_file, header_new)
+    for line in in_sam:
+        if line.rname in dict_invert_seq:
+            name = dict_invert_seq[line.rname]
+            line.rname = name
+            out_sam.write(line)
+    out_sam.close()
+
+    bam_final = sam_to_sorted_bam(outfile, threads , wd, verbose)
+
+    return bam_final
+
+
 if __name__ == '__main__':
-    change_chr(*sys.argv[1:])
+    dict_ref_name = {"seq1" : "scaffold_3"}
+    change_chr_to_seq(*sys.argv[1:], dict_ref_name)

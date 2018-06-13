@@ -97,9 +97,7 @@ def main():
             else:
                 weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
                            'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
-
         final_files = []  # STORE THE IMPORTANT OUTPUT FILES
-
         logistic.check_create_dir(wd)
         logistic.check_file(ref_link)
         gmap_wd = wd + '/gmap_output/'
@@ -121,7 +119,6 @@ def main():
         logistic.check_create_dir(gmap_wd)
         if args.interproscan:
             logistic.check_create_dir(interproscan_out_dir)
-
         if args.long_reads:
             logistic.check_create_dir(exonerate_wd)
             consensus_wd = (wd + '/consensus/')
@@ -178,7 +175,9 @@ def main():
             # BAM SORTED FILES GET IN HERE
             elif args.short_reads.endswith("bam"):
                 logistic.check_create_dir(star_out)
-                short_sorted_bam = os.path.abspath(args.short_reads)
+                short_sorted_bam = mapping.change_chr_to_seq(os.path.abspath(args.short_reads), dict_ref_name, star_out,
+                                                             threads_use, args.verbose)
+                #short_sorted_bam = os.path.abspath(args.short_reads)
                 default_bam = short_sorted_bam
                 # TRANSCRIPT ASSEMBLY
                 # TRINITY
@@ -193,7 +192,7 @@ def main():
             # LONG READS
             elif args.long_reads.endswith(fastq) or args.long_reads.endswith(fasta):
                 # with this operation, reads are filtered for their length.
-                # Nanopore reads can be chimaras or sequencing artefacts.
+                # Nanopore reads can be chimeras or sequencing artefacts.
                 # filtering on length reduces the amount of sequencing
                 # artefacts
                 now = datetime.datetime.now().strftime(fmtdate)
