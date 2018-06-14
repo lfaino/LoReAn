@@ -198,7 +198,7 @@ def main():
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
                 long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
-                                                  args.adapter, threads_use,  a=True)
+                                                  args.adapter, threads_use, args.adapter_match_score, a=True)
 
                     # If short reads have been mapped dont do it
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -416,7 +416,7 @@ def main():
 
         if not long_sorted_bam:
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read,
-                                              gmap_wd, args.adapter, threads_use, a=True)
+                                              gmap_wd, args.adapter, threads_use, args.adapter_match_score, a=True)
             long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=False)
@@ -438,7 +438,7 @@ def main():
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
         fake = []
         long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read,
-                                          consensus_wd, fake, threads_use, a=False)
+                                          consensus_wd, fake, threads_use, args.adapter_match_score, a=False)
         gffread_dict = consensus.fasta2Dict(gffread_fasta_file)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))

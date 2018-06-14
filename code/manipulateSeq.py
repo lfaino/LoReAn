@@ -5,12 +5,12 @@ import os
 import subprocess
 import sys
 import tempfile
+from Bio import SeqIO
+from Bio.Seq import reverse_complement
 from glob import glob
 from pathlib import Path
 
 import align as align
-from Bio import SeqIO
-from Bio.Seq import reverse_complement
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -139,12 +139,11 @@ def align_call(elem):
     return outputAlign
 
 
-def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, a):
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, a):
     """
     Filters out reads longer than length provided and it is used to call the alignemnt and parse the outputs
     """
     scoring = [3, -6, -5, -2]
-    align_score_value = ""
 
     if a and not adapter:
         out_filename = wd + fastq_filename + '.long_reads.filtered.fasta'
