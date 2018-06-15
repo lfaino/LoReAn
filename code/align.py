@@ -78,7 +78,7 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             else:
                 dict_aln[out.split(",")[0]] = out
 
-    if alignm_score_value == "":
+    if alignm_score_value == 0:
         alignm_score_mean = np.mean([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_std = np.std([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_value = alignm_score_mean - alignm_score_std
@@ -117,7 +117,7 @@ def c_string_to_python_string(c_string):
     C_LIB.freeCString(c_string)
     return python_string
 
-if __name__ == '__main__':
-    scoring = [3, -6, -5, -2]
-    alignm_score_value = ""
-    adapter_alignment(*sys.argv[1:], scoring, alignm_score_value)
+#if __name__ == '__main__':
+#    scoring = [3, -6, -5, -2]
+#    alignm_score_value = ""
+#    adapter_alignment(*sys.argv[1:], scoring, alignm_score_value)

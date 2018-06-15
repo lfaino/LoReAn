@@ -448,13 +448,16 @@ def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
 
 def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
 
-    outfile = short_reads + ".changed.sorted.sam"
+    sam_link = os.path.join(wd, short_reads.split("/")[-1])
+    if not os.path.exists(sam_link):
+        os.link(short_reads, sam_link)
+    outfile = sam_link + ".changed.sorted.sam"
     dict_invert_seq = {}
     for key in dict_ref_name:
         dict_invert_seq[dict_ref_name[key]] = key
 
     out_file = open(outfile, 'w')
-    in_file = open(short_reads, "r")
+    in_file = open(sam_link, "r")
     in_sam = Reader(in_file)
     header = in_sam.header
     sq = header['@SQ']
@@ -474,11 +477,11 @@ def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
             out_sam.write(line)
     out_sam.close()
 
-    bam_final = sam_to_sorted_bam(outfile, threads , wd, verbose)
+    bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
 
     return bam_final
 
 
-if __name__ == '__main__':
-    dict_ref_name = {"seq1" : "scaffold_3"}
-    change_chr_to_seq(*sys.argv[1:], dict_ref_name)
+#if __name__ == '__main__':
+#    dict_ref_name = {"seq1" : "scaffold_3"}
+#    change_chr_to_seq(*sys.argv[1:], dict_ref_name)

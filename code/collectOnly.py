@@ -194,7 +194,7 @@ def add_EVM(final_update, wd, consensus_mapped_gff3):
         for line in db_evm.parents(evm, order_by='start'):
             mRNA.append(line.attributes["ID"][0])
     mRNA_uniq = list(set(mRNA))
-    outfile = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
+    outfile = tempfile.NamedTemporaryFile(delete=False, prefix="additional.1.", suffix=".gff3", dir=wd)
     gff_out_s = gffwriter.GFFWriter(outfile.name)
 
     for name in mRNA_uniq:
@@ -206,7 +206,7 @@ def add_EVM(final_update, wd, consensus_mapped_gff3):
             gff_out_s.write_rec(i)
         gff_out_s.write_rec(db_gmap[name])
     gff_out_s.close()
-    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
+    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.2.", suffix=".gff3", dir=wd)
 
     log = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".err", dir=wd)

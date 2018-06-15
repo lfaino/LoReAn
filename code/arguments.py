@@ -25,6 +25,11 @@ def setting():
     parser.add_argument("-a","--adapter", nargs="?", default="", metavar='FASTA_file',
                         help="FASTA file containing the adapter sequences. Adapter sequences in forward and reverse strain "
                              "of the same adapter need to be used in the file []")
+    parser.add_argument("-am", "--adapter_match_score", default=0, nargs="?", help="Score value for an adapter to match a "
+                                                                        "read. Lower values keep more reads but "
+                                                                        "the orientation is less reliable [0-100]. "
+                                                                        "If left empty, the value is automatically "
+                                                                        "calculated)", type=int)
     parser.add_argument("-rp","--repeat_masked", nargs="?", default="", help="GFF or GFF3 or GTF or BED file containing "
                                                                              "repeats coordinates []", metavar='GFF_file')
     parser.add_argument("-mg","--mask_genome", help="Run RepeatScout and RepeatMasker on the genome fasta file [FALSE]", action='store_true')
@@ -37,11 +42,6 @@ def setting():
     parser.add_argument("-m", "--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
                                                                                "(longer reads may affect mapping and "
                              "assembling) [20000]", type=int)
-    parser.add_argument("-am", "--adapter_match_score", nargs="?", help="Score value for an adapter to match a "
-                                                                                   "read. Lower values keep more reads but "
-                                                                                   "the orientation is less reliable [0-100]. "
-                                                                                   "If left empty, the value is automatically "
-                                                                                   "calculated)", type=int)
     parser.add_argument("-pasa","--pasa_db", nargs="?", default="annotation", help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene", nargs="?", default="species", help="Prefix to add to the final Gff3 gene "
                                                                                  "name [specie]")

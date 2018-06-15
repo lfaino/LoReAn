@@ -632,7 +632,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     list_single_exons = []
     for record in SeqIO.parse(prot_file_out, "fasta"):
         list_total.append(record.id)
-        if record.seq.startswith("M"):# and record.seq.endswith("."):
+        if record.seq.startswith("M"):
             list_complete.append(record.id)
         else:
             dict_incomplete[record.id] = record.id
@@ -641,7 +641,6 @@ def exonerate(ref, gff_file, proc, wd, verbose):
         for elem in list_fields:
             if elem.startswith('exons'):
                 exon_number = elem.split(",")
-                ## changed here for all genes
                 if (len(exon_number)) > 0:
                     list_single_exons.append(record.id)
                     if record.id in dict_incomplete:
@@ -707,32 +706,32 @@ def exonerate(ref, gff_file, proc, wd, verbose):
                     bedhandler.close()
                     data = [ref, bedFile, output_filename, output_filename_prot, verbose, wd]
                     list_get_seq.append(data)
+
     results_get = pool.map(get_fasta, list_get_seq, chunksize=1)
     results = pool.map(runExonerate, results_get, chunksize=1)
     output_filename_gff = wd + 'mRNA_complete_gene_Annotation.gff3'
     exonerate_files = results + [output_filename_gff]
 
-    listInGff = list_complete + list_short
-    listAsbent = sorted(set(list(set(list_total) ^ set(listInGff))))
-    listCompleteAll = listAsbent + list_complete
     gff_out = gffwriter.GFFWriter(output_filename_gff)
     db1 = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True)
-    for evm in listCompleteAll:
-        for i in db1.children(evm, featuretype='CDS', order_by='start'):
-            gff_out.write_rec(i)
+
+    list_gene_ok = []
+    for mRNA in list_complete:
+        for mRNA_ok in db1.parents(mRNA, featuretype='gene', order_by='start'):
+            list_gene_ok.append(mRNA_ok.attributes["ID"][0])
+    list_gene_ok_uniq = list(set(list_gene_ok))
+
+    for evm in list_gene_ok_uniq:
         gff_out.write_rec(db1[evm])
-        for i in db1.parents(evm, featuretype='gene', order_by='start'):
+        for i in db1.children(evm):
             gff_out.write_rec(i)
-        for i in db1.children(evm, featuretype='exon', order_by='start'):
-            gff_out.write_rec(i)
+
     gff_out.close()
     orintedFIleN = wd + '/oriented.oldname.gff3'
     with open(orintedFIleN, 'wb') as wfd:
         for f in exonerate_files:
             with open(f, 'rb') as fd:
                 shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
-
-
     return orintedFIleN
 
 
@@ -1042,4 +1041,4 @@ def add_removed_evm(pasa, exon, wd):
 if __name__ == '__main__':
     #strand(*sys.argv[1:])
     #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
-    genename_lorean(*sys.argv[1:])
+    exonerate(*sys.argv[1:])

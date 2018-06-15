@@ -5,11 +5,10 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool
 
 import numpy as np
-import progressbar
+import tqdm
 from Bio import SeqIO
 
 #==========================================================================================================
@@ -187,21 +186,16 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
 def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     """
-    manage = Manager()
-    queue = manage.Queue()
+
     pool = Pool(processes=int(threads), maxtasksperchild=10)
 
     new_commands = []
     for root, dirs, file in os.walk(wd):
         for fasta_file in file:
-            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
+            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)
             new_commands.append(complete_data)
-    results = pool.map_async(iAssembler, new_commands, chunksize=1)
-    with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
-        while not results.ready():
-            size = queue.qsize()
-            bar.update(size)
-            time.sleep(1)
+    results = pool.imap(iAssembler, tqdm.tqdm(new_commands), chunksize=1)
+
 
 
 def iAssembler(new_commands):
@@ -222,7 +216,6 @@ def iAssembler(new_commands):
     except:
         return False
     log.close()
-    new_commands[5].put(cmd)
     return outputDir
 
 if __name__ == '__main__':

@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-import ctypes as ct
 import datetime
 import os
 import subprocess
 import sys
 import tempfile
-from Bio import SeqIO
-from Bio.Seq import reverse_complement
 from glob import glob
 from pathlib import Path
 
 import align as align
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -31,112 +29,6 @@ REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
 
 
 #==========================================================================================================
-
-def to_int(seq, lEle, dEle2Int):
-    """
-    it is used for the alignment of the primers to the reads
-    :param seq: 
-    :param lEle: 
-    :param dEle2Int: 
-    :return: 
-    """
-    num_decl = len(seq) * ct.c_int8
-    num = num_decl()
-    for i,ele in enumerate(seq):
-        try:
-            n = dEle2Int[ele]
-        except KeyError:
-            n = dEle2Int[lEle[-1]]
-        finally:
-            num[i] = n
-    return num
-
-
-def align_one(ssw, qProfile, rNum, nRLen, nOpen, nExt, nFlag, nMaskLen):
-    """
-    this function calculate the score and other results from the alignment
-    """
-    res = ssw.ssw_align(qProfile, rNum, ct.c_int32(nRLen), nOpen, nExt, nFlag, 0, 0, int(nMaskLen))
-    nScore = res.contents.nScore
-    nScore2 = res.contents.nScore2
-    nRefBeg = res.contents.nRefBeg
-    nRefEnd = res.contents.nRefEnd
-    nQryBeg = res.contents.nQryBeg
-    nQryEnd = res.contents.nQryEnd
-    nRefEnd2 = res.contents.nRefEnd2
-    lCigar = [res.contents.sCigar[idx] for idx in range(res.contents.nCigarLen)]
-    nCigarLen = res.contents.nCigarLen
-    ssw.align_destroy(res)
-    return nScore, nScore2, nRefBeg, nRefEnd, nQryBeg, nQryEnd, nRefEnd2, nCigarLen, lCigar
-
-
-def align_call(elem):
-    """
-    this function call the aligner software
-    :param elem: 
-    :return: 
-    """
-    record = elem[0]
-    adapter = elem[1]
-    lEle = []
-    dRc = {} 
-    dEle2Int = {}
-    dInt2Ele = {}
-    nMatch = 2
-    nMismatch = 1
-    nOpen = 1
-    nExt = -2
-    nFlag = 0
-    #if not args.sMatrix:
-    lEle = ['A', 'C', 'G', 'T', 'N']
-    for i,ele in enumerate(lEle):
-        dEle2Int[ele] = i
-        dEle2Int[ele.lower()] = i
-        dInt2Ele[i] = ele
-    nEleNum = len(lEle)
-    lScore = [0 for i in range(nEleNum**2)]
-    for i in range(nEleNum-1):
-        for j in range(nEleNum-1):
-            if lEle[i] == lEle[j]:
-                lScore[i*nEleNum+j] = nMatch
-            else:
-                lScore[i*nEleNum+j] = -nMismatch
-    mat = (len(lScore) * ct.c_int8) ()
-    mat[:] = lScore
-    
-    ssw = ssw_lib.CSsw("./")
-    sQSeq = record.seq
-    sQId = record.id
-    if len(sQSeq) > 30:
-        nMaskLen = len(sQSeq) / 2
-    else:
-        nMaskLen = 15
-    outputAlign = []
-    qNum = to_int(sQSeq, lEle, dEle2Int)
-    qProfile = ssw.ssw_init(qNum, ct.c_int32(len(sQSeq)), mat, len(lEle), 2)
-    sQRcSeq = reverse_complement(sQSeq)
-    qRcNum = to_int(sQRcSeq, lEle, dEle2Int)
-    qRcProfile = ssw.ssw_init(qRcNum, ct.c_int32(len(sQSeq)), mat, len(lEle), 2)
-    sRSeq = adapter.seq
-    sRId = adapter.id
-    rNum = to_int(sRSeq, lEle, dEle2Int)
-    res = align_one(ssw, qProfile, rNum, len(sRSeq), nOpen, nExt, nFlag, nMaskLen)
-    resRc = None
-    resRc = align_one(ssw, qRcProfile, rNum, len(sRSeq), nOpen, nExt, nFlag, nMaskLen)
-    strand = 0
-    if res[0] == resRc[0]:
-        next
-    if res[0] > resRc[0]:
-        res = res
-        strand = 0
-        outputAlign = [sRId , sQId, strand, res]
-    elif res[0] < resRc[0]:
-        res = resRc
-        strand = 1
-        outputAlign = [sRId , sQId, strand, res]
-    ssw.init_destroy(qProfile)
-    ssw.init_destroy(qRcProfile)
-    return outputAlign
 
 
 def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, a):
@@ -181,7 +73,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
 
-        return out_filename_oriented, filter_count
+        return out_filename_oriented
     else:
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
