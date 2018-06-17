@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import gffutils
+import gffutils.gffwriter as gffwriter
 import os
 import re
 import shutil
@@ -7,12 +9,9 @@ import subprocess
 import sys
 import tempfile
 import warnings
-from multiprocessing import Pool
-
-import gffutils
-import gffutils.gffwriter as gffwriter
 from Bio import Seq
 from Bio import SeqIO
+from multiprocessing import Pool
 
 #======================================================================================================================
 
@@ -630,11 +629,13 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     longest_prot = []
     list_total = []
     list_single_exons = []
+    list_incomplete = []
     for record in SeqIO.parse(prot_file_out, "fasta"):
         list_total.append(record.id)
         if record.seq.startswith("M"):
             list_complete.append(record.id)
         else:
+            list_incomplete.append(record.id)
             dict_incomplete[record.id] = record.id
     for record in SeqIO.parse(exon_file_out, "fasta"):
         list_fields = record.description.split(' ')
@@ -710,22 +711,28 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     results_get = pool.map(get_fasta, list_get_seq, chunksize=1)
     results = pool.map(runExonerate, results_get, chunksize=1)
     output_filename_gff = wd + 'mRNA_complete_gene_Annotation.gff3'
-    exonerate_files = results + [output_filename_gff]
+
 
     gff_out = gffwriter.GFFWriter(output_filename_gff)
     db1 = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True)
 
-    list_gene_ok = []
+    list_gene_complete = []
+    list_gene_incomplete = []
     for mRNA in list_complete:
         for mRNA_ok in db1.parents(mRNA, featuretype='gene', order_by='start'):
-            list_gene_ok.append(mRNA_ok.attributes["ID"][0])
-    list_gene_ok_uniq = list(set(list_gene_ok))
-
+            list_gene_complete.append(mRNA_ok.attributes["ID"][0])
+    for mRNA in list_incomplete:
+        for mRNA_ok in db1.parents(mRNA, featuretype='gene', order_by='start'):
+            list_gene_incomplete.append(mRNA_ok.attributes["ID"][0])
+    list_gene_complete = sorted(list(set(list_gene_complete)))
+    list_gene_incomplete = sorted(list(set(list_gene_incomplete)))
+    list_gene_ok_uniq = sorted(list(set(list_gene_complete) - set(list_gene_incomplete)))
     for evm in list_gene_ok_uniq:
         gff_out.write_rec(db1[evm])
         for i in db1.children(evm):
             gff_out.write_rec(i)
 
+    exonerate_files = results + [output_filename_gff]
     gff_out.close()
     orintedFIleN = wd + '/oriented.oldname.gff3'
     with open(orintedFIleN, 'wb') as wfd:

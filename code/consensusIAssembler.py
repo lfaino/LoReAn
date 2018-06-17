@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 
+import numpy as np
 import os
 import re
 import subprocess
 import sys
 import tempfile
-from multiprocessing import Pool
-
-import numpy as np
 import tqdm
 from Bio import SeqIO
+from multiprocessing import Pool
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -173,7 +172,7 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
         print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
         print('\033[0m')
     else:
-        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT TO " + str(min_evidence) + " ### \n")
+        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " ### \n")
         print('\033[0m')
 
     cluster_counter = 1
@@ -194,7 +193,9 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
         for fasta_file in file:
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)
             new_commands.append(complete_data)
-    results = pool.imap(iAssembler, tqdm.tqdm(new_commands), chunksize=1)
+    results = pool.map(iAssembler, tqdm.tqdm(new_commands), chunksize=1)
+    sys.stdout.write("\t ###ASSEMBLY DONE###\n")
+
 
 
 
