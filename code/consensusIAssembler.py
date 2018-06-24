@@ -2,6 +2,7 @@
 
 import numpy as np
 import os
+import progressbar
 import re
 import subprocess
 import sys
