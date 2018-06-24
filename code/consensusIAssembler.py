@@ -8,7 +8,7 @@ import sys
 import tempfile
 import tqdm
 from Bio import SeqIO
-from multiprocessing import Pool
+from multiprocessing import Pool, Manager
 
 #==========================================================================================================
 # COMMANDS LIST
