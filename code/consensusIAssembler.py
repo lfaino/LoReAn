@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import tqdm
 from Bio import SeqIO
 from multiprocessing import Pool, Manager
