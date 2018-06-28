@@ -75,9 +75,10 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
 
         return out_filename_oriented
     else:
+        sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
 
         return out_filename

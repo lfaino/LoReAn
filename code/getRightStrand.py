@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
 import os
 import re
 import shutil
@@ -9,9 +7,12 @@ import subprocess
 import sys
 import tempfile
 import warnings
+from multiprocessing import Pool
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 from Bio import Seq
 from Bio import SeqIO
-from multiprocessing import Pool
 
 #======================================================================================================================
 
@@ -424,8 +425,6 @@ def exonerate(ref, gff_file, proc, wd, verbose):
         for i in db_gffread.children(gene, order_by='start'):
             gff_out_s.write_rec(i)
         gff_out_s.write_rec(db_gffread[gene])
-
-
     return outfile_out.name
 
 
@@ -586,19 +585,12 @@ def genename_evm(gff_filename, verbose, wd):
 
 def genename_lorean(gff_filename, verbose, wd):
 
-    out = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".gff3", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w")
-    gt_com = GT_GFF3 % gff_filename
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call = subprocess.Popen(gt_com, stdout=out, stderr=err, shell=True)
-    gt_call.communicate()
 
     outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
     log = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".err", dir=wd)
 
-    cmd = GFFREAD_M % (outfile_gff.name, out.name)
+    cmd = GFFREAD_M % (outfile_gff.name, gff_filename)
 
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
@@ -645,7 +637,7 @@ def transform_cds(x):
     if 'locus' in x.featuretype:
         x.featuretype = "gene"
         x.attributes['ID'] = x.attributes['locus']
-        x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['geneIDs'][0].split("_")[0]}
+        x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['transcripts'][0].split("_")[0]}
         x.source = "LoReAn"
         return x
     elif 'mRNA' in x.featuretype:
@@ -705,4 +697,5 @@ def add_removed_evm(pasa, exon, wd):
 if __name__ == '__main__':
     #strand(*sys.argv[1:])
     #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
-    exonerate(*sys.argv[1:])
+    #update2 = exonerate(*sys.argv[1:])
+    genename_lorean(*sys.argv[1:])
