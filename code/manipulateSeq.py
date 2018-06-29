@@ -31,17 +31,13 @@ REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
 #==========================================================================================================
 
 
-def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, a):
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value):
     """
-    Filters out reads longer than length provided and it is used to call the alignemnt and parse the outputs
+    Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """
     scoring = [3, -6, -5, -2]
 
-    if a and not adapter:
-        out_filename = wd + fastq_filename + '.long_reads.filtered.fasta'
-    else:
-        out_filename = fastq_filename + '.long_reads.filtered.fasta'
-
+    out_filename = wd + fastq_filename.split("/")[-1] + '.long_reads.filtered.fasta'
     filter_count = 0
 
     if not os.path.isfile(out_filename):
@@ -49,7 +45,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
                 for record in SeqIO.parse(fastq_filename, "fastq"):
                     if len(str(record.seq)) > int(min_length) < int(max_length):
-                        record.description= ""
+                        record.description = ""
                         record.name = ""
                         record.id = str(filter_count)
                         filter_count += 1
@@ -57,7 +53,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             elif fastq_filename.endswith('fasta') or fastq_filename.endswith('fa'):
                 for record in SeqIO.parse(fastq_filename, "fasta"):
                     if int(min_length) < len(str(record.seq)) < int(max_length):
-                        record.description= ""
+                        record.description = ""
                         record.name = ""
                         record.id = str(filter_count)
                         filter_count += 1
