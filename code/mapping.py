@@ -5,6 +5,7 @@ import math
 import os
 import subprocess
 import sys
+import tempfile
 from collections import OrderedDict
 
 import dirsAndFiles as logistic
@@ -39,6 +40,10 @@ SAMTOOLS_VIEW = 'samtools view -bS -o %s %s'
 SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
+
+MINIMAP2 = 'minimap2 -ax splice -k14 -t %s -G %s -uf %s %s'
+
+MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
 
 
 #==========================================================================================================
@@ -124,6 +129,40 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
             print(list_fasta[0][1], list_fasta[1][1])
         filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
+
+def minimap(reference_database, reads, threads, max_intron_length, working_dir, verbose):
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
+
+    reference_database_index = minimap_build(reference_database, working_dir, threads, verbose)
+
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".err", dir=working_dir)
+    sam = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".sam", dir=working_dir)
+
+    cmd = MINIMAP2 % (threads, max_intron_length, reference_database_index, reads)
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        minimap = subprocess.Popen(cmd, stdout=sam, stderr=err, shell=True, cwd=working_dir)
+        minimap.communicate()
+    except:
+        raise NameError('')
+    return sam.name
+
+def minimap_build(reference_database, working_dir, threads, verbose):
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
+
+    out_f = reference_database.split("/")[-1] + ".mmi"
+    cmd = MINIMAP2_BUILD % (threads, out_f, reference_database)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".err", dir=working_dir)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".log", dir=working_dir)
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        minimap_build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+        minimap_build.communicate()
+    except:
+        raise NameError('problem with minimap genome build')
+    return out_f
 
 
 def parse_fasta(fasta):

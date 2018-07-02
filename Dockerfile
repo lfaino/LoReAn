@@ -16,7 +16,7 @@ RUN echo "mysql-server mysql-server/root_password_again password lorean" | debco
 RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama simplesam
+    psutil memory_profiler pathlib colorama simplesam tqdm 
 
 WORKDIR /opt/
 
@@ -51,6 +51,8 @@ COPY Trinity-v2.5.1.tar.gz ./
 
 RUN tar -zxvf Trinity-v2.5.1.tar.gz && \
     mv trinityrnaseq-Trinity-v2.5.1 Trinity &&rm Trinity-v2.5.1.tar.gz && cd Trinity && make && make plugins
+
+RUN git clone https://github.com/lh3/minimap2.git && cd minimap2 && make
 
 RUN git clone https://github.com/alexdobin/STAR.git
 
