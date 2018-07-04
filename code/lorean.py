@@ -203,10 +203,12 @@ def main():
                     # If short reads have been mapped dont do it
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('\n###GMAP\t' + now + 't###\n'))
-                long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
-                #long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
-                #                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-                #                        args.verbose, Fflag=False)
+                if args.minimap2:
+                    long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
+                else:
+                    long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
+                                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                        args.verbose, Fflag=False)
 
                 # Convert to sorted BAM
                 long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, gmap_wd, args.verbose)
@@ -418,10 +420,12 @@ def main():
         if not long_sorted_bam:
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read,
                                               gmap_wd, args.adapter, threads_use, args.adapter_match_score)
-            long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
-            #long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
-            #                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
-            #                        args.verbose, Fflag=False)
+            if args.minimap2:
+                long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
+            else:
+                long_sam = mapping.gmap('sam', ref_rename, long_fasta, threads_use, 'samse',
+                                        args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+                                        args.verbose, Fflag=False)
             long_sorted_bam = mapping.sam_to_sorted_bam(long_sam, threads_use, wd, args.verbose)
             sam_orig_id = mapping.change_chr(long_sorted_bam, dict_ref_name, gmap_wd, threads_use, args.verbose, "long")
             final_files.append(sam_orig_id)

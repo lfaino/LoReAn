@@ -14,6 +14,7 @@ def setting():
     parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
                              "config folder", default="", required=True)
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
+    parser.add_argument("-mm","--minimap2", help="Use minimap2 to map long cDNA reads on the genome; default setting is GMAP [FALSE]", action='store_true')
     parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')
     parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES) [FALSE]",
                         action='store_true')
