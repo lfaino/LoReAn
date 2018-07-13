@@ -133,9 +133,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     else:
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
-    print(stranded)
-    print(adapter)
-
     if stranded and adapter:
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)

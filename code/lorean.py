@@ -451,10 +451,7 @@ def main():
         # REFERENCE
         gffread_fasta_file = consensus.gffread(mergedmap_gff3, ref_rename, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-        fake_adapter = False
-        long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read, gmap_wd,
-                                          fake_adapter, threads_use, args.adapter_match_score, ref_rename,
-                                          args.max_intron_length, args.verbose, args.stranded)
+
         gffread_dict = consensus.fasta2Dict(gffread_fasta_file)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
