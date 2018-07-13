@@ -63,6 +63,12 @@ def main():
         temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
         wd = temp_dir.name
 
+    if args.adapter == '':
+        adapter_value = True
+    else:
+        adapter_value = args.adapter
+
+
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
@@ -198,7 +204,7 @@ def main():
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
                 long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
-                                                  args.adapter, threads_use, args.adapter_match_score, ref_rename,
+                                                  adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                                   args.max_intron_length, args.verbose, args.stranded)
 
 
@@ -421,7 +427,7 @@ def main():
 
         if not long_sorted_bam:
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
-                                                  args.adapter, threads_use, args.adapter_match_score, ref_rename,
+                                              adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                                   args.max_intron_length, args.verbose, args.stranded)
             if args.minimap2:
                 long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
@@ -445,8 +451,8 @@ def main():
         # REFERENCE
         gffread_fasta_file = consensus.gffread(mergedmap_gff3, ref_rename, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-        fake_adapter = []
-        long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+        fake_adapter = False
+        long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                           fake_adapter, threads_use, args.adapter_match_score, ref_rename,
                                           args.max_intron_length, args.verbose, args.stranded)
         gffread_dict = consensus.fasta2Dict(gffread_fasta_file)

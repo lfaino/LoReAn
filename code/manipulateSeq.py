@@ -50,7 +50,7 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
     cmd = "extractSoftclipped %s > %s" % (bam, fasta_gz)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
-    extract_clip = subprocess.Popen(cmd, shell=True)
+    extract_clip = subprocess.Popen(cmd, cwd=working_dir, shell=True)
     extract_clip.communicate()
 
     list_short = []
@@ -79,12 +79,12 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
         cmd = "jellyfish count -s 100000 -m %s -o %s.kmer %s" % (kmer_start, kmer_start, long_file)
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        jelly_count = subprocess.Popen(cmd, cwd="./", shell=True)
+        jelly_count = subprocess.Popen(cmd, cwd=working_dir, shell=True)
         jelly_count.communicate()
         cmd = "jellyfish dump -L 2 -ct %s.kmer | sort -k2n | tail -n 1" % kmer_start
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
-        jelly_dump = subprocess.Popen(cmd, cwd="./", stdout=subprocess.PIPE, shell=True)
+        jelly_dump = subprocess.Popen(cmd, cwd=working_dir, stdout=subprocess.PIPE, shell=True)
         out_dump = jelly_dump.communicate()[0].decode('utf-8')
         mer = out_dump.split("\t")[0]
         kmer_start += 5
@@ -109,6 +109,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     scoring = [3, -6, -5, -2]
 
     out_filename = wd + fastq_filename.split("/")[-1] + '.long_reads.filtered.fasta'
+
     filter_count = 0
 
     if not os.path.isfile(out_filename):
@@ -132,8 +133,11 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     else:
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
-    if stranded:
-        if adapter == "":
+    print(stranded)
+    print(adapter)
+
+    if stranded and adapter:
+        if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
         else:
             adapter_aaa = adapter
@@ -143,6 +147,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
+        print(out_filename_oriented)
         return out_filename_oriented
     else:
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
@@ -150,6 +155,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
+        print(out_filename)
         return out_filename
 
 

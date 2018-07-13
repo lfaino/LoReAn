@@ -52,7 +52,7 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
     """
     Python wrapper for adapterAlignment C++ function.
     """
-    alignm_score_value = 0
+    alignm_score_value = int(alignm_score_value)
     sys.stdout.write("### STARTING ADAPTER ALIGNMENT AND READS ORIENTATION ###\n")
     list_adapter = []
     list_run = []
