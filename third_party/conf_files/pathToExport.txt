@@ -32,3 +32,4 @@ export PATH=$PATH:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/
 export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/SW/src/
 export PERL5LIB=/opt/LoReAn/third_party/scripts/
 export PATH=$PATH:/opt/LoReAn/third_party/software/minimap2/
+export PATH=$PATH:/opt/LoReAn/third_party/software/SE-MEI/

@@ -24,6 +24,7 @@ from multiprocessing.dummy import Pool as ThreadPool
 import numpy as np
 import tqdm
 from Bio import SeqIO
+from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 
 SO_FILE = 'cpp_functions.so'
@@ -47,11 +48,11 @@ C_LIB.freeCString.argtypes = [c_void_p]
 C_LIB.freeCString.restype = None
 
 
-def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads):
+def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads, min_length):
     """
     Python wrapper for adapterAlignment C++ function.
     """
-
+    alignm_score_value = 0
     sys.stdout.write("### STARTING ADAPTER ALIGNMENT AND READS ORIENTATION ###\n")
     list_adapter = []
     list_run = []
@@ -60,6 +61,8 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
         record = SeqRecord(adapter.seq.reverse_complement(), id=adapter.id + "_rev")
         list_adapter.append(record)
     dict_aln = {}
+
+
     for sequence in SeqIO.parse(read_sequence, "fasta"):
         dict_aln[sequence.id] = ""
         for adapter in list_adapter:
@@ -69,6 +72,7 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             gap_extend_score = scoring_scheme_vals[3]
             list_run.append([str(sequence.seq).encode('utf-8'), str(adapter.seq).encode('utf-8'), match_score,
                              mismatch_score, gap_open_score, gap_extend_score, sequence.id, adapter.id])
+
     with ThreadPool(int(threads)) as pool:
         for out in pool.imap(align, tqdm.tqdm(list_run)):
             out_list = out.split(",")
@@ -81,7 +85,7 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
     if alignm_score_value == 0:
         alignm_score_mean = np.mean([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_std = np.std([float(dict_aln[key].split(",")[9]) for key in dict_aln])
-        alignm_score_value = alignm_score_mean - alignm_score_std
+        alignm_score_value = alignm_score_mean - (alignm_score_std/10)
 
     seq_to_keep = {}
     for key in dict_aln:
@@ -89,12 +93,40 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             seq_to_keep[key] = dict_aln[key]
     with open(out_filename, "w") as output_handle:
         for sequence in tqdm.tqdm(SeqIO.parse(read_sequence, "fasta")):
+            count = 0
             if sequence.id in seq_to_keep:
                 if seq_to_keep[sequence.id].split(",")[1].endswith("rev"):
-                    rev_seq = SeqRecord(sequence.seq.reverse_complement(), id=sequence.id + "_rev")
-                    SeqIO.write(rev_seq, output_handle, "fasta")
+                    position = [seq_to_keep[sequence.id].split(",")[2], seq_to_keep[sequence.id].split(",")[3]]
+                    seq = str(sequence.seq)
+                    sequence_match = seq[int(position[0]):int(position[1])]
+                    multiple_seq = seq.split(sequence_match)
+                    full_multiple_seq_all = [seq_full for seq_full in multiple_seq if seq_full != "" ]
+                    full_multiple_seq = [seq_full for seq_full in full_multiple_seq_all if len(seq_full) > int(min_length)]
+                    if len(full_multiple_seq) > 1:
+                        for split_seq in full_multiple_seq:
+                            count += 1
+                            sequence_new = SeqRecord(Seq(split_seq), id=sequence.id, description="REV")
+                            rev_seq = SeqRecord(sequence_new.seq.reverse_complement(), id=sequence.id + "_rev." + str(count))
+                            SeqIO.write(rev_seq, output_handle, "fasta")
+                    else:
+                        sequence_new = SeqRecord(Seq(full_multiple_seq[0]), id=sequence.id )
+                        rev_seq = SeqRecord(sequence_new.seq.reverse_complement(), id=sequence.id + "_rev")
+                        SeqIO.write(rev_seq, output_handle, "fasta")
                 else:
-                    SeqIO.write(sequence, output_handle, "fasta")
+                    position = [seq_to_keep[sequence.id].split(",")[2], seq_to_keep[sequence.id].split(",")[3]]
+                    seq = str(sequence.seq)
+                    sequence_match = seq[int(position[0]):int(position[1])]
+                    multiple_seq = seq.split(sequence_match)
+                    full_multiple_seq_all = [seq_full for seq_full in multiple_seq if seq_full != ""]
+                    full_multiple_seq = [seq_full for seq_full in full_multiple_seq_all if len(seq_full) > int(min_length)]
+                    if len(full_multiple_seq) > 1:
+                        for split_seq in full_multiple_seq:
+                            count += 1
+                            sequence_new = SeqRecord(Seq(split_seq), id=sequence.id + "." + str(count))
+                            SeqIO.write(sequence_new, output_handle, "fasta")
+                    else:
+                        sequence_new = SeqRecord(Seq(full_multiple_seq[0]), id=sequence.id)
+                        SeqIO.write(sequence_new, output_handle, "fasta")
     return len(seq_to_keep)
 
 

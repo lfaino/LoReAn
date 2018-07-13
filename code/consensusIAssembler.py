@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
-import numpy as np
 import os
-import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-import tqdm
-from Bio import SeqIO
 from multiprocessing import Pool, Manager
+
+import numpy as np
+import progressbar
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
 
 ASSEMBLY  = 'iAssembler.pl -i %s -h %s  -p %s -o %s_output  2> %s.log'
 
-BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
+BEDTOOLS_GETFASTA = 'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
 
 BEDTOOLS_MERGE_ST = 'bedtools merge -s -c 4,4 -o count,distinct'
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import datetime
+import gzip
 import os
 import subprocess
 import sys
@@ -8,7 +9,11 @@ from glob import glob
 from pathlib import Path
 
 import align as align
+import mapping
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.SeqUtils import GC
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -31,7 +36,73 @@ REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
 #==========================================================================================================
 
 
-def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value):
+def adapter_find(reference_database, reads, threads, max_intron_length, working_dir, verbose):
+    subset_fasta = reads + "subset.100000.fasta"
+    count_reads = 0
+    with open(subset_fasta, "w") as fh:
+        for rec in SeqIO.parse(reads, "fasta"):
+            while count_reads < 100000:
+                count_reads += 1
+                SeqIO.write(rec, fh, "fasta")
+
+    bam = mapping.minimap(reference_database, subset_fasta, threads, max_intron_length, working_dir, verbose)
+    fasta_gz = bam + ".fasta.gz"
+    cmd = "extractSoftclipped %s > %s" % (bam, fasta_gz)
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % cmd)
+    extract_clip = subprocess.Popen(cmd, shell=True)
+    extract_clip.communicate()
+
+    list_short = []
+    list_long = []
+    dict_uniq = {}
+    with gzip.open(fasta_gz, "rt") as handle:
+        for rec in SeqIO.parse(handle, "fasta"):
+            name_seq = str(rec.id)
+            name = name_seq.split("_")[0]
+            if name in dict_uniq:
+                if len(dict_uniq[name].seq) > len(rec.seq):
+                    list_long.append(dict_uniq[name])
+                    list_short.append(rec)
+                else:
+                    list_short.append(dict_uniq[name])
+                    list_long.append(rec)
+            else:
+                dict_uniq[name] = rec
+    long_file = fasta_gz + ".long.fasta"
+    with open(long_file, "w") as fh:
+        SeqIO.write(list_long, fh, "fasta")
+    kmer_start = 21
+    pass_value = True
+    gc_mer_calc = 400
+    while pass_value  and kmer_start < 200:
+        cmd = "jellyfish count -s 100000 -m %s -o %s.kmer %s" % (kmer_start, kmer_start, long_file)
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        jelly_count = subprocess.Popen(cmd, cwd="./", shell=True)
+        jelly_count.communicate()
+        cmd = "jellyfish dump -L 2 -ct %s.kmer | sort -k2n | tail -n 1" % kmer_start
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        jelly_dump = subprocess.Popen(cmd, cwd="./", stdout=subprocess.PIPE, shell=True)
+        out_dump = jelly_dump.communicate()[0].decode('utf-8')
+        mer = out_dump.split("\t")[0]
+        kmer_start += 5
+        if mer != "":
+            gc_kmer = GC(mer) / len(mer)
+            if gc_kmer < gc_mer_calc:
+                gc_mer_calc = gc_kmer
+                kmer_done = mer
+        else:
+            pass_value = False
+    adapter_file = long_file + ".adapter.fasta"
+    with open(adapter_file, "w") as fh:
+        record = SeqRecord(Seq(str(kmer_done)), id="adapter")
+        SeqIO.write(record, fh, "fasta")
+    return adapter_file
+
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database,
+                    max_intron_length, verbose, stranded):
     """
     Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """
@@ -61,14 +132,17 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     else:
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
-    if adapter:
+    if stranded:
+        if adapter == "":
+            adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
+        else:
+            adapter_aaa = adapter
         out_filename_oriented = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
-        filter_count = align.adapter_alignment(out_filename, adapter, scoring, align_score_value, out_filename_oriented, threads)
+        filter_count = align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
-
         return out_filename_oriented
     else:
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
@@ -76,9 +150,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
-
         return out_filename
-
 
 
 def maskedgenome(wd, ref, gff3, length, verbose):

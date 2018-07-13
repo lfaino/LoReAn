@@ -198,7 +198,9 @@ def main():
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
                 long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
-                                                  args.adapter, threads_use, args.adapter_match_score)
+                                                  args.adapter, threads_use, args.adapter_match_score, ref_rename,
+                                                  args.max_intron_length, args.verbose, args.stranded)
+
 
                     # If short reads have been mapped dont do it
                 now = datetime.datetime.now().strftime(fmtdate)
@@ -418,8 +420,9 @@ def main():
         sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
 
         if not long_sorted_bam:
-            long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read,
-                                              gmap_wd, args.adapter, threads_use, args.adapter_match_score)
+            long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+                                                  args.adapter, threads_use, args.adapter_match_score, ref_rename,
+                                                  args.max_intron_length, args.verbose, args.stranded)
             if args.minimap2:
                 long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
             else:
@@ -434,7 +437,7 @@ def main():
         # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
         # ORIGINAL FILE
 
-        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_output, args.verbose, consensus_wd)
+        mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_evm, args.verbose, consensus_wd)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
 
@@ -442,9 +445,10 @@ def main():
         # REFERENCE
         gffread_fasta_file = consensus.gffread(mergedmap_gff3, ref_rename, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
-        fake = []
-        long_fasta = mseq.filterLongReads(gffread_fasta_file, args.assembly_overlap_length, args.max_long_read,
-                                          consensus_wd, fake, threads_use, args.adapter_match_score)
+        fake_adapter = []
+        long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+                                          fake_adapter, threads_use, args.adapter_match_score, ref_rename,
+                                          args.max_intron_length, args.verbose, args.stranded)
         gffread_dict = consensus.fasta2Dict(gffread_fasta_file)
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
