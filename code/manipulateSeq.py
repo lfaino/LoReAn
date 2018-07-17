@@ -14,6 +14,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import GC
+from simplesam import Reader
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -37,15 +38,15 @@ REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
 
 
 def adapter_find(reference_database, reads, threads, max_intron_length, working_dir, verbose):
-    subset_fasta = reads + "subset.100000.fasta"
+    subset_fasta = reads + "subset.10000.fasta"
     count_reads = 0
     with open(subset_fasta, "w") as fh:
         for rec in SeqIO.parse(reads, "fasta"):
-            while count_reads < 100000:
-                count_reads += 1
+            if int(rec.id) < 10000:
                 SeqIO.write(rec, fh, "fasta")
 
     bam = mapping.minimap(reference_database, subset_fasta, threads, max_intron_length, working_dir, verbose)
+    #soft_clip_regions = soft_clip(bam)
     fasta_gz = bam + ".fasta.gz"
     cmd = "extractSoftclipped %s > %s" % (bam, fasta_gz)
     if verbose:
@@ -73,10 +74,9 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
     with open(long_file, "w") as fh:
         SeqIO.write(list_long, fh, "fasta")
     kmer_start = 21
-    pass_value = True
-    gc_mer_calc = 400
-    while pass_value  and kmer_start < 200:
-        cmd = "jellyfish count -s 100000 -m %s -o %s.kmer %s" % (kmer_start, kmer_start, long_file)
+    list_kmer = []
+    while kmer_start < 120:
+        cmd = "jellyfish count -s 10000000 -m %s -o %s.kmer %s" % (kmer_start, kmer_start, long_file)
         if verbose:
             sys.stderr.write('Executing: %s\n\n' % cmd)
         jelly_count = subprocess.Popen(cmd, cwd=working_dir, shell=True)
@@ -87,19 +87,42 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
         jelly_dump = subprocess.Popen(cmd, cwd=working_dir, stdout=subprocess.PIPE, shell=True)
         out_dump = jelly_dump.communicate()[0].decode('utf-8')
         mer = out_dump.split("\t")[0]
-        kmer_start += 5
-        if mer != "":
-            gc_kmer = GC(mer) / len(mer)
-            if gc_kmer < gc_mer_calc:
-                gc_mer_calc = gc_kmer
-                kmer_done = mer
+        a_count = mer.count("A")
+        t_count = mer.count("T")
+        if a_count > t_count:
+            bias_count = a_count
         else:
-            pass_value = False
+            bias_count = t_count
+        data_kmer = (kmer_start, mer, GC(mer), (bias_count/kmer_start)*100,  (bias_count/kmer_start)*100 - GC(mer) )
+        list_kmer.append(data_kmer)
+        kmer_start += 5
+
+    value_adapter = 0
+    for i in list_kmer:
+        if i[4] > int(value_adapter):
+            value_adapter = i[4]
+            kmer_done = i[1]
+
     adapter_file = long_file + ".adapter.fasta"
     with open(adapter_file, "w") as fh:
         record = SeqRecord(Seq(str(kmer_done)), id="adapter")
         SeqIO.write(record, fh, "fasta")
     return adapter_file
+
+def soft_clip(long_sam):
+
+    in_file = open(long_sam, "r")
+    in_sam = Reader(in_file)
+    soft_clip_file = "test.fasta"
+    with open(soft_clip_file, "w") as fh:
+        for line in in_sam:
+            if "S" in line.cigars[0][1]:
+                if line.flag == 0 or line.flag == 16:
+                    fh.write(line.rname + "\n")
+                    fh.write(line.seq + "\n")
+
+    return soft_clip_file
+
 
 def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database,
                     max_intron_length, verbose, stranded):
