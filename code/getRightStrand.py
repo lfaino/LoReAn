@@ -228,13 +228,13 @@ def transform_name(f):
         if chrold == "" or f.chrom in chrold:
             chrold = f.chrom
             gene_count += 10
-            fatureattgene = prefix_name + '_' + chrold + '_G_' + str(gene_count)
+            fatureattgene = str(prefix_name) + '_' + str(chrold) + '_G_' + str(gene_count)
             f.attributes['Name'] = fatureattgene
         else:
             chrold = f.chrom
             gene_count = 0
             gene_count += 10
-            fatureattgene = prefix_name + '_' + chrold + '_G_' + str(gene_count)
+            fatureattgene = str(prefix_name) + '_' + str(chrold) + '_G_' + str(gene_count)
             f.attributes['Name'] = fatureattgene
         for field in f.attributes:
             if "ID" in field:
