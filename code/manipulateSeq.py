@@ -73,37 +73,43 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
     long_file = fasta_gz + ".long.fasta"
     with open(long_file, "w") as fh:
         SeqIO.write(list_long, fh, "fasta")
-    kmer_start = 21
-    list_kmer = []
-    while kmer_start < 120:
-        cmd = "jellyfish count -s 10000000 -m %s -o %s.kmer %s" % (kmer_start, kmer_start, long_file)
-        if verbose:
-            sys.stderr.write('Executing: %s\n\n' % cmd)
-        jelly_count = subprocess.Popen(cmd, cwd=working_dir, shell=True)
-        jelly_count.communicate()
-        cmd = "jellyfish dump -L 2 -ct %s.kmer | sort -k2n | tail -n 1" % kmer_start
-        if verbose:
-            sys.stderr.write('Executing: %s\n\n' % cmd)
-        jelly_dump = subprocess.Popen(cmd, cwd=working_dir, stdout=subprocess.PIPE, shell=True)
-        out_dump = jelly_dump.communicate()[0].decode('utf-8')
-        mer = out_dump.split("\t")[0]
-        a_count = mer.count("A")
-        t_count = mer.count("T")
-        if a_count > t_count:
-            bias_count = a_count
-        else:
-            bias_count = t_count
-        data_kmer = (kmer_start, mer, GC(mer), (bias_count/kmer_start)*100,  (bias_count/kmer_start)*100 - GC(mer) )
-        list_kmer.append(data_kmer)
-        kmer_start += 5
+    short_file = fasta_gz + ".short.fasta"
+    with open(short_file, "w") as fh:
+        SeqIO.write(list_short, fh, "fasta")
+    list_file_clip = [(long_file, "long"),(short_file,"short")]
 
-    value_adapter = 0
-    for i in list_kmer:
-        if i[4] > int(value_adapter):
-            value_adapter = i[4]
-            kmer_done = i[1]
+    list_file_adapter = []
+    for clip_file in list_file_clip:
+        kmer_start = 21
+        list_kmer = []
+        while kmer_start < 120:
+            cmd = "jellyfish count -s 10000000 -m %s -o %s.%s.kmer %s" % (kmer_start, kmer_start, clip_file[1], clip_file[0])
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % cmd)
+            jelly_count = subprocess.Popen(cmd, cwd=working_dir, shell=True)
+            jelly_count.communicate()
+            cmd = "jellyfish dump -L 2 -ct %s.%s.kmer | sort -k2n | tail -n 1" % (kmer_start, clip_file[1])
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % cmd)
+            jelly_dump = subprocess.Popen(cmd, cwd=working_dir, stdout=subprocess.PIPE, shell=True)
+            out_dump = jelly_dump.communicate()[0].decode('utf-8')
+            mer = out_dump.split("\t")[0]
+            a_count = mer.count("A")
+            t_count = mer.count("T")
+            if a_count > t_count:
+                bias_count = a_count
+            else:
+                bias_count = t_count
+            data_kmer = (kmer_start, mer, GC(mer), (bias_count/kmer_start)*100,  (bias_count/kmer_start)*100 - GC(mer) )
+            list_kmer.append(data_kmer)
+            kmer_start += 5
 
-    adapter_file = long_file + ".adapter.fasta"
+        value_adapter = 0
+        for i in list_kmer:
+            if i[4] > int(value_adapter):
+                value_adapter = i[4]
+                kmer_done = i[1]
+    adapter_file = "adapter.fasta"
     with open(adapter_file, "w") as fh:
         record = SeqRecord(Seq(str(kmer_done)), id="adapter")
         SeqIO.write(record, fh, "fasta")
