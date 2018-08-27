@@ -9,25 +9,33 @@ Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneM
 
 # LoReAn using Singularity.
 
-The best way to use LoReAn is by installing and running the software by **SINGULARITY**. 
+The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
 We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe difficult to 
 install all of them independently. We prefer **SINGULARITY** to **DOCKER** because root access is not required.
 
-However, a dedicated MYSQL user is required and a linux user is advice. Few steps are required before using **LoReAn**
-MYSQL user is used by PASA while the Linux user is important to not mess-up installations
+However, a dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
+is important to not mess-up installations.
 
-MYSQL user:
+Few steps are required before using **LoReAn**
+
+How to create a MYSQL user in the host system:
 ```bash
 CREATE USER 'lorean'@'localhost' IDENTIFIED BY 'lorean';
 GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
 FLUSH PRIVILEGES;
 ```
    
-After **MYSLQ** user is created, we can start **SYNGULARITY**.
+After **MYSLQ** user is created, we can start **SYNGULARITY**. 
+
+***IT IS MANDATORY*** to bind MYSQL running on the host to the **SYNGULARITY** image. To do so, search for the **mysqld.sock** file
+(In UBUNTU is located at /run/mysqld/). Use the --bind option to link the folder containing the **mysqld.sock** to the 
+image (see command below)
 
 ```bash
 singularity shell --bind /var/run/mysqld/:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
 ```
+
+
 
 At this point, some files need to be moved
 ```bash
@@ -35,7 +43,11 @@ cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
+At this point, run to che if  **LoReAn** works
  
+ ```bash
+ lorean.py -help
+ ```
 
 
 
