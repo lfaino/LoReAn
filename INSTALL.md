@@ -43,7 +43,7 @@ cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-At this point, run to che if  **LoReAn** works
+At this point, check if  **LoReAn** works
  
  ```bash
  lorean.py -help
