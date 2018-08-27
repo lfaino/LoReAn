@@ -50,8 +50,6 @@ At this point, run to che if  **LoReAn** works
  ```
 
 
-
-
 # LoReAn using Docker.
 
 ### On Linux
