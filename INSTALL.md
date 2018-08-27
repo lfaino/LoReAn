@@ -35,15 +35,13 @@ image (see command below)
 singularity shell --bind /var/run/mysqld/:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
 ```
 
-
-
 At this point, some files need to be moved
 ```bash
 cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_new && mv /home/lorean/.bashrc_new /home/lorean/.bashrc
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-At this point, run to che if  **LoReAn** works
+At this point, check if  **LoReAn** works
  
  ```bash
  lorean.py -help
