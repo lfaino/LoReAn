@@ -45,6 +45,11 @@ The next step is to place the ***GeneMark key*** in the home directory of the us
 add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script from the lorean home directory (/home/lorean/). 
 In Ubuntu, the end result would be **/home/lorean/.gm_key**   
 
+```bash
+cd Downloads
+gunzip gm_key_64.gz
+mv gm_key_64 ~/.gm_key
+```
 
 
 ### 3) DOWNLOAD AND START LOREAN SHELL VIA SINGULARITY  
