@@ -18,14 +18,18 @@ is important to not mess-up installations.
 
 Few steps are required before using **LoReAn**
 
-How to create a MYSQL user in the host system:
+How to create a **MYSQL** user in the host system:
 ```bash
 CREATE USER 'lorean'@'localhost' IDENTIFIED BY 'lorean';
 GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
 FLUSH PRIVILEGES;
 ```
-   
-After **MYSLQ** user is created, we can start **SYNGULARITY**. 
+
+The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
+add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script (see below) from the lorean home directory. 
+In Ubuntu, the end result would be **/home/lorean/.gm_key**   
+
+After **MYSLQ** and **Linux** user are created, we can start **SYNGULARITY**. 
 
 ***IT IS MANDATORY*** to bind MYSQL running on the host to the **SYNGULARITY** image. To do so, search for the **mysqld.sock** file
 (In UBUNTU is located at /run/mysqld/). Use the --bind option to link the folder containing the **mysqld.sock** to the 

@@ -92,8 +92,6 @@ RUN tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd geno
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
 
-RUN cp ../../code/createUserSingularity.py /usr/local/bin && chmod 775 /usr/local/bin/createUserSingularity.py
-
 RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
