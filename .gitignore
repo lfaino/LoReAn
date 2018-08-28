@@ -7,3 +7,4 @@ remote-server-client-libraries.xml
 remote-servers.xml
 editor.xml
 baseRefactoring.xml
+/.gitignore
