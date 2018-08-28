@@ -47,7 +47,12 @@ mv /home/lorean/.bashrc_new /home/lorean/.bashrc
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-At this point, check if  **LoReAn** works
+The previous step need to be performed only the first time 
+
+<span style="color:blue">some *This is Blue italic.* text</span>
+
+
+Now, check if  **LoReAn** works
  
  ```bash
  lorean.py -help
