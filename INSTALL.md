@@ -13,9 +13,7 @@ Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneM
 
 The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
 We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe time take to 
-install separately. Additionally, **SINGULARITY** was tested on **BASH on Ubuntu on Windows 10** and it work. 
-**SINGULARITY** can be installed using the instructions described at  **SINGULARITY** website (https://www.sylabs.io/). 
-The only requirement is to have **MYSQL** running on **BASH on Ubuntu on Windows 10**.   
+install separately. 
 
 A dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
 is important to not mess-up installations (few files are modified permanently by **SINGULARITY**)
