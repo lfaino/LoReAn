@@ -47,10 +47,9 @@ mv /home/lorean/.bashrc_new /home/lorean/.bashrc
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-The previous step need to be performed only the first time 
-
-<span style="color:blue">some *This is Blue italic.* text</span>
-
+The previous step need to be performed only the first time **SINGULARITY** is run. The above changes are stored permanently 
+in the lorean home directory and used in next **SINGULARITY** all following runs. Therefore, we suggest to have a 
+dedicated home directory to run **SINGULARITY**   
 
 Now, check if  **LoReAn** works
  
