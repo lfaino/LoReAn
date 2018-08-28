@@ -9,26 +9,20 @@ Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneM
 
 # LoReAn using Singularity.
 
-The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
-We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe difficult to 
-install all of them independently. We prefer **SINGULARITY** to **DOCKER** because root access is not required. 
+### ***We prefer **SINGULARITY** to **DOCKER** because root access is not required.*** 
 
-Additionally, **SINGULARITY** works perfectly on **BASH on Ubuntu on Windows 10**. **SINGULARITY** can be installed using the instructions
-described at  **SINGULARITY** website (https://www.sylabs.io/). The only requirement is to have **MYSQL** running on 
-**BASH on Ubuntu on Windows 10**.   
+The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
+We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe time take to 
+install separately. Additionally, **SINGULARITY** was tested on **BASH on Ubuntu on Windows 10** and it work. 
+**SINGULARITY** can be installed using the instructions described at  **SINGULARITY** website (https://www.sylabs.io/). 
+The only requirement is to have **MYSQL** running on **BASH on Ubuntu on Windows 10**.   
 
 A dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
 is important to not mess-up installations (few files are modified permanently by **SINGULARITY**)
 
-Few steps are required before using **LoReAn**
+## Here the required steps before using **LoReAn**:
 
-### 1) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
-
-The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
-add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script (see below) from the lorean home directory. 
-In Ubuntu, the end result would be **/home/lorean/.gm_key**   
-
-### 2a) CREATE MYSQL DATABASE 
+### 1a) CREATE MYSQL DATABASE 
 
 How to create a **MYSQL** user in the host system:
 ```bash
@@ -37,7 +31,7 @@ GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-### 2b) CREATE LOREAN USER (UBUNTU)(OPTIONAL - not sure if possible in "BASH on Ubuntu on Windows 10") 
+### 1b) CREATE LOREAN USER (UBUNTU)(OPTIONAL - not sure if possible in "BASH on Ubuntu on Windows 10") 
 
 ```bash
 sudo adduser lorean
@@ -45,7 +39,15 @@ sudo adduser lorean
 
 After **MYSLQ** and **Linux** user are created, we can start **SYNGULARITY**. 
 
-### 3) DOWNLOAD AND START LOREA SHELL VIA SINGULARITY  
+### 2) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
+
+The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
+add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script from the lorean home directory (/home/lorean/). 
+In Ubuntu, the end result would be **/home/lorean/.gm_key**   
+
+
+
+### 3) DOWNLOAD AND START LOREAN SHELL VIA SINGULARITY  
 
 ***IT IS MANDATORY*** to bind MYSQL running on the host to the **SYNGULARITY** image. To do so, search for the **mysqld.sock** file
 (In UBUNTU is located at /run/mysqld/). Use the --bind option to link the folder containing the **mysqld.sock** to the 
