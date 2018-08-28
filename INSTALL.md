@@ -11,12 +11,24 @@ Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneM
 
 The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
 We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe difficult to 
-install all of them independently. We prefer **SINGULARITY** to **DOCKER** because root access is not required.
+install all of them independently. We prefer **SINGULARITY** to **DOCKER** because root access is not required. 
 
-However, a dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
-is important to not mess-up installations.
+Additionally, **SINGULARITY** works perfectly on **BASH on Ubuntu on Windows 10**. **SINGULARITY** can be installed using the instructions
+described at  **SINGULARITY** website (https://www.sylabs.io/). The only requirement is to have **MYSQL** running on 
+**BASH on Ubuntu on Windows 10**.   
+
+A dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
+is important to not mess-up installations (few files are modified permanently by **SINGULARITY**)
 
 Few steps are required before using **LoReAn**
+
+### 1) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
+
+The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
+add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script (see below) from the lorean home directory. 
+In Ubuntu, the end result would be **/home/lorean/.gm_key**   
+
+### 2a) CREATE MYSQL DATABASE 
 
 How to create a **MYSQL** user in the host system:
 ```bash
@@ -25,11 +37,15 @@ GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
-add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script (see below) from the lorean home directory. 
-In Ubuntu, the end result would be **/home/lorean/.gm_key**   
+### 2b) CREATE LOREAN USER (UBUNTU)(OPTIONAL - not sure if possible in "BASH on Ubuntu on Windows 10") 
+
+```bash
+sudo adduser lorean
+```
 
 After **MYSLQ** and **Linux** user are created, we can start **SYNGULARITY**. 
+
+### 3) DOWNLOAD AND START LOREA SHELL VIA SINGULARITY  
 
 ***IT IS MANDATORY*** to bind MYSQL running on the host to the **SYNGULARITY** image. To do so, search for the **mysqld.sock** file
 (In UBUNTU is located at /run/mysqld/). Use the --bind option to link the folder containing the **mysqld.sock** to the 
@@ -39,6 +55,12 @@ image (see command below)
 singularity shell --bind /var/run/mysqld/:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
 ```
 
+### 4) MOVE IMPORTANT FILES 
+
+This step need to be performed only the first time **SINGULARITY** is run. The above changes are stored permanently 
+in the lorean home directory and used in all following runs. Therefore, we suggest to have a dedicated home directory 
+to run **SINGULARITY** 
+
 At this point, some files need to be moved
 ```bash
 cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_new
@@ -47,62 +69,12 @@ mv /home/lorean/.bashrc_new /home/lorean/.bashrc
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-The previous step need to be performed only the first time **SINGULARITY** is run. The above changes are stored permanently 
-in the lorean home directory and used in next **SINGULARITY** all following runs. Therefore, we suggest to have a 
-dedicated home directory to run **SINGULARITY**   
+  
+### 4) CHECK THAT LOREAN WORKS
 
 Now, check if  **LoReAn** works
  
  ```bash
  lorean.py -help
  ```
-
-
-# LoReAn using Docker.
-
-### On Linux
-
-On Linux system, make sure that the user is added as user in docker user group.
-
-To install Docker, please refer to:
-https://docs.docker.com/engine/installation/
-
-
-
-After Docker installation, you can download  LoReAn by using:
-```bash
-docker run -it --rm -v $PWD:/data -v /path/to/panther/folder/panther:/data_panther lfaino/lorean:iprscan_rpMask createUser.py $USER $UID
-```
-
-or
-```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean:iprscan_rpMask createUser.py $USER $UID
-```
-if panther is not present. **Panther** is a big database and the user need to download it 
-
-At this point, run
-
-```bash
-lorean.py -help
-```
-
-###IMPORTANT
-Before running the docker command, place the unzipped GeneMark key in the folder from where you are running the docker 
-command 
-
-###On Windows
-On Windows system, before installing Docker **IT IS MANDATORY** to allow symbolic links. PASA makes symbolic during the run.
-The esiest way to run docker is via Docker Toolbox. During the installation, set the size of the disk image to about 30Gb.
-After the installation run Docker Quickstart Terminal and follow the instruction to run on Linux (above)
-
-###IMPORTANT
-Before running the docker command, place the unzipped GeneMark key in the folder from where you are running the docker 
-command 
-
-
-## Run LoReAn in standard bash
-
-It is possible to run LoReAn using bash only if all the tools listed in the Dockerfile are installed, the specific file removed and
-each tool is correctly installed. After the installation is complete, LoReAn can be run  
-
 
