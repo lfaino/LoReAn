@@ -6,7 +6,7 @@ LoReAn uses GeneMark-ES as *ab-initio* software which needs a license key to run
 Therefore, **IT IS MANDATORY TO** download the 64 bit Linux version key for [**GeneMark-ES/ET v.4.33 website**](http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
 
 
-# LoReAn using SINGULARITY (v2.6.0 - I need to test to see if it works in SINGULARITY 3.0-alfa).
+# LoReAn using SINGULARITY (v2.6.0 - SINGULARITY 3.0-alfa does not work).
 
 ### ***We prefer **SINGULARITY** to **DOCKER** because root access is not required.*** 
 
