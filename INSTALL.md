@@ -65,7 +65,7 @@ This step need to be performed only the first time **SINGULARITY** is run. The a
 in the lorean home directory and used in all following runs. Therefore, we suggest to have a dedicated home directory 
 to run **SINGULARITY** 
 
-At this point, some files need to be moved
+At this point, some files need to be moved (only the first time)
 ```bash
 cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_new
 mv /home/lorean/.bashrc /home/lorean/.bashrc.bk
@@ -73,7 +73,13 @@ mv /home/lorean/.bashrc_new /home/lorean/.bashrc
 source ~/.bashrc
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
-  
+
+After the first use:
+```bash
+source ~/.bashrc
+```
+
+
 ### 4) CHECK THAT LOREAN WORKS
 
 Now, check if  **LoReAn** works
