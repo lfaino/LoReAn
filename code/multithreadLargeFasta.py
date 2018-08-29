@@ -168,7 +168,6 @@ def parseAAT(wd):
                     with open(filename, 'rb') as fd:
                         shutil.copyfileobj(fd, outfile, 1024*1024*10)
 
-
     args_btab = ['AAT_btab_to_gff3.pl', fileName, 'P', ]
     outFilenameGff = wd + '/protein_evidence.gff3'
     stdout_file = open(outFilenameGff, 'w')
