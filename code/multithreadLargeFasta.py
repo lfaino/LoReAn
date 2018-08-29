@@ -4,10 +4,9 @@ import os
 import shutil
 import subprocess
 import sys
-from multiprocessing import Pool
-
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+from multiprocessing import Pool
 
 count_sequences = 0
 count_sequences_aat = 0
@@ -169,12 +168,16 @@ def parseAAT(wd):
                     with open(filename, 'rb') as fd:
                         shutil.copyfileobj(fd, outfile, 1024*1024*10)
 
-    outFilenameGff = wd + '/protein_evidence.gff3'
+
     args_btab = ['AAT_btab_to_gff3.pl', fileName, 'P', ]
+    outFilenameGff = wd + '/protein_evidence.gff3'
     stdout_file = open(outFilenameGff, 'w')
-    aat_call = subprocess.Popen(args_btab, stdout=stdout_file, cwd=wd)
+    outFilenameGff_err = wd + '/protein_evidence.err'
+    stderr_file = open(outFilenameGff_err, 'w')
+    aat_call = subprocess.Popen(args_btab, stdout=stdout_file, stderr=stderr_file, cwd=wd)
     aat_call.communicate()
     stdout_file.close()
+    stderr_file.close()
     return outFilenameGff
 
 
