@@ -7,7 +7,7 @@ Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneM
 (http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
 
 
-# LoReAn using Singularity.
+# LoReAn using Singularity (v2.6.0).
 
 ### ***We prefer **SINGULARITY** to **DOCKER** because root access is not required.*** 
 
@@ -81,9 +81,9 @@ Now, check if  **LoReAn** works
  
  ```bash
 lorean.py -help
-git clone https://github.com/lfaino/LoReAn_Example.git
-cd LoReAn_Example/JR2/
-lorean.py -t <n.ro of threads> --keep_tmp -a -f -d -sr readsChr.subset.fastq -lr longReadsChr8.fastq -pr subset.prot.fasta -sp fusarium -mg chr8.fasta 
  ```
-Please, set the -t option to the number of threads to use. On a machine with 8 CPU and 24 GB or RAM, the example takes 
-about one hour to run
+
+At this point, you should see the options list. 
+You can continue by testing lorean using the toy datasets located at: https://github.com/lfaino/LoReAn_Example 
+
+
