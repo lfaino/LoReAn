@@ -80,6 +80,10 @@ cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 Now, check if  **LoReAn** works
  
  ```bash
- lorean.py -help
+lorean.py -help
+git clone https://github.com/lfaino/LoReAn_Example.git
+cd LoReAn_Example/JR2/
+lorean.py -t <n.ro of threads> --keep_tmp -a -f -d -sr readsChr.subset.fastq -lr longReadsChr8.fastq -pr subset.prot.fasta -sp fusarium -mg chr8.fasta 
  ```
-
+Please, set the -t option to the number of threads to use. On a machine with 8 CPU and 24 GB or RAM, the example takes 
+about one hour to run
