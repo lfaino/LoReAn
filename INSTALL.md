@@ -3,15 +3,14 @@
 ## IMPORTANT
 LoReAn uses GeneMark-ES as *ab-initio* software which needs a license key to run. 
 
-Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.33"** website 
-(http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
+Therefore, **IT IS MANDATORY TO** download the 64 bit Linux version key for [**GeneMark-ES/ET v.4.33 website**](http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
 
 
-# LoReAn using Singularity (v2.6.0).
+# LoReAn using SINGULARITY (v2.6.0 - I need to test to see if it works in SINGULARITY 3.0-alfa).
 
 ### ***We prefer **SINGULARITY** to **DOCKER** because root access is not required.*** 
 
-The best way to use LoReAn is by installing and running the software via **SINGULARITY** (https://www.sylabs.io/). 
+The best way to use LoReAn is by installing and running the software via [**SINGULARITY**](https://www.sylabs.io/). 
 We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe time take to 
 install separately. 
 
@@ -29,7 +28,7 @@ GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
-### 1b) CREATE LOREAN USER (UBUNTU)(OPTIONAL - not sure if possible in "BASH on Ubuntu on Windows 10") 
+### 1b) CREATE LOREAN USER (UBUNTU) 
 
 ```bash
 sudo adduser lorean
@@ -84,4 +83,4 @@ lorean.py -help
  ```
 
 At this point, you should see the options list. 
-You can continue by testing lorean using the toy datasets located at: [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
+You can continue by testing lorean using the toy datasets located at [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
