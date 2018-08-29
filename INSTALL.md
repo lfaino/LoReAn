@@ -84,6 +84,4 @@ lorean.py -help
  ```
 
 At this point, you should see the options list. 
-You can continue by testing lorean using the toy datasets located at: https://github.com/lfaino/LoReAn_Example 
-
-
+You can continue by testing lorean using the toy datasets located at: [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
