@@ -14,8 +14,8 @@ def setting():
     parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
                              "config folder", default="", required=True)
     parser.add_argument("-pm", "--pasa_mysql_data", nargs="?", help="MYSQL user name and password (comma separated )that PASA can use to build the database. "
-                                                                    "If empty, LoReAn assumes that you have a user called 'lorean' with password 'lorean'",
-                        default="lorean,lorean", required=True)
+                                                                    "If empty, LoReAn assumes that you have a user called 'lorean' with password 'lorean' [lorean,lorean]",
+                        default="lorean,lorean")
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
     parser.add_argument("-mm","--minimap2", help="Use minimap2 to map long cDNA reads on the genome; default setting is GMAP [FALSE]", action='store_true')
     parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')

@@ -59,11 +59,12 @@ def pasa_mysql_configuration(pasa_data):
         with open(LOCATION_CONF_NEW, "w") as cnfh:
             for line in cfh:
                 if line.startswith("MYSQL_RW_USER") or line.startswith("MYSQL_RO_USER"):
-                    cnfh.write("=".join([line.split("=")[0], user_name]))
+                    cnfh.write(("=".join([line.split("=")[0], user_name])) + "\n")
                 elif line.startswith("MYSQL_RW_PASSWORD") or line.startswith("MYSQL_RO_PASSWORD"):
-                    cnfh.write("=".join([line.split("=")[0], user_pws]))
+                    cnfh.write(("=".join([line.split("=")[0], user_pws])) + "\n")
                 else:
                     cnfh.write(line)
+    sys.stdout.write('\n### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
 
 
 

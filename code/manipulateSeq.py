@@ -5,16 +5,16 @@ import os
 import subprocess
 import sys
 import tempfile
-from glob import glob
-from pathlib import Path
-
-import align as align
-import mapping
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import GC
+from glob import glob
+from pathlib import Path
 from simplesam import Reader
+
+import align as align
+import mapping
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -234,6 +234,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
+        sys.stdout.write("\t###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
         if verbose:
             print(cmd)
@@ -242,6 +243,8 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+
+        sys.stdout.write("\t###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
 
         cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
         if verbose:
