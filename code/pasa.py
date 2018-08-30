@@ -17,6 +17,10 @@ COMP_ANNOT = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -c %s
 
 #COMP_ANNOT_CREATE = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -C -c %s -A -g %s -t %s'
 
+LOCATION_CONF_ORIGINAL = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.example.txt"
+
+LOCATION_CONF_NEW = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
+
 CREATE_DATABASE = 'create_mysql_cdnaassembly_db.dbi -c %s -S /opt/LoReAn/third_party/software/PASApipeline/schema/cdna_alignment_mysqlschema'
 
 #==========================================================================================================
@@ -46,6 +50,22 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf.close()
 
     return conf_file
+
+def pasa_mysql_configuration(pasa_data):
+    '''Creates a PASA conf file'''
+
+    user_name, user_pws = pasa_data.split(",")
+    with open(LOCATION_CONF_ORIGINAL, "r") as cfh:
+        with open(LOCATION_CONF_NEW, "w") as cnfh:
+            for line in cfh:
+                if line.startswith("MYSQL_RW_USER") or line.startswith("MYSQL_RO_USER"):
+                    cnfh.write("=".join([line.split("=")[0], user_name]))
+                elif line.startswith("MYSQL_RW_PASSWORD") or line.startswith("MYSQL_RO_PASSWORD"):
+                    cnfh.write("=".join([line.split("=")[0], user_pws]))
+                else:
+                    cnfh.write(line)
+
+
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     '''Loads a gff3 file into a PASA database '''

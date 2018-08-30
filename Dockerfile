@@ -40,9 +40,8 @@ RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 COPY PASApipeline-v2.3.3.tar.gz ./
 
 RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
-    mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
-    cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ &&\
-    chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
+    mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.example.txt PASApipeline/pasa_conf/ &&\
+    cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ && chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
 COPY augustus.current.tar.gz ./
 
@@ -92,7 +91,7 @@ RUN tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd geno
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
 
-RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
+#RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
 
 RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 

@@ -1,6 +1,6 @@
-export AUGUSTUS_CONFIG_PATH=~/augustus/config/
-export AUGUSTUS_BIN_PATH=~/augustus/bin
-export PATH=$PATH:~/augustus/bin
+export AUGUSTUS_CONFIG_PATH=/opt/LoReAn/third_party/software/augustus/config/
+export AUGUSTUS_BIN_PATH=/opt/LoReAn/third_party/software/augustus/bin
+export PATH=$PATH:/opt/LoReAn/third_party/software/augustus/bin
 export PATH=$PATH:/opt/LoReAn/third_party/software/LoReAn/
 export PATH=$PATH:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1
 export PATH=$PATH:/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap
