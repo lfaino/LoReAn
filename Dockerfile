@@ -164,6 +164,8 @@ RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 
+RUN locale-gen
+
 RUN chmod a+w /opt/
 
 WORKDIR /data/
