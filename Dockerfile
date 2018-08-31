@@ -7,7 +7,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish
 
 
-RUN rm /bin/sh && ln -s /bin/bash /bin/sh
+#RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
 RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
 
@@ -45,9 +45,9 @@ RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
 
 #COPY augustus.current.tar.gz ./
 
-RUN apt-get install -y -q bamtools libbamtools-dev
+RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev
 
-RUN git clone https://github.com/samtools/htslib.git &&  cd htslib && autoheader && autoconf && ./configure && make &&\
+RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader && autoconf && ./configure && make &&\
     sudo make install && cd .. &&  git clone https://github.com/samtools/bcftools.git && cd bcftools && autoheader &&\
   autoconf && ./configure && make && sudo make install && cd .. && git clone https://github.com/samtools/tabix.git &&\
   cd tabix && make && cd .. && git clone https://github.com/samtools/samtools.git && cd samtools && autoheader &&\
