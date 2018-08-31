@@ -47,6 +47,12 @@ RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
 
 RUN apt-get install -y -q bamtools libbamtools-dev
 
+RUN git clone https://github.com/samtools/htslib.git &&  cd htslib && autoheader && autoconf && ./configure && make &&\
+    sudo make install && cd .. &&  git clone https://github.com/samtools/bcftools.git && cd bcftools && autoheader &&\
+  autoconf && ./configure && make && sudo make install && cd .. && git clone https://github.com/samtools/tabix.git &&\
+  cd tabix && make && cd .. && git clone https://github.com/samtools/samtools.git && cd samtools && autoheader &&\
+   autoconf -Wno-syntax && ./configure && make && sudo make install
+
 RUN git clone https://github.com/Gaius-Augustus/Augustus.git && mv Augustus augustus && cd augustus  && make clean && make
 
 COPY Trinity-v2.5.1.tar.gz ./
