@@ -71,9 +71,10 @@ COPY fasta-36.3.8e.tar.gz ./
 RUN tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
-COPY BRAKER2.tar.gz ./
+#COPY BRAKER2.tar.gz ./
+#RUN tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER
 
-RUN tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER
+RUN git clone https://github.com/Gaius-Augustus/BRAKER.git
 
 COPY v1.1.1.tar.gz ./
 
