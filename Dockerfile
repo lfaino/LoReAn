@@ -4,16 +4,16 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev
 
 
 #RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
-RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
+#RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
 
-RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
+#RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
 
-RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev 
+#RUN apt-get install -y mysql-server mysql-client mysql-common bowtie bioperl apache2 libcairo2-dev libpango1.0-dev
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
     psutil memory_profiler pathlib colorama simplesam tqdm 
@@ -45,7 +45,7 @@ RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
 
 #COPY augustus.current.tar.gz ./
 
-RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev
+RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
 
 RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader && autoconf && ./configure && make &&\
     sudo make install && cd .. &&  git clone https://github.com/samtools/bcftools.git && cd bcftools && autoheader &&\
