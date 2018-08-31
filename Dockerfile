@@ -53,7 +53,10 @@ RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader 
   cd tabix && make && cd .. && git clone https://github.com/samtools/samtools.git && cd samtools && autoheader &&\
    autoconf -Wno-syntax && ./configure && make && sudo make install
 
-RUN git clone https://github.com/Gaius-Augustus/Augustus.git && mv Augustus augustus && cd augustus  && make clean && make
+RUN apt-get install -y -q libcurl4-gnutls-dev libssl-dev
+
+RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
+    mv Augustus augustus && cd augustus  && make clean && make
 
 COPY Trinity-v2.5.1.tar.gz ./
 
@@ -173,7 +176,7 @@ RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 
-RUN apt-get install -y locales && locale-gen  && update-locale
+RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
 RUN chmod a+w /opt/
 
