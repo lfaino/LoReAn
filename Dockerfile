@@ -164,7 +164,7 @@ RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 
-RUN apt-get install -y locales && locale-gen
+RUN apt-get install -y locales && locale-gen en_US.UTF-8 && update-locale LANG=en_US.UTF-8
 
 RUN chmod a+w /opt/
 
