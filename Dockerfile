@@ -40,7 +40,7 @@ RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 COPY PASApipeline-v2.3.3.tar.gz ./
 
 RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
-    mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.example.txt PASApipeline/pasa_conf/ &&\
+    mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
     cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ && chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
 #COPY augustus.current.tar.gz ./

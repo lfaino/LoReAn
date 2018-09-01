@@ -10,8 +10,8 @@ MYSQLSERVER=localhost
 # or server.com
 
 # read-write username and password
-MYSQL_RW_USER=
-MYSQL_RW_PASSWORD=
+MYSQL_RW_USER=root
+MYSQL_RW_PASSWORD=lorean
 
 #### END OF MANDATORY SETTINGS ######
 
@@ -21,8 +21,8 @@ MYSQL_RW_PASSWORD=
 #########################################
 
 # read-only username and password
-MYSQL_RO_USER=
-MYSQL_RO_PASSWORD=
+MYSQL_RO_USER=root
+MYSQL_RO_PASSWORD=lorean
 
 ## PASA admin settings
 

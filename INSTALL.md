@@ -19,23 +19,12 @@ is important to not mess-up installations (few files are modified permanently by
 
 ## Here the required steps before using **LoReAn**:
 
-##OPTIONAL STEPS
-### 1a) CREATE MYSQL DATABASE 
 
-How to create a **MYSQL** user in the host system:
-```bash
-CREATE USER 'lorean'@'localhost' IDENTIFIED BY 'lorean';
-GRANT ALL PRIVILEGES ON * . * TO 'lorean'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-### 1b) CREATE LOREAN USER (UBUNTU) 
+### 1) CREATE LOREAN USER (UBUNTU) - (THIS IS AN OPTIONAL STEP) 
 
 ```bash
 sudo adduser lorean
 ```
-
-After **MYSLQ** and **Linux** user are created, we can start **SYNGULARITY**. 
 
 ### 2) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
 
@@ -49,25 +38,17 @@ gunzip gm_key_64.gz
 mv gm_key_64 ~/.gm_key
 ```
 
+### 2) CREATE MYSQL DATABASE AND DOWNLOAD LOREAN USING SINGULARITY 
 
-### 3) DOWNLOAD AND START LOREAN SHELL VIA SINGULARITY  
-
-***IT IS MANDATORY*** to bind MYSQL running on the host to the **SYNGULARITY** image. To do so, search for the **mysqld.sock** file
-(In UBUNTU is located at /run/mysqld/). Use the --bind option to link the folder containing the **mysqld.sock** to the 
-image (see command below)
 
 ```bash
-singularity shell --bind /var/run/mysqld/:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
-```
-
-### 4) MOVE IMPORTANT FILES 
-
-This step need to be performed only the first time **SINGULARITY** is run. The above changes are stored permanently 
-in the lorean home directory and used in all following runs. Therefore, we suggest to have a dedicated home directory 
-to run **SINGULARITY** 
-
-At this point, some files need to be moved (only the first time)
-```bash
+singularity pull --name mysql.simg shub://ISU-HPC/mysql
+cp /opt/LoReAn/third_party/conf_files/my.cnf /home/lorean/.my.cnf
+cp /opt/LoReAn/third_party/conf_files/mysqlrootpw /home/lorean/.mysqlrootpw
+mkdir -p ${PWD}/mysql/var/lib/mysql ${PWD}/mysql/run/mysqld
+singularity instance.start --bind ${HOME} --bind ${PWD}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${PWD}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
+singularity run instance://mysql
+singularity shell --bind ${PWD}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
 cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc.lorean
 source ~/.bashrc.lorean
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
@@ -75,11 +56,10 @@ cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 
 After the first use:
 ```bash
-source ~/.bashrc
+source ~/.bashrc.lorean
 ```
 
-
-### 4) CHECK THAT LOREAN WORKS
+### 3) CHECK THAT LOREAN WORKS
 
 Now, check if  **LoReAn** works
  

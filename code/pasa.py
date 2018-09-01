@@ -17,7 +17,7 @@ COMP_ANNOT = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -c %s
 
 #COMP_ANNOT_CREATE = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -C -c %s -A -g %s -t %s'
 
-LOCATION_CONF_ORIGINAL = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.example.txt"
+LOCATION_CONF_ORIGINAL = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
 
 LOCATION_CONF_NEW = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
 
