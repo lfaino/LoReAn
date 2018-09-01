@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
 import datetime
+import gffutils
+import gffutils.gffwriter as gffwriter
 import math
 import os
 import subprocess
 import sys
 import tempfile
+from Bio import SeqIO
 from collections import OrderedDict
+from simplesam import Reader, Writer
 
 import dirsAndFiles as logistic
-import gffutils
-import gffutils.gffwriter as gffwriter
-from Bio import SeqIO
-from simplesam import Reader, Writer
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -35,9 +35,9 @@ STAR_PAIRED = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --a
 
 STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases 6 --genomeFastaFiles %s'
 
-SAMTOOLS_VIEW = 'samtools view -bS -o %s %s'
+SAMTOOLS_VIEW = 'samtools view -@ %s -bS -o %s %s'
 
-SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
+SAMTOOLS_SORT = 'samtools sort -@ %s -o %s %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
@@ -49,8 +49,8 @@ MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
 #==========================================================================================================
 
 
-def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
-             working_dir, Fflag, type_out, verbose):
+
+def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
@@ -130,6 +130,7 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
 
+
 def minimap(reference_database, reads, threads, max_intron_length, working_dir, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
@@ -147,6 +148,7 @@ def minimap(reference_database, reads, threads, max_intron_length, working_dir, 
     except:
         raise NameError('')
     return sam.name
+
 
 def minimap_build(reference_database, working_dir, threads, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
@@ -397,10 +399,10 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     return out_file
 
 
-def samtools_view(sam_file, wd, verbose):
+def samtools_view(sam_file, wd, verbose, threads):
     '''SAM to BAM'''
     bam_filename = sam_file + '.bam'
-    cmd = SAMTOOLS_VIEW % (bam_filename, sam_file)
+    cmd = SAMTOOLS_VIEW % (threads, bam_filename, sam_file)
     if os.path.isfile(bam_filename):
         sys.stdout.write(('BAM file existed already: ' + bam_filename + ' --- skipping\n'))
         return bam_filename
@@ -422,13 +424,13 @@ def samtools_sort(bam_file, threads, wd, verbose):
     '''
     run a sorting of a bam file
     '''
-    s_bam_filename = bam_file + '.sorted'
+    s_bam_filename = bam_file + '.sorted.bam'
 
-    if not os.path.isfile(s_bam_filename + '.bam'):
-        cmd = SAMTOOLS_SORT % (threads, bam_file, s_bam_filename)
+    if not os.path.isfile(s_bam_filename ):
+        cmd = SAMTOOLS_SORT % (threads, s_bam_filename, bam_file)
         s_bam_filename = s_bam_filename
         if os.path.isfile(s_bam_filename):
-            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename + '.bam --- skipping\n'))
+            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename + ' --- skipping\n'))
             return s_bam_filename
         log_name = wd + 'samtools_sort.log'
         log = open(log_name, 'w')
@@ -440,13 +442,13 @@ def samtools_sort(bam_file, threads, wd, verbose):
         except:
             raise NameError('')
         log.close()
-    sor_bam_filename = s_bam_filename + ".bam"
+    sor_bam_filename = s_bam_filename
     return sor_bam_filename
 
 
 def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     sys.stdout.write('\t###SAM to BAM###\n')
-    bam_filename = samtools_view(sam_file, wd, verbose)
+    bam_filename = samtools_view(sam_file, wd, verbose, threads)
 
     sys.stdout.write('\t###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)

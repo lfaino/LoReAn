@@ -220,6 +220,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
     if gff_path.is_file():
         gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
     else:
+        sys.stdout.write("\t###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         freq_file = working_dir + genome.split("/")[-1] + ".freq"
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
@@ -234,7 +235,6 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        sys.stdout.write("\t###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
         if verbose:
             print(cmd)

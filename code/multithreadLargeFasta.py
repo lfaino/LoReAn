@@ -64,6 +64,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     parseAugustus(wd)
     return
 
+
 def augustus_call(all_augustus):
     '''
     augustus call
@@ -92,6 +93,7 @@ def augustus_call(all_augustus):
         log_e.close()
 
     return all_augustus[0]
+
 
 def parseAugustus(wd):
     '''From all the augustus output after the multithread generate a single gff file'''
