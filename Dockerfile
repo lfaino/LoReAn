@@ -6,9 +6,6 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev
 
-
-#RUN rm /bin/sh && ln -s /bin/bash /bin/sh
-
 RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
 
 RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
@@ -20,9 +17,6 @@ RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtool
 
 WORKDIR /opt/
 
-#RUN git clone git://github.com/pezmaster31/bamtools.git && cd bamtools && mkdir build && cd build &&\
-#    cmake .. && make && sudo make install && cd /usr/include &&  sudo ln -f -s ../local/include/bamtools/ &&\
-#    cd /usr/lib/ &&  sudo ln -f -s /usr/local/lib/bamtools/libbamtools.* .
 
 RUN git clone -b dev --single-branch https://github.com/lfaino/LoReAn.git
 
@@ -42,8 +36,6 @@ COPY PASApipeline-v2.3.3.tar.gz ./
 RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
     mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
     cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ && chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
-
-#COPY augustus.current.tar.gz ./
 
 RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
 
@@ -82,9 +74,6 @@ COPY fasta-36.3.8e.tar.gz ./
 RUN tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
     cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
-#COPY BRAKER2.tar.gz ./
-#RUN tar -zxvf BRAKER2.tar.gz && rm BRAKER2.tar.gz && mv BRAKER* BRAKER
-
 RUN git clone https://github.com/Gaius-Augustus/BRAKER.git
 
 COPY v1.1.1.tar.gz ./
@@ -102,10 +91,6 @@ COPY genometools-1.5.9.tar.gz ./
 RUN tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
-
-#RUN cp ../conf_files/pathToExport.txt /etc/profile.d/pathToExport.sh
-
-#RUN cp ../conf_files/extrinsic.M.RM.E.W.P.cfg augustus/config/extrinsic/
 
 RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cufflinks_gtf_to_alignment_gff3.pl
 
