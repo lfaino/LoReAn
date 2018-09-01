@@ -54,6 +54,12 @@ source ~/.bashrc.lorean
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
 
+Use the following command to stop mysql instance.
+
+```bash
+singularity instance.stop mysql
+```
+
 After the first use:
 ```bash
 source ~/.bashrc.lorean
