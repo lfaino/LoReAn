@@ -44,12 +44,12 @@ mv gm_key_64 ~/.gm_key
 ```bash
 singularity pull --name mysql.simg shub://ISU-HPC/mysql
 wget -O ./.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
-wget -O ./.mysqlrootpw https://github.com/lfaino/LoReAn/blob/dev/third_party/conf_files/mysqlrootpw
+wget -O ./.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
 mkdir -p ${PWD}/mysql/var/lib/mysql ${PWD}/mysql/run/mysqld
 singularity instance.start --bind ${HOME} --bind ${PWD}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${PWD}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
 singularity run instance://mysql
 singularity shell --bind ${PWD}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
-cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc.lorean
+cat /home/lorean/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/lorean/.bashrc.lorean
 source ~/.bashrc.lorean
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
