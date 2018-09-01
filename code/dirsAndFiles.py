@@ -197,6 +197,6 @@ def augustus_species_func(home):
     with open(list_file[0]) as bashrc:
         for path in bashrc:
             if "AUGUSTUS_CONFIG_PATH" in path:
-                augustus_specie_dir = path.split("=")[1].rsplit()[0]
-                augustus_species = [d for d in os.listdir( augustus_specie_dir + "species")]
+                augustus_specie_dir = path.split("=~")[1].rsplit()[0]
+                augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
     return augustus_species, err_augustus

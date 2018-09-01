@@ -19,6 +19,7 @@ is important to not mess-up installations (few files are modified permanently by
 
 ## Here the required steps before using **LoReAn**:
 
+##OPTIONAL STEPS
 ### 1a) CREATE MYSQL DATABASE 
 
 How to create a **MYSQL** user in the host system:
@@ -67,10 +68,8 @@ to run **SINGULARITY**
 
 At this point, some files need to be moved (only the first time)
 ```bash
-cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc_new
-mv /home/lorean/.bashrc /home/lorean/.bashrc.bk
-mv /home/lorean/.bashrc_new /home/lorean/.bashrc
-source ~/.bashrc
+cat /home/lorean/.bashrc /etc/profile.d/pathToExport.sh  > /home/lorean/.bashrc.lorean
+source ~/.bashrc.lorean
 cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
 ```
 
