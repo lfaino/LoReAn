@@ -43,8 +43,8 @@ mv gm_key_64 ~/.gm_key
 
 ```bash
 singularity pull --name mysql.simg shub://ISU-HPC/mysql
-cp /opt/LoReAn/third_party/conf_files/my.cnf /home/lorean/.my.cnf
-cp /opt/LoReAn/third_party/conf_files/mysqlrootpw /home/lorean/.mysqlrootpw
+wget -O ./.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
+wget -O ./.mysqlrootpw https://github.com/lfaino/LoReAn/blob/dev/third_party/conf_files/mysqlrootpw
 mkdir -p ${PWD}/mysql/var/lib/mysql ${PWD}/mysql/run/mysqld
 singularity instance.start --bind ${HOME} --bind ${PWD}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${PWD}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
 singularity run instance://mysql
