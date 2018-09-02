@@ -28,9 +28,12 @@ sudo adduser lorean
 
 ### 2) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
 
-The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. If a user lorean is created,
-add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script from the lorean home directory (/home/lorean/). 
-In Ubuntu, the end result would be **/home/lorean/.gm_key**   
+The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. In Ubuntu, 
+the end result would be **~/.gm_key**
+
+If a lorean user is created, add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script from the 
+lorean home directory (/home/lorean/). 
+   
 
 ```bash
 cd Downloads
@@ -38,34 +41,30 @@ gunzip gm_key_64.gz
 mv gm_key_64 ~/.gm_key
 ```
 
-### 2) CREATE MYSQL DATABASE AND DOWNLOAD LOREAN USING SINGULARITY 
+### 3) CREATE MYSQL DATABASE AND DOWNLOAD LOREAN USING SINGULARITY 
 
+These commands can be run from the home directory. The following BASH script will start a new instance of **MYSQL**, download LoReAn
+singularity image and move important files.
+
+**NOTE** that **MYSQL** will run on port 5123 to avoid conflict with other **MYSQL** instance already running on the system. Please 
+check that the door is open and available to use
 
 ```bash
 singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ./.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
-wget -O ./.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
-mkdir -p ${PWD}/mysql/var/lib/mysql ${PWD}/mysql/run/mysqld
-singularity instance.start --bind ${HOME} --bind ${PWD}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${PWD}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
+wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
+wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
+mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
+singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
 singularity run instance://mysql
-singularity shell --bind ${PWD}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
-cat /home/lorean/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/lorean/.bashrc.lorean
+singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
+cat ~/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > ~/.bashrc.lorean
 source ~/.bashrc.lorean
-cp -r /opt/LoReAn/third_party/software/augustus/ /home/lorean/
+cp -r /opt/LoReAn/third_party/software/augustus/ ~/
 ```
 
-Use the following command to stop mysql instance.
 
-```bash
-singularity instance.stop mysql
-```
 
-After the first use:
-```bash
-source ~/.bashrc.lorean
-```
-
-### 3) CHECK THAT LOREAN WORKS
+### 4) CHECK THAT LOREAN WORKS
 
 Now, check if  **LoReAn** works
  
@@ -75,3 +74,28 @@ lorean.py -help
 
 At this point, you should see the options list. 
 You can continue by testing lorean using the toy datasets located at [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
+
+
+### OTHER USEFUL COMMANDS
+
+###TO STOP MYSQL INSTANCE 
+Use the following command to stop mysql instance.
+
+```bash
+singularity instance.stop mysql
+```
+### TO START LOREAN AFTER THE FIRST USE
+
+After the first use, the augustus folder and the bashrc.lorean are already prepared. therefore we need only to download 
+the singularity images. Here the code:
+
+```bash
+singularity pull --name mysql.simg shub://ISU-HPC/mysql
+wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
+wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
+mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
+singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
+singularity run instance://mysql
+singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
+source ~/.bashrc.lorean
+```
