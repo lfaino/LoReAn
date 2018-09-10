@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+
 ###############
 ###IMPORTS###
 ###############
@@ -130,8 +131,8 @@ def main():
             logistic.check_create_dir(exonerate_wd)
             consensus_wd = (wd + '/consensus/')
             logistic.check_create_dir(consensus_wd)
-
-        logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
+        if args.long_reads != "" or args.short_reads != "":
+            logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                             args.verbose)
         augustus_species, err_augustus = logistic.augustus_species_func(home)
 

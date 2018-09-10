@@ -46,8 +46,12 @@ mv gm_key_64 ~/.gm_key
 These commands can be run from the home directory. The following BASH script will start a new instance of **MYSQL**, download LoReAn
 singularity image and move important files.
 
-**NOTE** that **MYSQL** will run on port 5123 to avoid conflict with other **MYSQL** instance already running on the system. Please 
+**NOTE**: **MYSQL** will run on port 5123 to avoid conflict with other **MYSQL** instance already running on the system. Please, 
 check that the door is open and available to use
+
+**NOTE**: the original .barsrc file should be without any **export $PATH:** add to it. If you added personal PATH to the 
+~/.bahsrc using the **export** command, please remove them from the final **~/.bashrc.lorean** before running the below 
+source command.   
 
 ```bash
 singularity pull --name mysql.simg shub://ISU-HPC/mysql

@@ -14,7 +14,10 @@ PART_TRANS = 'partition_EVM_inputs.pl --genome %s --gene_predictions %s --protei
              '--overlapSize %s --partition_listing %s --transcript_alignments %s'
 
 
-EVM_WRITE_COMM = 'write_EVM_commands.pl --genome %s --weights %s --gene_predictions %s --transcript_alignments %s ' \
+EVM_WRITE_COMM = 'write_EVM_commands.pl --genome %s --weights %s --gene_predictions %s --protein_alignments %s ' \
+                 '--output_file_name %s --partitions  %s'
+
+EVM_WRITE_COMM_TRANS = 'write_EVM_commands.pl --genome %s --weights %s --gene_predictions %s --transcript_alignments %s ' \
                  '--protein_alignments %s --output_file_name %s --partitions  %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -addintrons -retainids %s'
@@ -34,18 +37,22 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
 
     # Write Commands
     sys.stdout.write('\t###GROUPING COMMANDS###\n')
+
     command_list = evm_write_commands(working_dir, reference, weights, gene_preds, transcripts, proteins, partitions,verbose)
 
     # Run
     sys.stdout.write('\t###RUNNING EVM###\n')
-    evm_run(working_dir, command_list, threads)
+    print(working_dir, command_list, threads)
+    evm_run(working_dir, command_list, threads, verbose)
 
     # Combine partitions
     sys.stdout.write('\t###COMBINING PARTITIONS###\n')
+    print(working_dir, partitions)
     evm_combine(working_dir, partitions)
 
     # Convert to GFF3
     sys.stdout.write('\t###CONVERTING TO GFF3###\n')
+    print(working_dir, partitions, reference)
     evm_to_gff3(working_dir, partitions, reference)
 
     # Combine the different chromosomes
@@ -89,7 +96,7 @@ def evm_partitions(evm_output, reference, gene_preds, transcripts, proteins, seg
 
     partitions = evm_output + 'partitions_list.out'
 
-    if transcripts == '' and proteins != '':
+    if transcripts == '':
         cmd = PART % (reference, gene_preds, proteins, segmentSize, overlapSize, partitions)
     else:
         cmd = PART_TRANS % (reference, gene_preds, proteins, segmentSize, overlapSize, partitions, transcripts)
@@ -116,7 +123,11 @@ def evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
     Writes a file with the necessary commnd for the partitions
     '''
     evm_output_file = 'evm.out'
-    cmd = EVM_WRITE_COMM % (reference, weights, gene_preds, transcripts, proteins, evm_output_file, partitions)
+    if transcripts == '':
+        cmd = EVM_WRITE_COMM % (reference, weights, gene_preds, proteins, evm_output_file, partitions)
+    else:
+        cmd = EVM_WRITE_COMM_TRANS % (reference, weights, gene_preds, transcripts, proteins, evm_output_file, partitions)
+
     command_file = evm_output + 'commands.list'
 
     log_name = evm_output + 'write_commands.log'
@@ -136,14 +147,19 @@ def evm_write_commands(evm_output, reference, weights, gene_preds, transcripts, 
     return command_file
 
 
-def evm_run(evm_output, command_list, threads):
+def evm_run(evm_output, command_list, threads, verbose):
     '''
     Runs all the commands in commands.list in parallel
     '''
+
     args1 = ['cat', command_list]
     args2 = ['parallel', '-j', str(threads), '--']
 
-    # THIS OUTPUT FROM THE WHOLE PIPELINE
+    if verbose:
+        sys.stderr.write('Executing: %s\n\n' % args1)
+        sys.stderr.write('Executing: %s\n\n' % args2)
+
+# THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
     if os.path.isfile(out_file):
         sys.stdout.write(('\nEVM output existed already: ' + out_file + ' --- skipping\n'))

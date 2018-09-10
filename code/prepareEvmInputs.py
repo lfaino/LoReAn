@@ -265,4 +265,4 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
 if __name__ == '__main__':
     #strand(*sys.argv[1:])
     #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
-    braker_folder_find(*sys.argv[1:])
+    cat_EVM_inputs(*sys.argv[1:])
