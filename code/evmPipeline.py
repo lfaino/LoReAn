@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from multiprocessing import Pool
 
 #=======================================================================================================================
 
@@ -152,12 +153,12 @@ def evm_run(evm_output, command_list, threads, verbose):
     Runs all the commands in commands.list in parallel
     '''
 
-    args1 = ['cat', command_list]
-    args2 = ['parallel', '-j', str(threads), '--']
+    #args1 = ['cat', command_list]
+    #args2 = ['parallel', '-j', str(threads), '--']
 
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % args1)
-        sys.stderr.write('Executing: %s\n\n' % args2)
+    #if verbose:
+    #    sys.stderr.write('Executing: %s\n\n' % args1)
+    #    sys.stderr.write('Executing: %s\n\n' % args2)
 
 # THIS OUTPUT FROM THE WHOLE PIPELINE
     out_file = evm_output + 'evm.out.combined.gff3'
@@ -169,13 +170,22 @@ def evm_run(evm_output, command_list, threads, verbose):
     log = open(log_name, 'w')
 
     try:
-        cat = subprocess.Popen(args1, stdout=subprocess.PIPE, cwd=evm_output)
-        # evm_call.communicate()
-        parallel = subprocess.Popen(args2, stdin=cat.stdout, cwd=evm_output, stderr=log)
-        parallel.communicate()
+        list_run = []
+        with open(command_list, "r") as fh:
+            for line in fh:
+                list_run.append([line, evm_output])
+        pool = Pool(processes=int(threads), maxtasksperchild=10)
+        results = pool.map(parallel, list_run, chunksize=1)
     except:
         raise NameError('')
     log.close()
+
+
+def parallel(command):
+
+    parallel = subprocess.Popen(command[0], shell=True, cwd=command[1])
+    parallel.communicate()
+    return
 
 
 def evm_combine(evm_output, partitions):
