@@ -173,7 +173,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
-        print(out_filename_oriented)
         return out_filename_oriented
     else:
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
@@ -181,7 +180,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
-        print(out_filename)
         return out_filename
 
 
@@ -195,9 +193,9 @@ def maskedgenome(wd, ref, gff3, length, verbose):
     cmd1 = BEDTOOLS_MERGE
     cmd2 = AWK % length
     if verbose:
-        print(cmd)
-        print(cmd1)
-        print(cmd2)
+        sys.stdout.write(cmd)
+        sys.stdout.write(cmd1)
+        sys.stdout.write(cmd2)
     bedsort = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
     bedmerge = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stdin=bedsort.stdout, shell=True)
     awk = subprocess.Popen(cmd2, stdin=bedmerge.stdout, stdout=outputmerge, shell=True)
@@ -206,7 +204,7 @@ def maskedgenome(wd, ref, gff3, length, verbose):
     masked = ref + ".masked.fasta"
     cmd = BEDTOOLS_MASK % (ref, outputmerge.name, masked)
     if verbose:
-        print(cmd)
+        sys.stdout.write(cmd)
     maskfasta=subprocess.Popen(cmd, cwd=wd, shell=True)
     maskfasta.communicate()
     return masked
@@ -227,7 +225,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
         cmd = BUILD_TABLE % (genome, freq_file)
         if verbose:
-            print(cmd)
+            sys.stdout.write(cmd)
         build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         build.communicate()
 
@@ -237,7 +235,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
         cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
         if verbose:
-            print(cmd)
+            sys.stdout.write(cmd)
         scout = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         scout.communicate()
 
@@ -248,7 +246,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
         cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
         if verbose:
-            print(cmd)
+            sys.stdout.write(cmd)
         mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         mask.communicate()
         gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
