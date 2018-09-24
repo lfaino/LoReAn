@@ -43,17 +43,14 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
 
     # Run
     sys.stdout.write('\t###RUNNING EVM###\n')
-    print(working_dir, command_list, threads)
     evm_run(working_dir, command_list, threads, verbose)
 
     # Combine partitions
     sys.stdout.write('\t###COMBINING PARTITIONS###\n')
-    print(working_dir, partitions)
     evm_combine(working_dir, partitions)
 
     # Convert to GFF3
     sys.stdout.write('\t###CONVERTING TO GFF3###\n')
-    print(working_dir, partitions, reference)
     evm_to_gff3(working_dir, partitions, reference)
 
     # Combine the different chromosomes
