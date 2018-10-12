@@ -50,7 +50,7 @@ singularity image and move important files.
 check that the door is open and available to use
 
 **NOTE**: the original .barsrc file should be without any **export $PATH:** add to it. If you added personal PATH to 
-the ~/.bahsrc using the **export** command, please remove them from the final **~/.bashrc.lorean** before running the below 
+the **~/.bahsrc** using the **export** command, please remove them from the final **~/.bashrc.lorean** before running the below 
 source command.   
 
 ```bash
