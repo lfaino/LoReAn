@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from glob import glob
 
 
 def convert_augustus(aug_file, wd):
@@ -107,6 +108,13 @@ def move_single_file(filename, key, evm_dir, new_file_d):
     except:
         # sys.stdout.write 'Could not move ' + filename
         raise NameError('')
+
+
+def braker_folder_find(location):
+
+    gff = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "augustus.hints.gff"))][0]
+    gtf = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "genemark.gtf"))][0]
+    return gff, gtf
 
 
 def move_cat_files(file_list, key, evm_dir, new_file_d):
@@ -253,3 +261,8 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_file.close()
 
     return w_filename
+
+if __name__ == '__main__':
+    #strand(*sys.argv[1:])
+    #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
+    cat_EVM_inputs(*sys.argv[1:])
