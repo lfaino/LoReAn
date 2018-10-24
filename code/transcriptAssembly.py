@@ -47,6 +47,7 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     log.close()
     return out_name
 
+
 def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose):
     '''Calls braker, may take a while'''
 
@@ -64,13 +65,14 @@ def braker_call(wd, reference, bam_file, species_name, threads, fungus, verbose)
     try:
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
-        braker_ex = subprocess.Popen(cmd, cwd = wd, stdout=log, stderr=log_err, shell=True)
+        braker_ex = subprocess.Popen(cmd, cwd=wd, stdout=log, stderr=log_err, shell=True)
         braker_ex.communicate()
     except:
         raise NameError('')
     log.close()
     log_err.close()
     return
+
 
 def gmes_call(wd, ref, fungus, threads, verbose):
     if int(threads) < 1:
@@ -102,6 +104,7 @@ def gmes_call(wd, ref, fungus, threads, verbose):
         log_e.close()
 
     return wd
+
 
 def find_species(home):
     augustus_species_cmd = 'augustus --species=help'

@@ -4,10 +4,9 @@ import os
 import shutil
 import subprocess
 import sys
-from multiprocessing import Pool
-
-import dirsAndFiles as logistic
 from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
+from multiprocessing import Pool
 
 count_sequences = 0
 count_sequences_aat = 0
@@ -24,26 +23,33 @@ AAT = 'AAT.pl -P -b -q %s -s %s r"--dps" r" \'-f 100 -i 30 -a 200\'" r"--filter"
 #==========================================================================================================
 
 
-def single_fasta(ref, wd):
+def single_fasta(ref, wd_split):
     """
     From a fasta file make single files with each sequence
     """
-    wd_split = wd + '/split/'
-    logistic.check_create_dir(wd_split)
-    fastaFile = open(ref, 'r')
+
+    fasta_file = open(ref, 'r')
     single_fasta_list = []
-    for record in SeqIO.parse(fastaFile, "fasta"):
-        fasta_name = wd_split + '/' + record.id + '.fasta'
-        single_fasta_list.append(fasta_name)
-        output_handle = open(fasta_name, "w")
-        SeqIO.write(record, output_handle, "fasta")
-        output_handle.close()
-    return single_fasta_list
+    count = 0
+    dict_ref_name = {}
+    ref_rename = ref + ".rename.fasta"
+    with open(ref_rename, "w") as fh:
+        for record in SeqIO.parse(fasta_file, "fasta"):
+            count += 1
+            new_name = "seq" + str(count)
+            dict_ref_name[new_name] = record.id
+            new_rec = SeqRecord(record.seq, new_name, '', '')
+            fasta_name = wd_split + '/' + new_name + '.fasta'
+            single_fasta_list.append(fasta_name)
+            output_handle = open(fasta_name, "w")
+            SeqIO.write(new_rec, output_handle, "fasta")
+            SeqIO.write(new_rec, fh, "fasta")
+            output_handle.close()
+    return single_fasta_list, dict_ref_name, ref_rename
+
 
 def augustus_multi(threads, species, single_fasta_list, wd, verbose):
     '''handles the assembly process and parsing in a multithreaded way'''
-
-
     if int(threads) < 1:
         threads = 1
     all_augustus = []
@@ -57,6 +63,7 @@ def augustus_multi(threads, species, single_fasta_list, wd, verbose):
 
     parseAugustus(wd)
     return
+
 
 def augustus_call(all_augustus):
     '''
@@ -86,6 +93,7 @@ def augustus_call(all_augustus):
         log_e.close()
 
     return all_augustus[0]
+
 
 def parseAugustus(wd):
     '''From all the augustus output after the multithread generate a single gff file'''
@@ -162,11 +170,17 @@ def parseAAT(wd):
                     with open(filename, 'rb') as fd:
                         shutil.copyfileobj(fd, outfile, 1024*1024*10)
 
-    outFilenameGff = wd + '/protein_evidence.gff3'
     args_btab = ['AAT_btab_to_gff3.pl', fileName, 'P', ]
+    outFilenameGff = wd + '/protein_evidence.gff3'
     stdout_file = open(outFilenameGff, 'w')
-    aat_call = subprocess.Popen(args_btab, stdout=stdout_file, cwd=wd)
+    outFilenameGff_err = wd + '/protein_evidence.err'
+    stderr_file = open(outFilenameGff_err, 'w')
+    aat_call = subprocess.Popen(args_btab, stdout=stdout_file, stderr=stderr_file, cwd=wd)
     aat_call.communicate()
     stdout_file.close()
+    stderr_file.close()
     return outFilenameGff
 
+
+if __name__ == '__main__':
+    single_fasta(*sys.argv[1:])

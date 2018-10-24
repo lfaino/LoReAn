@@ -17,6 +17,10 @@ COMP_ANNOT = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -c %s
 
 #COMP_ANNOT_CREATE = 'Launch_PASA_pipeline.pl --ALT_SPLICE --TRANSDECODER --CPU %s -C -c %s -A -g %s -t %s'
 
+LOCATION_CONF_ORIGINAL = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
+
+LOCATION_CONF_NEW = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
+
 CREATE_DATABASE = 'create_mysql_cdnaassembly_db.dbi -c %s -S /opt/LoReAn/third_party/software/PASApipeline/schema/cdna_alignment_mysqlschema'
 
 #==========================================================================================================
@@ -27,7 +31,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf_file = pasa_dir + 'annotCompare.config'
     conf = open(conf_file, 'w')
     lines = [
-        'MYSQLDB=' + pasa_db,
+        'DATABASE=' + pasa_db,
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP=<__MIN_PERCENT_OVERLAP__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_PROT_CODING=<__MIN_PERCENT_PROT_CODING__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERID_PROT_COMPARE=<__MIN_PERID_PROT_COMPARE__>',
@@ -46,6 +50,23 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf.close()
 
     return conf_file
+
+def pasa_mysql_configuration(pasa_data):
+    '''Creates a PASA conf file'''
+
+    user_name, user_pws = pasa_data.split(",")
+    with open(LOCATION_CONF_ORIGINAL, "r") as cfh:
+        with open(LOCATION_CONF_NEW, "w") as cnfh:
+            for line in cfh:
+                if line.startswith("MYSQL_RW_USER") or line.startswith("MYSQL_RO_USER"):
+                    cnfh.write(("=".join([line.split("=")[0], user_name])) + "\n")
+                elif line.startswith("MYSQL_RW_PASSWORD") or line.startswith("MYSQL_RO_PASSWORD"):
+                    cnfh.write(("=".join([line.split("=")[0], user_pws])) + "\n")
+                else:
+                    cnfh.write(line)
+    sys.stdout.write('\n### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
+
+
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     '''Loads a gff3 file into a PASA database '''
@@ -109,14 +130,11 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
 
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
-
     '''Updates the gff3 file with the PASA database'''
     sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
     annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
     create_pasa_database(annot_conf_file, pasa_dir, verbose)
-
     align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
-
     sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
     load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
     sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
@@ -138,7 +156,7 @@ def pasa_configuration(pasa_dir, pasa_db, verbose):
         return conf_file
     conf = open(conf_file, 'w')
     lines = [
-        'MYSQLDB=' + pasa_db,
+        'DATABASE=' + pasa_db,
         'validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>',
         'validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>',
         'subcluster_builder.dbi:-m=50']
@@ -153,7 +171,6 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
     database with the same name -the one of the reference-.'''
 
     align_pasa_conf = pasa_configuration(pasa_dir, pasa_db, verbose)
-
     cmd = LAUNCH_PASA % (align_pasa_conf, reference, transcripts, max_intron_length, threads)
     out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
     # sys.stdout.write out_file, os.path.isfile(out_file)
@@ -179,7 +196,7 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
 
 def create_pasa_database(conf_file, pasa_dir, verbose):
 
-    cmd = CREATE_DATABASE % (conf_file)
+    cmd = CREATE_DATABASE % conf_file
     log_name = pasa_dir + 'create_databae.log'
     log = open(log_name, 'w')
     log_out_name = pasa_dir + 'create_databae.out.log'

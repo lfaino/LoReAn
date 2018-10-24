@@ -1,24 +1,29 @@
 #!/usr/bin/env python3
 
 import datetime
+import gffutils
+import gffutils.gffwriter as gffwriter
 import math
 import os
 import subprocess
 import sys
+import tempfile
+from Bio import SeqIO
+from collections import OrderedDict
+from simplesam import Reader, Writer
 
 import dirsAndFiles as logistic
-from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
 
-GMAP_BULD  = 'gmap_build -k 13 -d %s -D %s %s'
+GMAP_BULD  = 'gmap_build -d %s -D %s %s'
 
-GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  5 \
+GMAP_GFF = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species -B 3 --min-intronlength %s -n  5 \
 --microexon-spliceprob 1 -F -K  %s -t %s -f %s %s'
 
-GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species --expand-offsets 1 -B 5 --min-intronlength %s -n  1 \
---microexon-spliceprob 1 -K  %s -t %s -f %s %s'
+GMAP_SAM = 'gmap -D %s  -d %s --trim-end-exons %s --cross-species -B 3 --min-intronlength %s -n  1 \
+--microexon-spliceprob 1 -K %s -t %s -f %s %s'
 
 STAR_SINGLE = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --alignIntronMax %s --alignMatesGapMax %s ' \
        '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
@@ -30,16 +35,23 @@ STAR_PAIRED = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --a
 
 STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases 6 --genomeFastaFiles %s'
 
-SAMTOOLS_VIEW = 'samtools view -bS -o %s %s'
+SAMTOOLS_VIEW = 'samtools view -@ %s -bS -o %s %s'
 
-SAMTOOLS_SORT = 'samtools sort -@ %s %s %s'
+SAMTOOLS_SORT = 'samtools sort -@ %s -o %s %s'
+
+GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
+
+MINIMAP2 = 'minimap2 -ax splice -k14 -t %s -G %s -uf %s %s'
+
+MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
+
 
 #==========================================================================================================
 
 
+
 def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
-    '''Calls gmap to map reads to reference
-    Out_format can be samse of gff3 (2)'''
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
         if type_out == 'test':
@@ -47,43 +59,178 @@ def gmap_map(reference_database, reads, threads, out_format, min_intron_length, 
         elif type_out == 'sam':
             filename = working_dir + 'gmap.long_reads.sam'
     elif out_format == '2' or out_format == 'gff3_gene':
+        rev_com_file = working_dir + "/rev_com_uniq." + type_out + ".fasta"
+        file_orig = working_dir + "/uniq." + type_out + ".fasta"
+        record_dict = parse_fasta(reads)
+        with open(file_orig, "w") as handle:
+            SeqIO.write(record_dict.values(), handle, "fasta")
+        for read in record_dict:
+            seq = record_dict[read].seq
+            seq_rev_comp = seq.reverse_complement()
+            record_dict[read].seq = seq_rev_comp
+        with open(rev_com_file, "w") as handle:
+            SeqIO.write(record_dict.values(), handle, "fasta")
         if type_out == 'cons':
+            filenamest = working_dir + 'gmap.cluster_consensus.ST.gff3'
+            filenamerc = working_dir + 'gmap.cluster_consensus.RC.gff3'
             filename = working_dir + 'gmap.cluster_consensus.gff3'
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'trin':
+            filenamest = working_dir + 'gmap.trinity.ST.gff3'
+            filenamerc = working_dir + 'gmap.trinity.RC.gff3'
             filename = working_dir + 'gmap.trinity.gff3'
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
         elif type_out == 'ext':
+            filenamest = working_dir + 'external.ST.gff3'
+            filenamerc = working_dir + 'external.RC.gff3'
             filename = working_dir + 'external.gff3'
-
+            list_fasta = [[file_orig, filenamest],[rev_com_file, filenamerc]]
     else:
         raise NameError(
             'Unknown format: ' + out_format + 'for GMAP. Accepted are samse or 2 (gff3_gene)')
-    if os.path.isfile(filename) and os.path.getsize(filename) > 1:  # If the ref is there do not build it again
-        sys.stdout.write(('GMAP index existed already: ' + filename + ' --- skipping'))
-    else:
+
+    if out_format == 'samse' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif out_format == '2' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif out_format == 'gff3_gene' and os.path.isfile(filename) and os.path.getsize(filename) > 1:
+        sys.stdout.write(('GMAP done already: ' + filename + ' --- skipping'))
+    elif not Fflag:
         out_f = open(filename, 'w')
         log_name = working_dir + 'gmap_map.log'
         log = open(log_name, 'w')
-        if not Fflag:
-            cmd = GMAP_SAM % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
-            try:
-                if verbose:
-                    sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
-                gmapmap.communicate()
-            except:
-                raise NameError('')
-        else:
-            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
-            try:
-                if verbose:
-                    sys.stderr.write('Executing: %s\n\n' % cmd)
-                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
-                gmapmap.communicate()
-            except:
-                raise NameError('')
+        cmd = GMAP_SAM % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length, threads, out_format, reads)
+        try:
+            if verbose:
+                sys.stderr.write('Executing: %s\n\n' % cmd)
+            gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
+            gmapmap.communicate()
+        except:
+            raise NameError('')
         out_f.close()
         log.close()
+    else:
+        for combination in list_fasta:
+            out_f = open(combination[1], 'w')
+            log_name = working_dir + 'gmap_map.log'
+            log = open(log_name, 'w')
+            cmd = GMAP_GFF % (working_dir, reference_database, exon_length, min_intron_length, max_intron_length,
+                              threads, out_format, combination[0])
+            try:
+                if verbose:
+                    sys.stderr.write('Executing: %s\n\n' % cmd)
+                gmapmap = subprocess.Popen(cmd, stdout=out_f, stderr=log, shell=True)
+                gmapmap.communicate()
+            except:
+                raise NameError('')
+            out_f.close()
+            log.close()
+        if verbose:
+            print(list_fasta[0][1], list_fasta[1][1])
+        filename = longest_cds(list_fasta[0][1], list_fasta[1][1], verbose, working_dir, filename)
     return filename
+
+
+def minimap(reference_database, reads, threads, max_intron_length, working_dir, verbose):
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
+
+    reference_database_index = minimap_build(reference_database, working_dir, threads, verbose)
+
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".err", dir=working_dir)
+    sam = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".sam", dir=working_dir)
+
+    cmd = MINIMAP2 % (threads, max_intron_length, reference_database_index, reads)
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        minimap = subprocess.Popen(cmd, stdout=sam, stderr=err, shell=True, cwd=working_dir)
+        minimap.communicate()
+    except:
+        raise NameError('')
+    return sam.name
+
+
+def minimap_build(reference_database, working_dir, threads, verbose):
+    '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
+
+    out_f = reference_database.split("/")[-1] + ".mmi"
+    cmd = MINIMAP2_BUILD % (threads, out_f, reference_database)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".err", dir=working_dir)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="minimap2_build.", suffix=".log", dir=working_dir)
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n\n' % cmd)
+        minimap_build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+        minimap_build.communicate()
+    except:
+        raise NameError('problem with minimap genome build')
+    return out_f
+
+
+def parse_fasta(fasta):
+    fasta_dict = {}
+    with open(fasta, "r") as fh:
+        for record in SeqIO.parse(fh, "fasta"):
+            if record.id in fasta_dict:
+                id_rec = record.id
+                elem = id_rec.split("_")
+                new = elem[0] + "a"
+                elem[0] = new
+                id_rec = "_".join(elem)
+                record.id = id_rec
+                fasta_dict[record.id] = record
+            else:
+                fasta_dict[record.id] = record
+    return fasta_dict
+
+
+def longest_cds(gff_file, gff_filerc, verbose, wd, filename):
+    db = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
+    dbrc = gffutils.create_db(gff_filerc, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform)
+    list_mrna = [mRNA.attributes["ID"][0] for mRNA in db.features_of_type('mRNA')]
+    list_mrna_rc = [mRNA.attributes["ID"][0] for mRNA in dbrc.features_of_type('mRNA')]
+    list_all = list(set(list_mrna + list_mrna_rc))
+    list_db = []
+    list_db_rc = []
+    for mrna_id in list_all:
+        cds_len = [int(i.end) - int(i.start) for i in db.children(mrna_id, featuretype='CDS', order_by='start')]
+        cds_len_rc = [int(i.end) - int(i.start) for i in dbrc.children(mrna_id, featuretype='CDS', order_by='start')]
+        if cds_len == cds_len_rc:
+            list_db.append(mrna_id)
+        elif cds_len > cds_len_rc:
+            list_db.append(mrna_id)
+        else:
+            list_db_rc.append(mrna_id)
+    gff_out = gffwriter.GFFWriter(filename)
+    for evm in list_db:
+        if evm in list_mrna:
+            for i in db.children(evm, featuretype='CDS', order_by='start'):
+                gff_out.write_rec(i)
+            i = db[evm]
+            gff_out.write_rec(i)
+            for i in db.parents(evm, featuretype='gene', order_by='start'):
+                gff_out.write_rec(i)
+            for i in db.children(evm, featuretype='exon', order_by='start'):
+                gff_out.write_rec(i)
+    for evm in list_db_rc:
+        if evm in list_mrna_rc:
+            for i in dbrc.children(evm, featuretype='CDS', order_by='start'):
+                gff_out.write_rec(i)
+            i = dbrc[evm]
+            gff_out.write_rec(i)
+            for i in dbrc.parents(evm, featuretype='gene', order_by='start'):
+                gff_out.write_rec(i)
+            for i in dbrc.children(evm, featuretype='exon', order_by='start'):
+                gff_out.write_rec(i)
+    gff_out.close()
+    if verbose:
+        print(filename)
+    return filename
+
+
+def transform(f):
+    f.frame = "."
+    return f
 
 
 def star_build(reference, genome_dir, threads, wd, verbose):
@@ -252,10 +399,10 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     return out_file
 
 
-def samtools_view(sam_file, wd, verbose):
+def samtools_view(sam_file, wd, verbose, threads):
     '''SAM to BAM'''
     bam_filename = sam_file + '.bam'
-    cmd = SAMTOOLS_VIEW % (bam_filename, sam_file)
+    cmd = SAMTOOLS_VIEW % (threads, bam_filename, sam_file)
     if os.path.isfile(bam_filename):
         sys.stdout.write(('BAM file existed already: ' + bam_filename + ' --- skipping\n'))
         return bam_filename
@@ -277,13 +424,13 @@ def samtools_sort(bam_file, threads, wd, verbose):
     '''
     run a sorting of a bam file
     '''
-    s_bam_filename = bam_file + '.sorted'
+    s_bam_filename = bam_file + '.sorted.bam'
 
-    if not os.path.isfile(s_bam_filename + '.bam'):
-        cmd = SAMTOOLS_SORT % (threads, bam_file, s_bam_filename)
+    if not os.path.isfile(s_bam_filename ):
+        cmd = SAMTOOLS_SORT % (threads, s_bam_filename, bam_file)
         s_bam_filename = s_bam_filename
         if os.path.isfile(s_bam_filename):
-            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename + '.bam --- skipping\n'))
+            sys.stdout.write(('Sorted BAM file existed already: ' + s_bam_filename + ' --- skipping\n'))
             return s_bam_filename
         log_name = wd + 'samtools_sort.log'
         log = open(log_name, 'w')
@@ -295,14 +442,87 @@ def samtools_sort(bam_file, threads, wd, verbose):
         except:
             raise NameError('')
         log.close()
-    sor_bam_filename = s_bam_filename + ".bam"
+    sor_bam_filename = s_bam_filename
     return sor_bam_filename
 
 
 def sam_to_sorted_bam(sam_file, threads, wd, verbose):
     sys.stdout.write('\t###SAM to BAM###\n')
-    bam_filename = samtools_view(sam_file, wd, verbose)
+    bam_filename = samtools_view(sam_file, wd, verbose, threads)
 
     sys.stdout.write('\t###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)
     return s_bam_filename
+
+
+def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
+
+    if "long" in type_reads:
+        outfile = os.path.join(wd, 'long_reads_mapped')
+    if "short" in type_reads:
+        outfile = os.path.join(wd, 'short_reads_mapped')
+    out_file = open(outfile, 'w')
+    in_file = open(long_sam, "r")
+    in_sam = Reader(in_file)
+    header = in_sam.header
+    sq = header['@SQ']
+    dict_chr = {}
+    for c in sq:
+        single_elm = c.split(":")
+        if single_elm[1] in dict_chr_split:
+            single_elm[1] = dict_chr_split[single_elm[1]]
+            change_chr = ":".join(single_elm)
+            dict_chr[change_chr] = sq[c]
+    header_new = OrderedDict({'@CO': header['@CO'], '@HD': header['@HD'],'@PG': header['@PG'],'@SQ': OrderedDict(dict_chr)})
+    out_sam = Writer(out_file, header_new)
+    for line in in_sam:
+        if line.rname in dict_chr_split:
+            name = dict_chr_split[line.rname]
+            line.rname = name
+            out_sam.write(line)
+    out_sam.close()
+
+    bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+
+    return bam_final
+
+
+def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
+
+    sam_link = os.path.join(wd, short_reads.split("/")[-1])
+    if not os.path.exists(sam_link):
+        os.link(short_reads, sam_link)
+    outfile = sam_link + ".changed.sorted.sam"
+    dict_invert_seq = {}
+    for key in dict_ref_name:
+        dict_invert_seq[dict_ref_name[key]] = key
+
+    out_file = open(outfile, 'w')
+    in_file = open(sam_link, "r")
+    in_sam = Reader(in_file)
+    header = in_sam.header
+    sq = header['@SQ']
+    dict_chr = {}
+    for c in sq:
+        single_elm = c.split(":")
+        if single_elm[1] in dict_invert_seq:
+            single_elm[1] = dict_invert_seq[single_elm[1]]
+            change_chr = ":".join(single_elm)
+            dict_chr[change_chr] = sq[c]
+    header_new = OrderedDict({'@CO': header['@CO'], '@HD': header['@HD'],'@PG': header['@PG'],'@SQ': OrderedDict(dict_chr)})
+    out_sam = Writer(out_file, header_new)
+    for line in in_sam:
+        if line.rname in dict_invert_seq:
+            name = dict_invert_seq[line.rname]
+            line.rname = name
+            out_sam.write(line)
+    out_sam.close()
+
+    bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+
+    return bam_final
+
+
+#if __name__ == '__main__':
+#    dict_ref_name = {"seq1" : "scaffold_3"}
+#    change_chr_to_seq(*sys.argv[1:], dict_ref_name)

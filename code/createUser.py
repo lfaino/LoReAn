@@ -38,7 +38,7 @@ def create_user():
     if not gm_key_file.is_file():
         sys.exit("#####PLEASE PLACE THE gm_key IN THE DIRECTORY WITH ALL THE OTHER FILES.#####\n")
 
-    com = "cat /home/%s/.bashrc /etc/profile.d/pathToExport.sh  > /home/%s/.bashrc_new && mv /home/%s/.bashrc_new /home/%s/.bashrc" % (name_user, name_user, name_user, name_user)
+    com = "cat /home/%s/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/%s/.bashrc.lorean && mv /home/%s/.bashrc.lorean /home/%s/.bashrc" % (name_user, name_user, name_user, name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
@@ -54,7 +54,7 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "mysql --user=\"root\" --password=\"lorean\" --execute=\"set global sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';\""
+    com = "mysql --user=\"lorean\" --password=\"lorean\" --execute=\"set global sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';\""
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 

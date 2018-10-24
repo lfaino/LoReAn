@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 
 import os
-import progressbar
 import re
 import subprocess
 import sys
 import tempfile
 import time
-from Bio import SeqIO
 from multiprocessing import Pool, Manager
+
+import numpy as np
+import progressbar
+from Bio import SeqIO
 
 #==========================================================================================================
 # COMMANDS LIST
 
 ASSEMBLY  = 'iAssembler.pl -i %s -h %s  -p %s -o %s_output  2> %s.log'
 
-BEDTOOLS_GETFASTA =  'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
+BEDTOOLS_GETFASTA = 'bedtools getfasta -fi %s -bed %s -fo %s -name -split'
 
-BEDTOOLS_MERGE_ST = 'bedtools merge -s -d %s -c 4,4 -o count,distinct'
+BEDTOOLS_MERGE_ST = 'bedtools merge -s -c 4,4 -o count,distinct'
 
-BEDTOOLS_MERGE = 'bedtools merge -d %s -c 4,4 -o count,distinct'
+BEDTOOLS_MERGE = 'bedtools merge  -c 4,4 -o count,distinct'
 
 CAT = 'cat %s'
 
@@ -53,21 +55,20 @@ def gffread(gff3_file, reference, working_dir, verbose):
     return out_name
 
 
-def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
+def cluster_pipeline(gff3_file, strand, verbose):
     """
-    here the clusters of sequence from the same locus are prepared
+    here clusters of sequences from the same locus are prepared
     """
 
     cat = CAT % gff3_file
     btsort1 = BEDTOOLS_SORT
 
-    dist = '-' + str(merge_distance)
     if strand:
-        btmerge1 = BEDTOOLS_MERGE_ST % (str(dist))
+        btmerge1 = BEDTOOLS_MERGE_ST
         sys.stdout.write("\t ###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
 
     else:
-        btmerge1 = BEDTOOLS_MERGE % (str(dist))
+        btmerge1 = BEDTOOLS_MERGE
         sys.stdout.write("\t###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
 
     btsort2 = BEDTOOLS_SORT
@@ -87,8 +88,8 @@ def cluster_pipeline(gff3_file, merge_distance, strand, verbose):
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % btsort2)
     outputBT = btsort2_call.communicate()[0]
-
     final_output = outputBT.splitlines()
+
     return final_output
 
 
@@ -113,20 +114,20 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     From the output list of the pipeline, recovers the ID and goes back to the
     fasta file to retrieve the sequence
     """
+
+
     line = (bedline.decode("utf-8")).split('\t')
     if len(line) == 6:
         chrm, start, end, strand, number, idents = (line[0], line[1], line[2], line[3], line[4], line[5])
     elif len(line) == 5:
         chrm, start, end, number, idents = (line[0], line[1], line[2], line[3], line[4])
-
     ids_short = []
     if len(idents.split(',')) > int(min_evidence) and len(idents.split(',')) < int(max_evidence):
         for element in re.split(',|;', idents):
-            # if 'ID=' in element:
-            # We keep read.mrna and evm.model records
             ids_short.append(element)
     else:
-        return False
+            return False
+
 
     unique_ids = list(set(ids_short))
     cluster_filename = wd + '_'.join([chrm, start, end]) + '_' + str(count) + '.fasta'
@@ -158,9 +159,24 @@ def write_fastas(count, bedline, fasta_dict, min_length, min_evidence, max_evide
     return cluster_filename
 
 
-def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, wd):
+def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_length, strand, wd):
     """write fasta clusters
     """
+
+    if min_evidence == "" and strand:
+        array_perc = [float(line.decode().split("\t")[4]) for line in clusterList]
+        min_evidence = np.percentile(array_perc, 75)
+        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
+        print('\033[0m')
+    elif min_evidence == "":
+        array_perc = [float(line.decode().split("\t")[3]) for line in clusterList]
+        min_evidence = np.percentile(array_perc, 75)
+        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
+        print('\033[0m')
+    else:
+        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " ### \n")
+        print('\033[0m')
+
     cluster_counter = 1
     for record in clusterList:
         # Write fasta for each cluster
@@ -180,13 +196,12 @@ def assembly(overlap_length, percent_identity, threads, wd, verbose):
         for fasta_file in file:
             complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
             new_commands.append(complete_data)
-    results = pool.map_async(iAssembler, new_commands)
+    results = pool.map_async(iAssembler, new_commands, chunksize=1)
     with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
         while not results.ready():
             size = queue.qsize()
             bar.update(size)
             time.sleep(1)
-
 
 def iAssembler(new_commands):
     """
@@ -208,6 +223,7 @@ def iAssembler(new_commands):
         return False
     log.close()
     return outputDir
+
 
 if __name__ == '__main__':
     cluster_pipeline(*sys.argv[1:])
