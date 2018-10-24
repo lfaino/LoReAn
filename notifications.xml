@@ -1,0 +1,7 @@
+<application>
+  <component name="NotificationConfiguration">
+    <notification groupId="PyCharm Professional Advertiser" displayType="STICKY_BALLOON" />
+    <notification groupId="Python Compatibility Inspection Advertiser" displayType="STICKY_BALLOON" />
+    <notification groupId="Remote Desktop" />
+  </component>
+</application>
