@@ -55,12 +55,12 @@ source command.
 
 ```bash
 singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
-wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
+wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/my.cnf 
+wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/mysqlrootpw
 mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
 singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
 singularity run instance://mysql
-singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
+singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean
 cat ~/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > ~/.bashrc.lorean
 source ~/.bashrc.lorean
 cp -r /opt/LoReAn/third_party/software/augustus/ ~/
@@ -128,7 +128,7 @@ https://docs.docker.com/engine/installation/
 
 After Docker installation, you can download  LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean:iprscan_rpMask createUser.py $USER $UID 
+docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID 
 ```
 
 At this point, run
