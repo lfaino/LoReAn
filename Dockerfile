@@ -17,7 +17,7 @@ RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtool
 
 WORKDIR /opt/
 
-RUN git clone https://github.com/lfaino/LoReAn.git
+RUN git clone -b dev_cli --single-branch  https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
