@@ -44,7 +44,7 @@ RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader 
   cd tabix && make && cd .. && git clone https://github.com/samtools/samtools.git && cd samtools && autoheader &&\
    autoconf -Wno-syntax && ./configure && make && sudo make install
 
-RUN apt-get install -y -q libcurl4-gnutls-dev libssl-dev
+RUN apt-get update && apt-get install -y -q --fix-missing libcurl4-gnutls-dev libssl-dev
 
 RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
     mv Augustus augustus && cd augustus  && make clean && make
