@@ -17,7 +17,7 @@ RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtool
 
 WORKDIR /opt/
 
-RUN git clone https://github.com/lfaino/LoReAn.git
+RUN git clone -b noIPRS https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
@@ -118,7 +118,7 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 #COPY tmhmm-2.0c.Linux.tar.gz ./
 
 #RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
-     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
+#     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
 #RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
 
