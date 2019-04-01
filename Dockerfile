@@ -95,32 +95,32 @@ RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cuff
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
 
-COPY interproscan-5.27-66.0-64-bit.tar.gz ./
+#COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
-RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
+#RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
-RUN mkdir cddblast
+#RUN mkdir cddblast
 
-COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
+#COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
 
-RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
+#RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
 
-COPY signalp-4.1f.Linux.tar.gz ./
+#COPY signalp-4.1f.Linux.tar.gz ./
 
-RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
+#RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
 
-COPY signalp-4.1/signalp bin/signalp/4.1/
+#COPY signalp-4.1/signalp bin/signalp/4.1/
 
-RUN mkdir /data_panther
+#RUN mkdir /data_panther
 
-COPY tmhmm-2.0c.Linux.tar.gz ./
+#COPY tmhmm-2.0c.Linux.tar.gz ./
 
-RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
+#RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
      cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
+#RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
 
 WORKDIR /usr/local/bin
 
