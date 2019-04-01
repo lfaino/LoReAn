@@ -189,11 +189,11 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
 
 
 def augustus_species_func(home):
+    #print(home)
     check_species = 'augustus --species=help'
     process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out_augustus, err_augustus = process.communicate()
-    list_file = [os.path.join(home, o) for o in os.listdir(home) if
-                 os.path.isfile(os.path.join(home, o)) and ".bashrc.lorean" == o]
+    list_file = [os.path.join(home, o) for o in os.listdir(home) if os.path.isfile(os.path.join(home, o)) and ".bashrc.lorean" == o]
     with open(list_file[0]) as bashrc:
         for path in bashrc:
             if "AUGUSTUS_CONFIG_PATH" in path:
