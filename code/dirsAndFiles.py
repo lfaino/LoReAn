@@ -198,7 +198,6 @@ def augustus_species_func(home):
     with open("/etc/environment", "r") as bashrc:
         for path in bashrc:
             if path.startswith("AUGUSTUS_CONFIG_PATH"):
-                augustus_specie_dir = path.split("~")[1].rsplit("\"")[0]
-                #print(augustus_specie_dir)
-                augustus_species = [d for d in os.listdir(home + augustus_specie_dir + "species")]
+                augustus_specie_dir = path.split("=")[1].rsplit("\"")[1]
+                augustus_species = [d for d in os.listdir(augustus_specie_dir)]
     return augustus_species, err_augustus
