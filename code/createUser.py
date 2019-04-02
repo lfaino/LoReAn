@@ -38,14 +38,14 @@ def create_user():
     if not gm_key_file.is_file():
         sys.exit("#####PLEASE PLACE THE gm_key IN THE DIRECTORY WITH ALL THE OTHER FILES.#####\n")
 
-    com = "cat /home/%s/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/%s/.bashrc.lorean" % (name_user, name_user, name_user, name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-
-    com = "source /home/%s/.bashrc.lorean" % name_user
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
+    # com = "cat /home/%s/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/%s/.bashrc.lorean" % (name_user, name_user)
+    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    # create_user_call.communicate()
+    #
+    #
+    # com = "source /home/%s/.bashrc.lorean" % name_user
+    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    # create_user_call.communicate()
 
     com = "chown -R mysql:mysql /var/lib/mysql /var/run/mysqld"
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
