@@ -184,8 +184,9 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
             print("\n" + "\033[32m ### GMAP WORKS CORRECTLY ### \n")
             print('\033[0m')
         else:
-            print("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
-            print('\033[0m')
+            # print("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
+            # print('\033[0m')
+            sys.exit("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
 
 
 def augustus_species_func(home):

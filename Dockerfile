@@ -160,7 +160,7 @@ RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 
-RUN cp /opt/LoReAn/third_party/conf_files/enviroment /etc/
+RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/
 
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
