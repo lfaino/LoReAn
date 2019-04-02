@@ -67,23 +67,23 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chown -R %s:%s /home/%s/.bashrc" % (name_user, name_user, name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
+    # com = "chown -R %s:%s /home/%s/.bashrc" % (name_user, name_user, name_user)
+    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    # create_user_call.communicate()
 
-    com = "cp -r /opt/LoReAn/third_party/software/augustus/ /home/%s/" % (name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
+    # com = "cp -r /opt/LoReAn/third_party/software/augustus/ /home/%s/" % (name_user)
+    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    # create_user_call.communicate()
 
     com = "chmod -R 775 /home/%s" % (name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chmod -R 775 /home/%s/augustus" % (name_user)
+    com = "chmod -R 775  /opt/LoReAn/third_party/software/augustus/"
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chown -R %s:%s /home/%s/augustus" % (name_user, name_user, name_user)
+    com = "chown -R %s:%s  /opt/LoReAn/third_party/software/augustus/" % (name_user, name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
