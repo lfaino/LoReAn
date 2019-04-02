@@ -33,7 +33,8 @@ STAR_PAIRED = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --a
        '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
        '--outSAMattrIHstart 1 --outFilterMultimapNmax 3 --readFilesIn %s %s'
 
-STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases 6 --genomeFastaFiles %s'
+STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases %s --genomeChrBinNbits' \
+             ' %s --genomeFastaFiles %s'
 
 SAMTOOLS_VIEW = 'samtools view -@ %s -bS -o %s %s'
 
@@ -253,16 +254,17 @@ def star_build(reference, genome_dir, threads, wd, verbose):
             filter_count += 1
         fastaFile.close()
         # IF INDEX IS TOO BIG NEEDS TO BE FRAGMENTED
+        genomeChrBinNbits = int(math.log((int(genome_size) / int(filter_count))))
+        genomeSAindexNbases = int(math.log((int(genome_size) / 2 - 1)))
 
-        if filter_count > 5000 and genome_size > 1000000000:
-            fragmented_genome = int(
-                math.log(
-                    (int(genome_size) / int(filter_count)),
-                    2))  # WHAT IS THIS???
-            STAR_BUILD_NEW = STAR_BUILD + ' --genomeChrBinNbits =, min 18, %s'
-            cmd = STAR_BUILD_NEW % (threads, genome_dir, reference, fragmented_genome)
-        else:  # Genome small enough
-            cmd = STAR_BUILD % (threads, genome_dir, reference)
+        if not 0 <= genomeChrBinNbits <= 18:
+            genomeChrBinNbits = 18
+
+        if not 0 <= genomeSAindexNbases <= 14:
+            genomeSAindexNbases = 14
+
+
+        cmd = STAR_BUILD % (threads, genome_dir, genomeSAindexNbases, genomeChrBinNbits,reference)
 
         log_name_err = wd + 'star_build.err.log'
         log_err = open(log_name_err, 'w')
