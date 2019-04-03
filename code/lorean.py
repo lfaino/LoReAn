@@ -14,6 +14,7 @@ import tempfile
 import time
 from queue import Queue
 from threading import Thread
+import subprocess
 
 # OTHER SCRIPTS
 import arguments as arguments
@@ -40,6 +41,9 @@ import update as update
 
 def main():
 
+    com = "source /etc/environment"
+    create_user_call = subprocess.Popen(com, shell=True)
+    create_user_call.communicate()
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
     home = os.path.expanduser("~")
