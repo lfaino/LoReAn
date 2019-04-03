@@ -31,7 +31,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf_file = pasa_dir + 'annotCompare.config'
     conf = open(conf_file, 'w')
     lines = [
-        'DATABASE=' + pasa_db,
+        'DATABASE =/tmp/' + pasa_db + '.sqlite',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP=<__MIN_PERCENT_OVERLAP__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_PROT_CODING=<__MIN_PERCENT_PROT_CODING__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERID_PROT_COMPARE=<__MIN_PERID_PROT_COMPARE__>',
@@ -44,6 +44,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
         'cDNA_annotation_comparer.dbi:--TRUST_FL_STATUS=<__TRUST_FL_STATUS__>',
         'cDNA_annotation_comparer.dbi:--MAX_UTR_EXONS=<__MAX_UTR_EXONS__>',
         'cDNA_annotation_comparer.dbi:--GENETIC_CODE=<__GENETIC_CODE__>']
+
     for line in lines:
         conf.write(line + '\n')
 
@@ -155,11 +156,9 @@ def pasa_configuration(pasa_dir, pasa_db, verbose):
             ' --- skipping\n'))
         return conf_file
     conf = open(conf_file, 'w')
-    lines = [
-        'DATABASE=' + pasa_db,
-        'validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>',
-        'validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>',
-        'subcluster_builder.dbi:-m=50']
+    lines = ['DATABASE =/tmp/' + pasa_db + '.sqlite', 'validate_alignments_in_db.dbi: --MIN_PERCENT_ALIGNED = ',
+             'validate_alignments_in_db.dbi: --MIN_AVG_PER_ID = ',
+             'validate_alignments_in_db.dbi: --NUM_BP_PERFECT_SPLICE_BOUNDARY = ', 'subcluster_builder.dbi: -m = 50']
     for line in lines:
         conf.write(line + '\n')
     conf.close()

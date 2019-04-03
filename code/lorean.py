@@ -70,7 +70,6 @@ def main():
     else:
         adapter_value = args.adapter
 
-
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
