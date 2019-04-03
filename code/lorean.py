@@ -33,6 +33,7 @@ import prepareEvmInputs as inputEvm
 import reduceUTRs as utrs
 import transcriptAssembly as transcripts
 import update as update
+import paths as paths
 
 
 ###############
@@ -41,9 +42,7 @@ import update as update
 
 def main():
 
-    com = "source /etc/environment"
-    create_user_call = subprocess.Popen(com, shell=True)
-    create_user_call.communicate()
+    paths.export_path()
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
     home = os.path.expanduser("~")

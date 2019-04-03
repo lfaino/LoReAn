@@ -171,7 +171,8 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
 
     align_pasa_conf = pasa_configuration(pasa_dir, pasa_db, verbose)
     cmd = LAUNCH_PASA % (align_pasa_conf, reference, transcripts, max_intron_length, threads)
-    out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
+    out_file = pasa_dir + pasa_db + '.sqlite.pasa_assemblies.gff3'
+    print(out_file)
     # sys.stdout.write out_file, os.path.isfile(out_file)
     if os.path.isfile(out_file):
         sys.stdout.write(('PASA output existed already: ' + out_file + ' --- skipping\n'))
