@@ -130,8 +130,7 @@ def soft_clip(long_sam):
     return soft_clip_file
 
 
-def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database,
-                    max_intron_length, verbose, stranded):
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database, max_intron_length, verbose, stranded):
     """
     Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """

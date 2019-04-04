@@ -92,7 +92,7 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     return processID
 
 
-def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, round_n, verbose):
+def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose):
     '''Loads a gff3 file into a PASA database '''
 
     cmd = COMP_ANNOT % (n_cpu, annot_conf_file, reference, transcripts_file)
@@ -105,43 +105,40 @@ def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_c
             sys.stderr.write('Executing: %s\n' % cmd)
         pasa_call = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=True)
         pasa_call.communicate()
+        number_pid = str(int(pasa_call.pid) + 1)
     except:
         raise NameError('')
     out_log.close()
     log.close()
+    return number_pid
 
-def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
+def parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose):
     '''Parses through the files in the PASA directory, finds the update file and
     renames it and returns it'''
     pasa_files = os.listdir(pasa_dir)
 
-    pattern_build = '^' + pasa_db + '.gene_structures_post_PASA_updates.[0-9]+.gff3$'
-
-    pasa_pattern = re.compile(pattern_build)
-    for filename in pasa_files:
-        match = re.match(pasa_pattern, filename)
-        if match:
-            update_file = filename
-
-    new_filename = pasa_dir + 'FinalAnnotationLorean' + round_n + '.gff3'
-    root = os.path.join(pasa_dir, update_file)
-    shutil.move(root, new_filename)
+    pattern_build = os.path.join(pasa_dir, pasa_db + '.sqlite.gene_structures_post_PASA_updates.' + number_pid + '.gff3')
+    new_filename = os.path.join(pasa_dir,  'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+    print(pattern_build, new_filename)
+    os.rename(pattern_build, new_filename)
 
     return new_filename
 
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
     '''Updates the gff3 file with the PASA database'''
-    sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
-    annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
-    create_pasa_database(annot_conf_file, pasa_dir, verbose)
-    align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
-    sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
-    load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
-    sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
-    annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, round_n, verbose)
-    sys.stdout.write('\t###PARSING OUTPUT###\n')
-    gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
+    gff3_out = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+    if not os.path.exists(gff3_out):
+        sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
+        annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
+        create_pasa_database(annot_conf_file, pasa_dir, verbose)
+        align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
+        sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
+        load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
+        sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
+        number_pid = annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
+        sys.stdout.write('\t###PARSING OUTPUT###\n')
+        gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose)
 
     return gff3_out
 

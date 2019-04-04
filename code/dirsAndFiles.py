@@ -198,6 +198,7 @@ def augustus_species_func(home):
     with open("/opt/LoReAn/third_party/conf_files/environment", "r") as bashrc:
         for path in bashrc:
             if path.startswith("AUGUSTUS_CONFIG_PATH"):
-                augustus_specie_dir = path.split("=")[1].rsplit("\"")[1]
+                augustus_specie_dir = path.split("=")[1].rsplit("\"")[1] + "species"
+                #print(augustus_specie_dir)
                 augustus_species = [d for d in os.listdir(augustus_specie_dir)]
     return augustus_species, err_augustus

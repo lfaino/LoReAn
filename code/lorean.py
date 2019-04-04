@@ -363,7 +363,7 @@ def main():
         list_soft, pred_file, transcript_file, protein_file = inputEvm.group_EVM_inputs(evm_inputs_dir, evm_inputs)
         weight_file = inputEvm.evm_weight(evm_inputs_dir, weights_dic, list_soft, pasa_name, gmap_name)
         # EVM PIPELINE
-        round_n = 1
+        round_n = 0
 
         if args.short_reads or args.long_reads:  # WE HAVE SHORT READS AND PROTEINS
             evm_gff3 = evmPipeline.evm_pipeline(evm_output_dir, threads_use, ref_rename, weight_file, pred_file,
@@ -427,6 +427,7 @@ def main():
         sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
 
         if not long_sorted_bam:
+            print("line 430")
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                               adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                                   args.max_intron_length, args.verbose, args.stranded)
