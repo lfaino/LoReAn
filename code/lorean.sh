@@ -1,3 +1,3 @@
 #!/bin/bash
-source /etc/environment
+source /opt/LoReAn/third_party/conf_files/environment
 /opt/LoReAn/code/lorean.py "$@"

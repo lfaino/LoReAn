@@ -33,7 +33,6 @@ import prepareEvmInputs as inputEvm
 import reduceUTRs as utrs
 import transcriptAssembly as transcripts
 import update as update
-import paths as paths
 
 
 ###############
@@ -53,8 +52,7 @@ def main():
     iprscan_log = iprscan.check_iprscan()
     # Useful variables for later
     root = os.getcwd()
-    #pasa.pasa_mysql_configuration(args.pasa_mysql_data)
-    
+
     output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
     logistic.check_create_dir(output_dir)
 

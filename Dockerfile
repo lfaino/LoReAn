@@ -161,7 +161,7 @@ RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
 
-RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/
+#RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/
 
 RUN cp /opt/LoReAn/code/lorean.sh /usr/local/bin && chmod 775 /usr/local/bin/lorean.sh
 
