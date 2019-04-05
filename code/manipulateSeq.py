@@ -167,6 +167,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         else:
             adapter_aaa = adapter
         out_filename_oriented = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
+        #print(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         filter_count = align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)

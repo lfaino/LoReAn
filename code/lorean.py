@@ -65,10 +65,22 @@ def main():
         temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
         wd = temp_dir.name
 
-    if args.adapter == '':
-        adapter_value = True
+
+    if args.stranded or  args.adapter:
+        if args.adapter == '':
+            adapter_value = True
+            sys.stdout.write('\n### RUNNING IN STRAND MODE AND FINDING ADAPTER AUTOMATICALLY ###\n')
+            stranded_value = True
+        else:
+            adapter_value = args.adapter
+            sys.stdout.write('\n### RUNNING IN STRAND MODE AND USING ADAPTER PROVIDED ###\n')
+            stranded_value = True
     else:
-        adapter_value = args.adapter
+        stranded_value = False
+        sys.stdout.write('\n### RUNNING IN NON-STRAND MODE ###\n')
+
+
+
 
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
@@ -206,7 +218,7 @@ def main():
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
                 long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                                   adapter_value, threads_use, args.adapter_match_score, ref_rename,
-                                                  args.max_intron_length, args.verbose, args.stranded)
+                                                  args.max_intron_length, args.verbose, stranded_value)
 
 
                     # If short reads have been mapped dont do it
@@ -427,10 +439,10 @@ def main():
         sys.stdout.write(('\n###RUNNING iASSEMBLER\t' + now + '\t###\n'))
 
         if not long_sorted_bam:
-            print("line 430")
+            #print("line 430")
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                               adapter_value, threads_use, args.adapter_match_score, ref_rename,
-                                                  args.max_intron_length, args.verbose, args.stranded)
+                                                  args.max_intron_length, args.verbose, stranded_value)
             if args.minimap2:
                 long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
             else:
@@ -459,7 +471,7 @@ def main():
         sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
 
         # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME POSITION
-        cluster_list = consensus.cluster_pipeline(mergedmap_gff3, args.stranded, args.verbose)
+        cluster_list = consensus.cluster_pipeline(mergedmap_gff3, stranded_value, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
 
         sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
@@ -472,7 +484,7 @@ def main():
             sys.stdout.write('No assembly')
         else:
             consensus.generate_fasta(cluster_list, gffread_dict, args.cluster_min_evidence,
-                                     args.cluster_max_evidence, args.assembly_overlap_length, args.stranded, tmp_wd)
+                                     args.cluster_max_evidence, args.assembly_overlap_length, stranded_value, tmp_wd)
             consensus.assembly(args.assembly_overlap_length, args.assembly_percent_identity, threads_use, tmp_wd,
                                args.verbose)
             utrs.lengthSupport(tmp_wd, threads_use)

@@ -38,42 +38,9 @@ def create_user():
     if not gm_key_file.is_file():
         sys.exit("#####PLEASE PLACE THE gm_key IN THE DIRECTORY WITH ALL THE OTHER FILES.#####\n")
 
-    # com = "cat /home/%s/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/%s/.bashrc.lorean" % (name_user, name_user)
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-    #
-    #
-    # com = "source /home/%s/.bashrc.lorean" % name_user
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-
-    # com = "chown -R mysql:mysql /var/lib/mysql /var/run/mysqld"
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-    #
-    # com = "usermod -d /var/lib/mysql/ mysql"
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-    #
-    # com = "/etc/init.d/mysql start"
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-    #
-    # com = "mysql --user=\"root\" --password=\"lorean\" --execute=\"set global sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';\""
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-
     com = "chown -R %s:%s /home/%s/.gm_key" % (name_user, name_user, name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
-
-    # com = "chown -R %s:%s /home/%s/.bashrc" % (name_user, name_user, name_user)
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
-
-    # com = "cp -r /opt/LoReAn/third_party/software/augustus/ /home/%s/" % (name_user)
-    # create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    # create_user_call.communicate()
 
     com = "chmod -R 775 /home/%s" % (name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)

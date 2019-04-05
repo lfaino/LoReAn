@@ -49,6 +49,8 @@ C_LIB.freeCString.restype = None
 
 
 def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads, min_length):
+    #print(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads,
+    #                  min_length)
     """
     Python wrapper for adapterAlignment C++ function.
     """
@@ -73,24 +75,33 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             list_run.append([str(sequence.seq).encode('utf-8'), str(adapter.seq).encode('utf-8'), match_score,
                              mismatch_score, gap_open_score, gap_extend_score, sequence.id, adapter.id])
 
+    #print(dict_aln)
+
     with ThreadPool(int(threads)) as pool:
         for out in pool.imap(align, tqdm.tqdm(list_run)):
             out_list = out.split(",")
+            #print(out_list)
             if dict_aln[out_list[0]] != "":
                 if (float(out.split(",")[9])) > float(dict_aln[out_list[0]].split(",")[9]):
                     dict_aln[out.split(",")[0]] = out
             else:
                 dict_aln[out.split(",")[0]] = out
 
+
+
+
     if alignm_score_value == 0:
         alignm_score_mean = np.mean([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_std = np.std([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_value = alignm_score_mean - (alignm_score_std/10)
 
+    #print(alignm_score_mean, alignm_score_std, alignm_score_value)
+
     seq_to_keep = {}
     for key in dict_aln:
         if (float(dict_aln[key].split(",")[9])) > alignm_score_value:
             seq_to_keep[key] = dict_aln[key]
+            #print (seq_to_keep[key])
     with open(out_filename, "w") as output_handle:
         for sequence in tqdm.tqdm(SeqIO.parse(read_sequence, "fasta")):
             count = 0
@@ -135,9 +146,11 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
 
 
 def align(command_in):
+
     ptr = C_LIB.adapterAlignment(str(command_in[0]).encode('utf-8'), str(command_in[1]).encode('utf-8'),
                                  command_in[2], command_in[3], command_in[4], command_in[5])
     result_string = c_string_to_python_string(ptr)
+
     single_result_string = result_string.split(",")
     average_score = (float(single_result_string[5]) + float(single_result_string[6])) / 2
     result_string_name = ",".join([command_in[6], command_in[7], result_string, str(average_score)])
