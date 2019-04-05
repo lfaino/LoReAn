@@ -87,6 +87,12 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             else:
                 dict_aln[out.split(",")[0]] = out
 
+    good_reads = [float(dict_aln[key].split(",")[9]) for key in dict_aln if float(dict_aln[key].split(",")[9]) > 80]
+
+    if len(good_reads)/len(dict_aln) < 0.1:
+        sys.exit("\n ### THERE ARE FEW READS THAT MATCH WITH THE ADAPTER SEQUENCE WITH A GOOD IDENITTY (>80%). CONSIDER TO RUN IN NON-STRANDED MODE ### \n")
+    else:
+        sys.stdout.write("\n ### ABOUT " + str((len(dict_aln)/len(list_run))*100) + " MATCH TO AN ADAPTER ### \n")
 
 
 
