@@ -20,11 +20,6 @@ is important to not mess-up installations (few files are modified permanently by
 ## Here the required steps before using **LoReAn**:
 
 
-### 1) CREATE LOREAN USER (UBUNTU) - (THIS IS AN OPTIONAL STEP) 
-
-```bash
-sudo adduser lorean
-```
 
 ### 2) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
 
@@ -46,24 +41,9 @@ mv gm_key_64 ~/.gm_key
 These commands can be run from the home directory. The following BASH script will start a new instance of **MYSQL**, download LoReAn
 singularity image and move important files.
 
-**NOTE**: **MYSQL** will run on port 5123 to avoid conflict with other **MYSQL** instance already running on the system. Please, 
-check that the door is open and available to use
-
-**NOTE**: the original .barsrc file should be without any **export $PATH:** add to it. If you added personal PATH to 
-the **~/.bahsrc** using the **export** command, please remove them from the final **~/.bashrc.lorean** before running the below 
-source command.   
-
 ```bash
-singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/my.cnf 
-wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/mysqlrootpw
-mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
-singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
-singularity run instance://mysql
-singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean
-cat ~/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > ~/.bashrc.lorean
-source ~/.bashrc.lorean
-cp -r /opt/LoReAn/third_party/software/augustus/ ~/
+singularity pull --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean
+
 ```
 
 
@@ -79,30 +59,6 @@ lorean.py -help
 At this point, you should see the options list. 
 You can continue by testing lorean using the toy datasets located at [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
 
-
-### OTHER USEFUL COMMANDS
-
-###TO STOP MYSQL INSTANCE 
-Use the following command to stop mysql instance.
-
-```bash
-singularity instance.stop mysql
-```
-### TO START LOREAN AFTER THE FIRST USE
-
-After the first use, the augustus folder and the bashrc.lorean are already prepared. therefore we need only to download 
-the singularity images. Here the code:
-
-```bash
-singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
-wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
-mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
-singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
-singularity run instance://mysql
-singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
-source ~/.bashrc.lorean
-```
 
 
 ## LoReAn using Docker.
