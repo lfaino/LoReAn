@@ -168,19 +168,24 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             adapter_aaa = adapter
         out_filename_oriented = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
         #print(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
-        filter_count = align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
+        filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+        if stranded_value:
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
-        return out_filename_oriented
+        else:
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
+                             "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
+        return out_filename_oriented, stranded_value
     else:
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
+        stranded_value = False
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
-        return out_filename
+        return out_filename, stranded_value
 
 
 def maskedgenome(wd, ref, gff3, length, verbose):

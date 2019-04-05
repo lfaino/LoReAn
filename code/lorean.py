@@ -216,7 +216,7 @@ def main():
                 # artefacts
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
-                long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+                long_fasta, stranded_value = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                                   adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                                   args.max_intron_length, args.verbose, stranded_value)
 
@@ -440,7 +440,7 @@ def main():
 
         if not long_sorted_bam:
             #print("line 430")
-            long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+            long_fasta, stranded_value = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                               adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                                   args.max_intron_length, args.verbose, stranded_value)
             if args.minimap2:
