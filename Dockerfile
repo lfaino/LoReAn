@@ -13,7 +13,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
 #RUN apt-get install -y mysql-server mysql-client mysql-common
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama simplesam tqdm Flask
+    psutil memory_profiler pathlib colorama simplesam tqdm
 
 WORKDIR /opt/
 

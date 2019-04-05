@@ -31,7 +31,6 @@ GT_STATS = 'gt stat -addintrons'
 def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcripts, proteins, segmentSize, overlapSize, verbose):
     ''' Groups the five different calls to run the EVM_pipeline, and concatenates and convert the proper output.
     It will spit out evm.out.gff3 '''
-
     # Partitions
     sys.stdout.write('\t###PARTITIONING THE INPUTS###\n')
     partitions = evm_partitions(working_dir, reference, gene_preds, transcripts, proteins, segmentSize, overlapSize, verbose)

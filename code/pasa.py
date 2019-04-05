@@ -112,23 +112,58 @@ def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_c
     log.close()
     return number_pid
 
-def parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose):
+def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
     '''Parses through the files in the PASA directory, finds the update file and
     renames it and returns it'''
     pasa_files = os.listdir(pasa_dir)
 
-    pattern_build = os.path.join(pasa_dir, pasa_db + '.sqlite.gene_structures_post_PASA_updates.' + number_pid + '.gff3')
-    new_filename = os.path.join(pasa_dir,  'FinalAnnotationLorean.' + str(round_n) + '.gff3')
-    print(pattern_build, new_filename)
-    os.rename(pattern_build, new_filename)
+    pattern_build = '^' + pasa_db + '.sqlite.gene_structures_post_PASA_updates.[0-9]+.gff3$'
+
+    pasa_pattern = re.compile(pattern_build)
+    for filename in pasa_files:
+        match = re.match(pasa_pattern, filename)
+        if match:
+            update_file = filename
+
+    new_filename = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+    root = os.path.join(pasa_dir, update_file)
+    shutil.move(root, new_filename)
 
     return new_filename
+
+def parse_remove_update(pasa_dir, pasa_db):
+    '''Parses through the files in the PASA directory, finds the update file and
+    renames it and returns it'''
+    pasa_files = os.listdir(pasa_dir)
+
+    pattern_build = '^' + pasa_db + '.sqlite.gene_structures_post_PASA_updates.[0-9]+.gff3$'
+
+    pasa_pattern = re.compile(pattern_build)
+    for filename in pasa_files:
+        match = re.match(pasa_pattern, filename)
+        if match:
+            os.remove(os.path.join(pasa_dir,filename))
+
+    return
+
+# def parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose):
+#     '''Parses through the files in the PASA directory, finds the update file and
+#     renames it and returns it'''
+#     pasa_files = os.listdir(pasa_dir)
+#
+#     pattern_build = os.path.join(pasa_dir, pasa_db + '.sqlite.gene_structures_post_PASA_updates.' + number_pid + '.gff3')
+#     new_filename = os.path.join(pasa_dir,  'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+#     print(pattern_build, new_filename)
+#     os.rename(pattern_build, new_filename)
+#
+#     return new_filename
 
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
     '''Updates the gff3 file with the PASA database'''
     gff3_out = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
-    if not os.path.exists(gff3_out):
+    parse_remove_update(pasa_dir, pasa_db)
+    if not os.path.exists(gff3_out) or not os.path.getsize(gff3_out) > 0:
         sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
         annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
         create_pasa_database(annot_conf_file, pasa_dir, verbose)
@@ -138,7 +173,7 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
         sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
         number_pid = annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
         sys.stdout.write('\t###PARSING OUTPUT###\n')
-        gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose)
+        gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
     return gff3_out
 

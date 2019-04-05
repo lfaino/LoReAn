@@ -175,7 +175,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
         else:
-            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                              "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
         return out_filename_oriented, stranded_value
     else:

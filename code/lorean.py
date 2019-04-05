@@ -42,6 +42,7 @@ import update as update
 def main():
 
     fmtdate = '%H:%M:%S %d-%m'
+
     now = datetime.datetime.now().strftime(fmtdate)
     home = os.path.expanduser("~")
     args = arguments.setting()
