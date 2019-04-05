@@ -163,6 +163,8 @@ WORKDIR /opt/LoReAn/
 
 RUN cp /opt/LoReAn/code/lorean /usr/local/bin && chmod 775 /usr/local/bin/lorean
 
+RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/environment
+
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
 RUN chmod a+w /opt/
