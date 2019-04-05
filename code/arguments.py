@@ -46,7 +46,7 @@ def setting():
     parser.add_argument("-m", "--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
                                                                                "(longer reads may affect mapping and "
                              "assembling) [20000]", type=int)
-    parser.add_argument("-pasa","--pasa_db", nargs="?", default="annotation", help="PASA database name [pipeline_run]")
+    parser.add_argument("-pasa","--pasa_db", nargs="?", default="pipeline_run", help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene", nargs="?", default="species", help="Prefix to add to the final Gff3 gene "
                                                                                  "name [specie]")
     parser.add_argument("-w","--working_dir", nargs="?", default="annotation", help="Working directory (will create if "

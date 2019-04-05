@@ -181,12 +181,6 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
 def pasa_configuration(pasa_dir, pasa_db, verbose):
     '''Creates a PASA configuration file. Database name will be the reference name'''
     conf_file = pasa_dir + 'alignAssembly.config'
-    if os.path.isfile(conf_file):
-        sys.stdout.write((
-            'PASA configuration file existed already: ' +
-            conf_file +
-            ' --- skipping\n'))
-        return conf_file
     conf = open(conf_file, 'w')
     lines = ['DATABASE =/tmp/' + pasa_db + '.sqlite', 'validate_alignments_in_db.dbi: --MIN_PERCENT_ALIGNED = ',
              'validate_alignments_in_db.dbi: --MIN_AVG_PER_ID = ',
