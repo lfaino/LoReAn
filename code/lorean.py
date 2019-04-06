@@ -14,7 +14,7 @@ import tempfile
 import time
 from queue import Queue
 from threading import Thread
-import subprocess
+import shutil
 
 # OTHER SCRIPTS
 import arguments as arguments
@@ -86,7 +86,7 @@ def main():
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
-        os.link(ref_orig, ref_link)
+        shutil.copyfile(ref_orig, ref_link)
     if args.upgrade:
         update.upgrade()
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
