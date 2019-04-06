@@ -432,7 +432,7 @@ def transform_func(x):
 
     if 'locus' in x.featuretype:
         x.featuretype = "gene"
-        x.attributes['ID'] = x.attributes['locus']
+        #x.attributes['ID'] = x.attributes['locus']
         x.source = "LoReAn"
         return x
     elif 'mRNA' in x.featuretype:
@@ -636,7 +636,7 @@ def transform_cds(x):
     cds_count_lorean += 1
     if 'locus' in x.featuretype:
         x.featuretype = "gene"
-        x.attributes['ID'] = x.attributes['locus']
+        #x.attributes['ID'] = x.attributes['locus']
         x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['transcripts'][0].split("_")[0]}
         x.source = "LoReAn"
         return x

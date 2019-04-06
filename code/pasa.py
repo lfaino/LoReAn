@@ -67,8 +67,6 @@ def pasa_mysql_configuration(pasa_data):
                     cnfh.write(line)
     sys.stdout.write('\n### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
 
-
-
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     '''Loads a gff3 file into a PASA database '''
     cmd = LOAD_ANOT % (align_conf_file, reference, gff3_file)
@@ -90,7 +88,6 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     log.close()
     stdout_f.close()
     return processID
-
 
 def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose):
     '''Loads a gff3 file into a PASA database '''
@@ -200,7 +197,7 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
     out_file = pasa_dir + pasa_db + '.sqlite.pasa_assemblies.gff3'
     #print(out_file)
     # sys.stdout.write out_file, os.path.isfile(out_file)
-    if os.path.isfile(out_file):
+    if os.path.isfile(out_file) and os.path.getsize(out_file) > 0 :
         sys.stdout.write(('PASA output existed already: ' + out_file + ' --- skipping\n'))
         return out_file
     log_name = pasa_dir + 'pasa.err.log'
@@ -218,6 +215,7 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
     log.close()
     out_log.close()
     return out_file
+
 
 
 def create_pasa_database(conf_file, pasa_dir, verbose):
