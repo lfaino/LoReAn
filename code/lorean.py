@@ -65,8 +65,6 @@ def main():
     else:
         temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
         wd = temp_dir.name
-
-
     if args.stranded or  args.adapter:
         if args.adapter == '':
             adapter_value = True
@@ -79,14 +77,11 @@ def main():
     else:
         stranded_value = False
         sys.stdout.write('\n### RUNNING IN NON-STRAND MODE ###\n')
-
-
-
-
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
         shutil.copyfile(ref_orig, ref_link)
+
     if args.upgrade:
         update.upgrade()
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
@@ -555,9 +550,12 @@ def main():
         if not args.keep_tmp:
             temp_dir.cleanup()
         sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
+    elif not os.path.isfile(home + "/.gm_key"):
+        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE gm_key IS IN THE HOME FOLDER#####\n")
+    elif args.proteins == "":
+        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN OPTION IS SET#####\n")
     else:
-        sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN AND SPECIES OPTION HAVE BOTH AN ARGUMENT. CHECK THAT "
-                 "THE gm_key IS IN THE FOLDER#####\n")
+        sys.exit("#####LOREAN STOPS HERE. CHECK WHAT WENT WRONG#####\n")
 
 
 if __name__ == '__main__':
