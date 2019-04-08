@@ -1,6 +1,6 @@
 AUGUSTUS_CONFIG_PATH="/opt/LoReAn/third_party/software/augustus/config/"
 GENEMARK_PATH="/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap/"
-PERL5LIB="/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/PerlLib/:/opt/LoReAn/third_party/scripts/"
+PERL5LIB="/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/PerlLib/:/opt/LoReAn/third_party/scripts/:/opt/LoReAn/third_party/software/PASApipeline/PerlLib/"
 LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/SW/src/"
 SAMTOOLS_PATH="/usr/local/bin/"
 BLAST_PATH="/usr/local/bin/"
