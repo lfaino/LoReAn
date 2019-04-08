@@ -109,7 +109,7 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
             if i[4] > int(value_adapter):
                 value_adapter = i[4]
                 kmer_done = i[1]
-    adapter_file = "adapter.fasta"
+    adapter_file = os.path.join(working_dir, "adapter.fasta")
     with open(adapter_file, "w") as fh:
         record = SeqRecord(Seq(str(kmer_done)), id="adapter")
         SeqIO.write(record, fh, "fasta")
@@ -166,7 +166,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
         else:
             adapter_aaa = adapter
-        out_filename_oriented = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
+        out_filename_oriented = os.path.join(wd, fastq_filename.split("/")[-1] + '.longreads.filtered.oriented.fasta')
         #print(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
