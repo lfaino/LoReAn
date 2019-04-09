@@ -65,7 +65,7 @@ def main():
     else:
         temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
         wd = temp_dir.name
-    if args.stranded or  args.adapter:
+    if args.stranded or args.adapter:
         if args.adapter == '':
             adapter_value = True
             sys.stdout.write('\n### RUNNING IN STRAND MODE AND FINDING ADAPTER AUTOMATICALLY ###\n')
@@ -77,6 +77,7 @@ def main():
     else:
         stranded_value = False
         sys.stdout.write('\n### RUNNING IN NON-STRAND MODE ###\n')
+        adapter_value = False
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
@@ -115,16 +116,16 @@ def main():
         final_files = []  # STORE THE IMPORTANT OUTPUT FILES
         logistic.check_create_dir(wd)
         logistic.check_file(ref_link)
-        gmap_wd = wd + '/gmap_output/'
-        exonerate_wd = wd + '/exonerate/'
-        pasa_dir = wd + 'PASA/'
-        star_out = wd + '/STAR/'
-        trin_dir = wd + '/Trinity/'
-        evm_inputs_dir = wd + '/evm_inputs/'
-        braker_folder = wd + '/braker/'
-        evm_output_dir = wd + '/evm_output/'
-        interproscan_out_dir = wd + 'interproscan'
-        wd_split = wd + '/split/'
+        gmap_wd = os.path.join(wd ,'gmap_output/')
+        exonerate_wd = os.path.join(wd , 'exonerate')
+        pasa_dir = os.path.join(wd , 'PASA/')
+        star_out = os.path.join(wd , 'STAR/')
+        trin_dir = os.path.join(wd , 'Trinity/')
+        evm_inputs_dir = os.path.join(wd , 'evm_inputs/')
+        braker_folder = os.path.join(wd , 'braker/')
+        evm_output_dir = os.path.join(wd , 'evm_output/')
+        interproscan_out_dir = os.path.join(wd , 'interproscan')
+        wd_split = os.path.join(wd , 'split/')
         logistic.check_create_dir(wd_split)
         logistic.check_create_dir(evm_inputs_dir)
         logistic.check_create_dir(evm_output_dir)
@@ -136,7 +137,7 @@ def main():
             logistic.check_create_dir(interproscan_out_dir)
         if args.long_reads:
             logistic.check_create_dir(exonerate_wd)
-            consensus_wd = (wd + '/consensus/')
+            consensus_wd = os.path.join(wd , 'consensus/')
             logistic.check_create_dir(consensus_wd)
         if args.long_reads != "" or args.short_reads != "":
             logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
