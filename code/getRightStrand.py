@@ -360,7 +360,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     for key in dict_fasta_prot:
         if key in record_dict:
             list_short.append(key)
-            output_filename_prot = wd + key + '.prot.fasta'
+            output_filename_prot = os.path.join(wd, key + '.prot.fasta')
             SeqIO.write(dict_fasta_prot[key], output_filename_prot, "fasta")
             list_fields = record_dict[key].description.split(' ')
             for elem in list_fields:
