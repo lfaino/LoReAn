@@ -162,6 +162,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
     if stranded and adapter:
+        print("in")
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
         else:
@@ -179,6 +180,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                              "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
         return out_filename_oriented, stranded_value
     else:
+        print("out")
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
         stranded_value = False
         fmtdate = '%H:%M:%S %d-%m'
