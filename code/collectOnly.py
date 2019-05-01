@@ -119,7 +119,7 @@ def cat_assembled(wd):
     """
     collect the assembled contigs and generate a multifasta file
     """
-    sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
+    sys.stdout.write('###GENERATE FASTA FILE FROM CONTIGS###\n')
     wd_tmp = wd
     fileName = wd_tmp + 'assembly.fasta'
     testFasta = open(fileName, 'w')
@@ -154,7 +154,7 @@ def cat_assembled_all(wd):
     """
     collect the assembled contigs and generate a multifasta file
     """
-    sys.stdout.write('\t###GENERATE FASTA FILE FROM CONTIGS###\n')
+    sys.stdout.write('###GENERATE FASTA FILE FROM CONTIGS###\n')
     wd_tmp = wd
     fileName = wd_tmp + 'assembly.all.fasta'
     out_file = open(fileName, "w")

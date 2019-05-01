@@ -90,11 +90,11 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
     good_reads = [float(dict_aln[key].split(",")[9]) for key in dict_aln if float(dict_aln[key].split(",")[9]) > 80]
 
     if len(good_reads)/len(dict_aln) < 0.1:
-        sys.stdout.write("\n ### THERE ARE FEW READS (<10%) THAT MATCH WITH THE ADAPTER SEQUENCE WITH A GOOD IDENITTY (>80%). SWITCHING TO NON-STRANDED MODE ### \n")
+        sys.stdout.write("### THERE ARE FEW READS (<10%) THAT MATCH WITH THE ADAPTER SEQUENCE WITH A GOOD IDENITTY (>80%). SWITCHING TO NON-STRANDED MODE ###\n")
         stranded_value = False
         return (len(dict_aln), read_sequence, stranded_value)
     else:
-        sys.stdout.write("\n ### ABOUT " + str((len(dict_aln)/len(list_run))*100) + " MATCH TO AN ADAPTER ### \n")
+        sys.stdout.write("### ABOUT " + str((len(dict_aln)/len(list_run))*100) + " MATCH TO AN ADAPTER ###\n")
         stranded_value = True
 
 

@@ -143,62 +143,48 @@ def cat_two_fasta(trinity, consens, long_fasta, wd):
 
 def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon, gmap_wd, verbose):
 
-    print("\n ### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD ### \n")
-
+    print("### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD ### \n")
     genome_gmap = "/opt/LoReAn/third_party/check_gmap/chr8.testGMAP.fasta"
     long_fasta = "/opt/LoReAn/third_party/check_gmap/exons.testGMAP.fasta"
 
     long_sam = mapping.gmap('test', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
                             end_exon, gmap_wd, verbose, Fflag=False)
-
     if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
-        print("\n" + "\033[32m ### GMAP IS CORRECTLY BUILD ### \n")
+        print("\033[32m ### GMAP IS CORRECTLY BUILD ### \n")
         print('\033[0m')
-
     else:
-        print("\n" + "\033[32m ### GMAP REQUIRES A RE-BUILD; THIS WILL TAKE TIME ### \n")
+        print("\033[32m ### GMAP REQUIRES A RE-BUILD; THIS WILL TAKE TIME ### \n")
         print('\033[0m')
         log_name = gmap_wd + '/gmap_compile.log'
         err_name = gmap_wd + '/gmap_compile.err'
         log = open(log_name, 'w')
         err = open(err_name, 'w')
-
         gmap_installation_dir = '/opt/LoReAn/third_party/software/gmap'
         cmd = 'sudo make clean; sudo ./configure ; sudo make ; sudo make install'
         if verbose:
             sys.stderr.write('Executing: %s\n' % cmd)
         gmap_build = subprocess.Popen(cmd, stdout=log, stderr=err, cwd = gmap_installation_dir, shell = True)
         gmap_build.communicate()
-
-        sys.stdout.write("\n### LOREAN FINISHED TO COMPILE ### \n")
-
+        sys.stdout.write("### LOREAN FINISHED TO COMPILE ### \n")
         log.close()
         err.close()
-
-        print("\n ### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD (2)### \n")
-
+        print("### LOREAN IS CHECKING THAT GMAP IS CORRECTLY BUILD (2)### \n")
         long_sam = mapping.gmap('test', genome_gmap, long_fasta, threads_use, type, min_intron_length, max_intron_length,
                                 end_exon, gmap_wd, verbose, Fflag=False)
-
         if os.path.exists(long_sam) and os.path.getsize(long_sam) > 0:
-            print("\n" + "\033[32m ### GMAP WORKS CORRECTLY ### \n")
+            print("\033[32m ### GMAP WORKS CORRECTLY ### \n")
             print('\033[0m')
         else:
-            # print("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
-            # print('\033[0m')
-            sys.exit("\n" + "\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
+            sys.exit("\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
 
 
 def augustus_species_func(home):
-    #print(home)
     check_species = 'augustus --species=help'
     process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out_augustus, err_augustus = process.communicate()
-    #list_file = [os.path.join(home, o) for o in os.listdir(home) if os.path.isfile(os.path.join(home, o)) and ".bashrc.lorean" == o]
     with open("/opt/LoReAn/third_party/conf_files/environment", "r") as bashrc:
         for path in bashrc:
             if path.startswith("AUGUSTUS_CONFIG_PATH"):
                 augustus_specie_dir = path.split("=")[1].rsplit("\"")[1] + "species"
-                #print(augustus_specie_dir)
                 augustus_species = [d for d in os.listdir(augustus_specie_dir)]
     return augustus_species, err_augustus

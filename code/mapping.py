@@ -339,11 +339,11 @@ def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
     genome_dir = wd + refer + '_STARindex/'
     logistic.check_create_dir(genome_dir)
     # Build the reference
-    sys.stdout.write('\t###BUILD INDEX###\n')
+    sys.stdout.write('###BUILD INDEX###\n')
     star_build(reference, genome_dir, threads, wd, verbose)
 
     # Mapping
-    sys.stdout.write('\t###MAP###\n')
+    sys.stdout.write('###MAP###\n')
     out_file = star_map(
         fastq_reads,
         threads,
@@ -391,11 +391,11 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     # Build the reference
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
-    sys.stdout.write('\n###GMAP MAPPING  STARTED AT:\t' + now + '\t###\n')
-    sys.stdout.write('\t###BUILD INDEX###\n')
+    sys.stdout.write('###GMAP MAPPING  STARTED AT:\t' + now + '\t###\n')
+    sys.stdout.write('###BUILD INDEX###\n')
     reference_db = gmap_build(reference, wd, verbose)
     # Mapping
-    sys.stdout.write('\t###MAP###\n')
+    sys.stdout.write('###MAP###\n')
     out_file = gmap_map(reference_db, fastq_reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
                         wd, Fflag, type_out, verbose)
     return out_file
@@ -449,10 +449,10 @@ def samtools_sort(bam_file, threads, wd, verbose):
 
 
 def sam_to_sorted_bam(sam_file, threads, wd, verbose):
-    sys.stdout.write('\t###SAM to BAM###\n')
+    sys.stdout.write('###SAM to BAM###\n')
     bam_filename = samtools_view(sam_file, wd, verbose, threads)
 
-    sys.stdout.write('\t###SORTING BAM###\n')
+    sys.stdout.write('###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)
     return s_bam_filename
 

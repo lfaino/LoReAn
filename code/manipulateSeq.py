@@ -168,15 +168,14 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         else:
             adapter_aaa = adapter
         out_filename_oriented = os.path.join(wd, fastq_filename.split("/")[-1] + '.longreads.filtered.oriented.fasta')
-        #print(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         if stranded_value:
-            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
         else:
-            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                              "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
         return out_filename_oriented, stranded_value
     else:
@@ -185,7 +184,7 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         stranded_value = False
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
+        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
         return out_filename, stranded_value
 
@@ -225,7 +224,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
     if gff_path.is_file():
         gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
     else:
-        sys.stdout.write("\t###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
+        sys.stdout.write("###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         freq_file = working_dir + genome.split("/")[-1] + ".freq"
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
@@ -249,7 +248,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        sys.stdout.write("\t###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
+        sys.stdout.write("###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
 
         cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
         if verbose:

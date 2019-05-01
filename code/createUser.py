@@ -19,7 +19,7 @@ def create_user():
     uid_user = sys.argv[2]
 
     root = os.getcwd()
-    sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
+    sys.stdout.write(('### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
 
     log_file = os.path.join(root, "CreateUser.log.txt")
     err_file = os.path.join(root, "CreateUser.err.txt")

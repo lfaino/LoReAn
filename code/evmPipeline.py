@@ -32,24 +32,24 @@ def evm_pipeline(working_dir, threads, reference, weights, gene_preds, transcrip
     ''' Groups the five different calls to run the EVM_pipeline, and concatenates and convert the proper output.
     It will spit out evm.out.gff3 '''
     # Partitions
-    sys.stdout.write('\t###PARTITIONING THE INPUTS###\n')
+    sys.stdout.write('###PARTITIONING THE INPUTS###\n')
     partitions = evm_partitions(working_dir, reference, gene_preds, transcripts, proteins, segmentSize, overlapSize, verbose)
 
     # Write Commands
-    sys.stdout.write('\t###GROUPING COMMANDS###\n')
+    sys.stdout.write('###GROUPING COMMANDS###\n')
 
     command_list = evm_write_commands(working_dir, reference, weights, gene_preds, transcripts, proteins, partitions,verbose)
 
     # Run
-    sys.stdout.write('\t###RUNNING EVM###\n')
+    sys.stdout.write('###RUNNING EVM###\n')
     evm_run(working_dir, command_list, threads, verbose)
 
     # Combine partitions
-    sys.stdout.write('\t###COMBINING PARTITIONS###\n')
+    sys.stdout.write('###COMBINING PARTITIONS###\n')
     evm_combine(working_dir, partitions)
 
     # Convert to GFF3
-    sys.stdout.write('\t###CONVERTING TO GFF3###\n')
+    sys.stdout.write('###CONVERTING TO GFF3###\n')
     evm_to_gff3(working_dir, partitions, reference)
 
     # Combine the different chromosomes

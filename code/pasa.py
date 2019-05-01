@@ -65,7 +65,7 @@ def pasa_mysql_configuration(pasa_data):
                     cnfh.write(("=".join([line.split("=")[0], user_pws])) + "\n")
                 else:
                     cnfh.write(line)
-    sys.stdout.write('\n### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
+    sys.stdout.write('### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     '''Loads a gff3 file into a PASA database '''
@@ -161,15 +161,15 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
     gff3_out = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
     parse_remove_update(pasa_dir, pasa_db)
     if not os.path.exists(gff3_out) or not os.path.getsize(gff3_out) > 0:
-        sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
+        sys.stdout.write('###CREATING CONFIGURATION FILE###\n')
         annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
         create_pasa_database(annot_conf_file, pasa_dir, verbose)
         align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
-        sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
+        sys.stdout.write('###LOADING GFF3 FILE INTO DATABASE###\n')
         load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
-        sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
+        sys.stdout.write('###UPDATING GFF3 FILE###\n')
         number_pid = annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
-        sys.stdout.write('\t###PARSING OUTPUT###\n')
+        sys.stdout.write('###PARSING OUTPUT###\n')
         gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
     return gff3_out
