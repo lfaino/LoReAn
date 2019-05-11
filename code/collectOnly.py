@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 
-import gffutils
-import gffutils.gffwriter as gffwriter
 import os
-import subprocess
 import sys
 import tempfile
+
+import gffutils
+import gffutils.gffwriter as gffwriter
 from Bio import SeqIO
 
 count_sequences = 0

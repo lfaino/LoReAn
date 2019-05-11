@@ -12,7 +12,6 @@ import arguments as arguments
 import collectOnly as collect
 import consensusIAssembler as consensus
 import dirsAndFiles as logistic
-import evmPipeline
 import getRightStrand as grs
 import manipulateSeq as mseq
 import mapping

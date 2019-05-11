@@ -623,11 +623,11 @@ def genename_lorean(gff_filename, verbose, wd):
     log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
 
-    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
+    gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    subprocess.run(gt_com, stdout=log, stderr=err, shell=True)
-    #gt_call.communicate()
+    gt_call1 = subprocess.run(gt_com_1, stdout=log, stderr=err, shell=True)
+    gt_call1.communicate()
     return out_1.name
 
 

@@ -4,9 +4,10 @@ import os
 import shutil
 import subprocess
 import sys
+from multiprocessing import Pool
+
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-from multiprocessing import Pool
 
 count_sequences = 0
 count_sequences_aat = 0
