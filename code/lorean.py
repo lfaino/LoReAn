@@ -9,12 +9,12 @@
 import datetime
 import multiprocessing
 import os
+import shutil
 import sys
 import tempfile
 import time
 from queue import Queue
 from threading import Thread
-import shutil
 
 # OTHER SCRIPTS
 import arguments as arguments
@@ -82,7 +82,6 @@ def main():
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
         shutil.copyfile(ref_orig, ref_link)
-
     if args.upgrade:
         update.upgrade()
     elif os.path.isfile(home + "/.gm_key") and args.proteins != "":
@@ -99,7 +98,6 @@ def main():
             external_file = args.external
         else:
             external_file = ''
-
         if args.short_reads == '' and args.long_reads == '':
             if external_file.endswith("gff3") or external_file.endswith(fasta):
                 weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
@@ -143,7 +141,6 @@ def main():
             logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                             args.verbose)
         augustus_species, err_augustus = logistic.augustus_species_func(home)
-
         if args.repeat_masked != "":
             sys.stdout.write(('###MASKING THE GENOME STARTED AT:\t' + now + '\t###\n'))
             masked_ref = mseq.maskedgenome(wd_split, ref_link, args.repeat_masked, args.repeat_lenght, args.verbose)
@@ -153,16 +150,15 @@ def main():
         else:
             masked_ref = ref_link
         list_fasta_names, dict_ref_name, ref_rename = multiple.single_fasta(masked_ref, wd_split)
-
         if args.short_reads or args.long_reads:
             if int(threads_use) > 1:
                 trinity_cpu = int(int(threads_use) / int(2))
             else:
                 trinity_cpu = int(threads_use)
             now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
             # SHORT READS
             if args.short_reads.endswith(fastq):
+                sys.stdout.write(('###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
                 if ',' in args.short_reads:
                     paired_end_files = args.short_reads.split(',')
                     short_1 = os.path.abspath(paired_end_files[0])
@@ -182,7 +178,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_out, single_bam_assembled = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=True)
@@ -199,7 +195,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_out, single_bam_assembled = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=True)
@@ -239,7 +235,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out = transcripts.trinity(long_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
+                trinity_out, single_bam_assembled = transcripts.trinity(long_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=True)

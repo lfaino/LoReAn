@@ -626,7 +626,7 @@ def genename_lorean(gff_filename, verbose, wd):
     gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call1 = subprocess.run(gt_com_1, stdout=log, stderr=err, shell=True)
+    gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, shell=True)
     gt_call1.communicate()
     return out_1.name
 

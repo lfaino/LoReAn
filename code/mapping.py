@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
 import datetime
-import gffutils
-import gffutils.gffwriter as gffwriter
-import math
 import os
 import subprocess
 import sys
 import tempfile
-from Bio import SeqIO
 from collections import OrderedDict
-from simplesam import Reader, Writer
 
 import dirsAndFiles as logistic
+import gffutils
+import gffutils.gffwriter as gffwriter
+import math
+from Bio import SeqIO
+from simplesam import Reader, Writer
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -38,7 +38,7 @@ STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --gen
 
 SAMTOOLS_VIEW = 'samtools view -@ %s -bS -o %s %s'
 
-SAMTOOLS_SORT = 'samtools sort -@ %s -o %s %s'
+SAMTOOLS_SORT = 'samtools sort -O BAM -@ %s -o %s %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
@@ -51,7 +51,8 @@ MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
 
 
 
-def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
+def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
+             working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
@@ -458,7 +459,7 @@ def sam_to_sorted_bam(sam_file, threads, wd, verbose):
 
 
 def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
-
+    sys.stdout.write('###CHANGING CHROMOSOME NAMES IN BAM###\n')
     if "long" in type_reads:
         outfile = os.path.join(wd, 'long_reads_mapped')
     if "short" in type_reads:
@@ -485,6 +486,8 @@ def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
     out_sam.close()
 
     bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+
+    sys.stdout.write('###DONE CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     return bam_final
 
