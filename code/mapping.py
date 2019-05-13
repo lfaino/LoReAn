@@ -459,7 +459,6 @@ def sam_to_sorted_bam(sam_file, threads, wd, verbose):
 
 
 def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
-    sys.stdout.write('###CHANGING CHROMOSOME NAMES IN BAM###\n')
     if "long" in type_reads:
         outfile = os.path.join(wd, 'long_reads_mapped')
     if "short" in type_reads:
@@ -487,12 +486,12 @@ def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
 
     bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
 
-    sys.stdout.write('###DONE CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     return bam_final
 
 
 def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
+    sys.stdout.write('###CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     sam_link = os.path.join(wd, short_reads.split("/")[-1])
     if not os.path.exists(sam_link):
@@ -524,6 +523,7 @@ def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
     out_sam.close()
 
     bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+    sys.stdout.write('###DONE CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     return bam_final
 

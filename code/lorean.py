@@ -178,7 +178,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out, single_bam_assembled = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
+                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                     args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                     args.verbose, Fflag=True)
@@ -195,7 +195,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out, single_bam_assembled = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
+                trinity_out = transcripts.trinity(short_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=True)
@@ -235,7 +235,7 @@ def main():
                 # TRINITY
                 now = datetime.datetime.now().strftime(fmtdate)
                 sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
-                trinity_out, single_bam_assembled = transcripts.trinity(long_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, list_fasta_names, args.verbose)
+                trinity_out = transcripts.trinity(long_sorted_bam, trin_dir, args.max_intron_length, trinity_cpu, args.verbose)
                 trinity_gff3 = mapping.gmap('trin', ref_rename, trinity_out, threads_use, 'gff3_gene',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=True)
