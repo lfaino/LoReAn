@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 import warnings
 from multiprocessing import Pool
 
@@ -611,27 +610,25 @@ def genename_lorean(gff_filename, verbose, wd):
     db_gffread = gffutils.create_db(out_final.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_cds)
     outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.final.", suffix=".gff3", dir=wd)
     gff_out_s = gffwriter.GFFWriter(outfile_out.name)
-    file_out_fake = []
+
     for gene in db_gffread.features_of_type("gene"):
         gff_out_s.write_rec(db_gffread[gene])
         for i in db_gffread.children(gene, order_by='start'):
-            #gff_out_s.write_rec(i)
-            file_out_fake.append(str(i))
-    file_out_string = "\n".join(file_out_fake).encode()
+            gff_out_s.write_rec(i)
+
     if verbose:
         print(outfile_out.name)
-    time.sleep(5)
-
-    out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="gt_gff3.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
-
-    gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s' % (out_1.name) #, outfile_out.name)
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, stdin=subprocess.PIPE, shell=True)
-    gt_call1.communicate(file_out_string)
-    return out_1.name
+    #
+    # out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="gt_gff3.", suffix=".gff3", dir=wd)
+    # log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
+    # err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
+    #
+    # gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
+    # if verbose:
+    #     sys.stderr.write('Executing: %s\n\n' % gt_com)
+    # gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, shell=True)
+    # gt_call1.communicate()
+    return outfile_out.name
 
 
 def transform_cds(x):
