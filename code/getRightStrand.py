@@ -589,7 +589,6 @@ def genename_lorean(gff_filename, verbose, wd):
     outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".gff3", dir=wd)
     log = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".err", dir=wd)
-
     cmd = GFFREAD_M % (outfile_gff.name, gff_filename)
 
     if verbose:
@@ -607,41 +606,53 @@ def genename_lorean(gff_filename, verbose, wd):
     gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
     gt_call.communicate()
 
-    outfile_out = os.path.join(wd, "genename_lorean.3.gff3")
 
-    with open(out_final.name, "r") as fh, open(outfile_out, "w") as fhd:
+    path_out = os.path.join(wd, "genename_lorean.3.gff3")
+    with open(out_final.name, "r") as fh, open(path_out, "w") as fhd:
         count = 0
-        for line in fh:
+
+        for line_f in fh:
+            line = line_f.rstrip()
             fields = line.split("\t")
-            new_attributes = []
             if len(fields) == 9:
-                if fields[2].endswith("locus"):
-                    fields[2] = "gene"
-                    fields[1] = "LoReAn"
-                elif fields[2].endswith("mRNA"):
+                if fields[2] == "locus":
                     attributes = fields[8].split(";")
-                    for attr in attributes:
-                        if attr.startswith("locus"):
-                            elm = attr.split("=")
-                            new_attributes.append("Parent=" + elm[-1])
-                        elif attr.startswith("ID"):
-                            new_attributes.append(attr)
-                    fields[8] = ";".join(new_attributes)
+                    for elemt in attributes:
+                        if elemt.startswith("ID"):
+                            fields[8] = elemt
+                            fields[2] = "gene"
+                            fields[1] = "LoReAn"
+                elif fields[2] == "mRNA":
+                    new_attrib = []
+                    attributes = fields[8].split(";")
+                    for elemt in attributes:
+                        if elemt.startswith("ID"):
+                            new_attrib.append(elemt)
+                        elif elemt.startswith("locus"):
+                            parent = "Parent=" + elemt.split("=")[-1]
+                            new_attrib.append(parent)
+                    fields[8] = ";".join(new_attrib)
                 else:
                     count += 1
-                    fields[8] = fields[8].rsplit()[0] + ";ID=" + fields[2] + "." + str(count) + "\n"
-            fhd.write("\t".join(fields))
+                    fields[8] = fields[8] + ";ID=" + fields[2] + "." + str(count)
+            line_o = "\t". join(fields) + "\n"
+            if not line_o.startswith("###"):
+                fhd.write(line_o)
+
+
+
 
     out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.",suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, prefix="genename_lorean.4.", suffix=".last.gt_gff3.err")
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", dir=wd, suffix=".last.gt_gff3.err")
 
-    gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out)
+    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, path_out)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
-    gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, shell=True)
-    gt_call1.communicate()
+    gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
+    gt_call.communicate()
     return out_1.name
+
 
 
 def transform_cds(x):
@@ -671,6 +682,7 @@ def transform_cds(x):
         x.attributes = {'ID': other_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
+
 
 
 def add_removed_evm(pasa, exon, wd):
