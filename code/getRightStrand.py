@@ -586,9 +586,9 @@ def genename_evm(gff_filename, verbose, wd):
 def genename_lorean(gff_filename, verbose, wd):
 
 
-    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".err", dir=wd)
+    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".err", dir=wd)
 
     cmd = GFFREAD_M % (outfile_gff.name, gff_filename)
 
@@ -597,9 +597,9 @@ def genename_lorean(gff_filename, verbose, wd):
     gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
     gffread.communicate()
 
-    out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "gt_gff3.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
+    out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "genename_lorean.2.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", dir=wd, suffix=".last.gt_gff3.err")
 
     gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_final.name, outfile_gff.name)
     if verbose:
@@ -607,28 +607,41 @@ def genename_lorean(gff_filename, verbose, wd):
     gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
     gt_call.communicate()
 
-    db_gffread = gffutils.create_db(out_final.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_cds)
-    outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.final.", suffix=".gff3", dir=wd)
-    gff_out_s = gffwriter.GFFWriter(outfile_out.name)
+    outfile_out = os.path.join(wd, "genename_lorean.3.gff3")
 
-    for gene in db_gffread.features_of_type("gene"):
-        gff_out_s.write_rec(db_gffread[gene])
-        for i in db_gffread.children(gene, order_by='start'):
-            gff_out_s.write_rec(i)
+    with open(out_final.name, "r") as fh, open(outfile_out, "w") as fhd:
+        count = 0
+        for line in fh:
+            fields = line.split("\t")
+            new_attributes = []
+            if len(fields) == 9:
+                if fields[2].endswith("locus"):
+                    fields[2] = "gene"
+                    fields[1] = "LoReAn"
+                elif fields[2].endswith("mRNA"):
+                    attributes = fields[8].split(";")
+                    for attr in attributes:
+                        if attr.startswith("locus"):
+                            elm = attr.split("=")
+                            new_attributes.append("Parent=" + elm[-1])
+                        elif attr.startswith("ID"):
+                            new_attributes.append(attr)
+                    fields[8] = ";".join(new_attributes)
+                else:
+                    count += 1
+                    fields[8] = fields[8].rsplit()[0] + ";ID=" + fields[2] + "." + str(count) + "\n"
+            fhd.write("\t".join(fields))
 
+    out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.",suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, prefix="genename_lorean.4.", suffix=".last.gt_gff3.err")
+
+    gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out)
     if verbose:
-        print(outfile_out.name)
-    #
-    # out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="gt_gff3.", suffix=".gff3", dir=wd)
-    # log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
-    # err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
-    #
-    # gt_com_1 = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
-    # if verbose:
-    #     sys.stderr.write('Executing: %s\n\n' % gt_com)
-    # gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, shell=True)
-    # gt_call1.communicate()
-    return outfile_out.name
+        sys.stderr.write('Executing: %s\n\n' % gt_com)
+    gt_call1 = subprocess.Popen(gt_com_1, stdout=log, stderr=err, shell=True)
+    gt_call1.communicate()
+    return out_1.name
 
 
 def transform_cds(x):
