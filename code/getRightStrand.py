@@ -595,22 +595,17 @@ def genename_lorean(gff_filename, verbose, wd):
         sys.stderr.write('Executing: %s\n\n' % cmd)
     gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
     gffread.communicate()
-
     out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "genename_lorean.2.", suffix=".gff3", dir=wd)
     log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", dir=wd, suffix=".last.gt_gff3.err")
-
     gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_final.name, outfile_gff.name)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
     gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
     gt_call.communicate()
-
-
     path_out = os.path.join(wd, "genename_lorean.3.gff3")
     with open(out_final.name, "r") as fh, open(path_out, "w") as fhd:
         count = 0
-
         for line_f in fh:
             line = line_f.rstrip()
             fields = line.split("\t")
@@ -638,14 +633,9 @@ def genename_lorean(gff_filename, verbose, wd):
             line_o = "\t". join(fields) + "\n"
             if not line_o.startswith("###"):
                 fhd.write(line_o)
-
-
-
-
     out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".gff3", dir=wd)
     log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".log", dir=wd)
     err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", dir=wd, suffix=".last.gt_gff3.err")
-
     gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, path_out)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
