@@ -60,7 +60,7 @@ def iprscan(ref, gff_file, wd, threads):
         for line in bad_prot:
             fh.write(line + "\n")
 
-    sys.stdout.write(("\n###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))
+    sys.stdout.write(("###INTERPROSCAN ANALYSIS STARTED AT:\t" + now + "\t###\n###RUNNING ANALYSIS FOR \t\033[32m" + str(count) + "\033[0m\t mRNA\t###\n"))
 
     cmd = IPRSCAN %(prot_file_mod.name, threads)
     err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=wd, prefix=prot_file_mod.name, suffix=".err")
@@ -74,7 +74,7 @@ def iprscan(ref, gff_file, wd, threads):
         for line in fh:
             mRNA = line.split("\t")[0]
             done_prot[mRNA] = mRNA
-    sys.stdout.write(("\n###FINISHED TO RUN INTERPROSCAN ANALYSIS AT:\t" + now + "\t###\n###PROTEINS DOMAINS WERE FOUND FOR \t\033[32m" + str(len(done_prot)) + "\033[0m\t PROTEINS\t###\n"))
+    sys.stdout.write(("###FINISHED TO RUN INTERPROSCAN ANALYSIS AT:\t" + now + "\t###\n###PROTEINS DOMAINS WERE FOUND FOR \t\033[32m" + str(len(done_prot)) + "\033[0m\t PROTEINS\t###\n"))
     final_annot = gff_file + ".tsv"
     os.rename(prot_file_mod.name + ".tsv", final_annot)
     return final_annot, bad_gene

@@ -11,7 +11,7 @@ def lengthSupport(tmp_wd, threads):
     we do this by using the information from the iAssembly outputs'''
     wd = tmp_wd  # +'consensus/tmp/'
     listoutputDir = []
-    print('\n\t###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n')
+    print('###FILTERING ASSEMBLED GENE REGIONS WITH HIGH SUPPORT###\n')
     for root, dirs, _ in os.walk(wd):
         for direc in dirs:
             if 'output' in direc or 'Assembly' in direc:

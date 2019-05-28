@@ -19,7 +19,7 @@ def create_user():
     uid_user = sys.argv[2]
 
     root = os.getcwd()
-    sys.stdout.write(('\n### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
+    sys.stdout.write(('### CREATING USER WITH NAME %s AND UID %s IN THE DOCKER IMAGE ###\n\n') % (name_user, uid_user))
 
     log_file = os.path.join(root, "CreateUser.log.txt")
     err_file = os.path.join(root, "CreateUser.err.txt")
@@ -38,35 +38,7 @@ def create_user():
     if not gm_key_file.is_file():
         sys.exit("#####PLEASE PLACE THE gm_key IN THE DIRECTORY WITH ALL THE OTHER FILES.#####\n")
 
-    com = "cat /home/%s/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > /home/%s/.bashrc.lorean && mv /home/%s/.bashrc.lorean /home/%s/.bashrc" % (name_user, name_user, name_user, name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "chown -R mysql:mysql /var/lib/mysql /var/run/mysqld"
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "usermod -d /var/lib/mysql/ mysql"
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "/etc/init.d/mysql start"
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "mysql --user=\"lorean\" --password=\"lorean\" --execute=\"set global sql_mode='STRICT_TRANS_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION';\""
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
     com = "chown -R %s:%s /home/%s/.gm_key" % (name_user, name_user, name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "chown -R %s:%s /home/%s/.bashrc" % (name_user, name_user, name_user)
-    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
-    create_user_call.communicate()
-
-    com = "cp -r /opt/LoReAn/third_party/software/augustus/ /home/%s/" % (name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
@@ -74,11 +46,11 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chmod -R 775 /home/%s/augustus" % (name_user)
+    com = "chmod -R 775  /opt/LoReAn/third_party/software/augustus/"
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
-    com = "chown -R %s:%s /home/%s/augustus" % (name_user, name_user, name_user)
+    com = "chown -R %s:%s  /opt/LoReAn/third_party/software/augustus/" % (name_user, name_user)
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 

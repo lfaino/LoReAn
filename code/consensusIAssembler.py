@@ -65,11 +65,11 @@ def cluster_pipeline(gff3_file, strand, verbose):
 
     if strand:
         btmerge1 = BEDTOOLS_MERGE_ST
-        sys.stdout.write("\t ###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
+        sys.stdout.write("###CLUSTERING IN\033[32m STRANDED MODE\033[0m###\n")
 
     else:
         btmerge1 = BEDTOOLS_MERGE
-        sys.stdout.write("\t###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
+        sys.stdout.write("###CLUSTERING IN\033[32m NON-STRANDED MODE\033[0m ###\n")
 
     btsort2 = BEDTOOLS_SORT
     # Sort the GFF3 file
@@ -166,15 +166,15 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
     if min_evidence == "" and strand:
         array_perc = [float(line.decode().split("\t")[4]) for line in clusterList]
         min_evidence = np.percentile(array_perc, 75)
-        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
+        print("\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
         print('\033[0m')
     elif min_evidence == "":
         array_perc = [float(line.decode().split("\t")[3]) for line in clusterList]
         min_evidence = np.percentile(array_perc, 75)
-        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
+        print("\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " AUTOMATICALLY ### \n")
         print('\033[0m')
     else:
-        print("\n" + "\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " ### \n")
+        print("\033[32m ### LOREAN SET THE MIN READS SUPPORT FOR A CLUSTER TO " + str(min_evidence) + " ### \n")
         print('\033[0m')
 
     cluster_counter = 1

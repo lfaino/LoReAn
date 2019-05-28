@@ -4,20 +4,20 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3
 
-RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
+#RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
 
-RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
+#RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
 
-RUN apt-get install -y mysql-server mysql-client mysql-common
+#RUN apt-get install -y mysql-server mysql-client mysql-common
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
-    psutil memory_profiler pathlib colorama simplesam tqdm Flask
+    psutil memory_profiler pathlib colorama simplesam tqdm
 
 WORKDIR /opt/
 
-RUN git clone https://github.com/lfaino/LoReAn.git
+RUN git clone -b noIPRS https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
@@ -32,9 +32,10 @@ RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 
 COPY PASApipeline-v2.3.3.tar.gz ./
 
-RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz &&\
-    mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
-    cp ../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl PASApipeline/scripts/ && chmod 775 PASApipeline/scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
+RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && \
+    cp ../../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl scripts/ && chmod 775 scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
+
+##    cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
 
 RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
 
@@ -79,8 +80,8 @@ COPY v1.1.1.tar.gz ./
 
 RUN tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
-RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i  Parallel::ForkManager &&\
-    sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric && sudo cpan -f -i File::Which
+RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i Parallel::ForkManager &&\
+    sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric && sudo cpan -f -i File::Which && sudo cpan -f -i DBD::SQLite.pm
 
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
@@ -95,32 +96,32 @@ RUN rm /opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc/cuff
 
 RUN sudo chmod -R 775 /opt/LoReAn/code/
 
-COPY interproscan-5.27-66.0-64-bit.tar.gz ./
+#COPY interproscan-5.27-66.0-64-bit.tar.gz ./
 
-RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
+#RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
 
-WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
+#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
 
-RUN mkdir cddblast
+#RUN mkdir cddblast
 
-COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
+#COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
 
-RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
+#RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
 
-COPY signalp-4.1f.Linux.tar.gz ./
+#COPY signalp-4.1f.Linux.tar.gz ./
 
-RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
+#RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
 
-COPY signalp-4.1/signalp bin/signalp/4.1/
+#COPY signalp-4.1/signalp bin/signalp/4.1/
 
-RUN mkdir /data_panther
+#RUN mkdir /data_panther
 
-COPY tmhmm-2.0c.Linux.tar.gz ./
+#COPY tmhmm-2.0c.Linux.tar.gz ./
 
-RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
-     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
+#RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
+#     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
+#RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
 
 WORKDIR /usr/local/bin
 
@@ -159,6 +160,10 @@ RUN cd /usr/local/RepeatMasker && perl -i -0pe 's/^#\!.*perl.*/#\!\/usr\/bin\/en
 RUN chmod -R 777 RepeatMasker/
 
 WORKDIR /opt/LoReAn/
+
+RUN cp /opt/LoReAn/code/lorean /usr/local/bin && chmod 775 /usr/local/bin/lorean
+
+RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/environment
 
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 

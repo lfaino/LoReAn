@@ -14,7 +14,7 @@ def convert_augustus(aug_file, wd):
     :param wd:
     :return:
     """
-    sys.stdout.write('\t###CONVERTING AUGUSTUS TO GFF3###\n')
+    sys.stdout.write('###CONVERTING AUGUSTUS TO GFF3###\n')
     args = ['augustus_GTF_to_EVM_GFF3.pl', aug_file]
     #COMMANDS.append(' '.join(args))
     out_file = aug_file + '3'
@@ -51,7 +51,7 @@ def convert_genemark(genemark_file, wd):
     :return:
     """
 
-    sys.stdout.write('\t###CONVERTING GENEMARK TO GFF3###\n')
+    sys.stdout.write('###CONVERTING GENEMARK TO GFF3###\n')
     args = ['gtf2gff3.pl', genemark_file]
     #COMMANDS.append(' '.join(args))
 
@@ -152,7 +152,7 @@ def move_EVM_inputs(evm_dir, inputs):
     the same directory
 
     """
-    sys.stdout.write('\t###MOVING IMPORTANT FILES###\n')
+    sys.stdout.write('###MOVING IMPORTANT FILES###\n')
     new_files = {}
     for key, filename in list(inputs.items()):
         if isinstance(filename, list):  # FOR THE GFF3 alignment files in case of short & long reads
@@ -174,7 +174,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
     """
     # GENE PREDICTIONS
 
-    sys.stdout.write('\t###CONCATENATING FILES###\n')
+    sys.stdout.write('###CONCATENATING FILES###\n')
 
     # GENE PREDICTION
     file_list = []

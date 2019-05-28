@@ -49,6 +49,8 @@ C_LIB.freeCString.restype = None
 
 
 def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads, min_length):
+    #print(read_sequence, adapter_sequence, scoring_scheme_vals, alignm_score_value, out_filename, threads,
+    #                  min_length)
     """
     Python wrapper for adapterAlignment C++ function.
     """
@@ -73,24 +75,42 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
             list_run.append([str(sequence.seq).encode('utf-8'), str(adapter.seq).encode('utf-8'), match_score,
                              mismatch_score, gap_open_score, gap_extend_score, sequence.id, adapter.id])
 
+    #print(dict_aln)
+
     with ThreadPool(int(threads)) as pool:
         for out in pool.imap(align, tqdm.tqdm(list_run)):
             out_list = out.split(",")
+            #print(out_list)
             if dict_aln[out_list[0]] != "":
                 if (float(out.split(",")[9])) > float(dict_aln[out_list[0]].split(",")[9]):
                     dict_aln[out.split(",")[0]] = out
             else:
                 dict_aln[out.split(",")[0]] = out
 
+    good_reads = [float(dict_aln[key].split(",")[9]) for key in dict_aln if float(dict_aln[key].split(",")[9]) > 80]
+
+    if len(good_reads)/len(dict_aln) < 0.1:
+        sys.stdout.write("### THERE ARE FEW READS (<10%) THAT MATCH WITH THE ADAPTER SEQUENCE WITH A GOOD IDENITTY (>80%). SWITCHING TO NON-STRANDED MODE ###\n")
+        stranded_value = False
+        return (len(dict_aln), read_sequence, stranded_value)
+    else:
+        sys.stdout.write("### ABOUT " + str((len(dict_aln)/len(list_run))*100) + " MATCH TO AN ADAPTER ###\n")
+        stranded_value = True
+
+
+
     if alignm_score_value == 0:
         alignm_score_mean = np.mean([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_std = np.std([float(dict_aln[key].split(",")[9]) for key in dict_aln])
         alignm_score_value = alignm_score_mean - (alignm_score_std/10)
 
+    #print(alignm_score_mean, alignm_score_std, alignm_score_value)
+
     seq_to_keep = {}
     for key in dict_aln:
         if (float(dict_aln[key].split(",")[9])) > alignm_score_value:
             seq_to_keep[key] = dict_aln[key]
+            #print (seq_to_keep[key])
     with open(out_filename, "w") as output_handle:
         for sequence in tqdm.tqdm(SeqIO.parse(read_sequence, "fasta")):
             count = 0
@@ -131,13 +151,16 @@ def adapter_alignment(read_sequence, adapter_sequence, scoring_scheme_vals, alig
                         SeqIO.write(sequence_new, output_handle, "fasta")
                     else:
                         continue
-    return len(seq_to_keep)
+
+    return (len(seq_to_keep), out_filename, stranded_value)
 
 
 def align(command_in):
+
     ptr = C_LIB.adapterAlignment(str(command_in[0]).encode('utf-8'), str(command_in[1]).encode('utf-8'),
                                  command_in[2], command_in[3], command_in[4], command_in[5])
     result_string = c_string_to_python_string(ptr)
+
     single_result_string = result_string.split(",")
     average_score = (float(single_result_string[5]) + float(single_result_string[6])) / 2
     result_string_name = ",".join([command_in[6], command_in[7], result_string, str(average_score)])

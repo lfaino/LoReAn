@@ -3,11 +3,12 @@
 The LoReAn software is an automated annotation pipeline designed for eukaryotic genome annotation. It is built using previously 
 defined annotation rationale and programs, but the key improvement is the incorporation of single-molecule cDNA sequencing data, 
 such as that produced from [Oxford Nanopore](https://nanoporetech.com/) and from [PacBio](http://www.pacb.com/applications/rna-sequencing/). 
-We find this significantly improves automated annotations and reduces the requirments for time-consuming manual annotation. 
+We find this significantly improves automated annotations and reduces the requirements for time-consuming manual annotation. 
 
 We are working to improve LoReAn documentation. Meanwhile, some more LoReAn information can be found at 
-[bioRxiv](https://www.biorxiv.org/content/early/2017/12/08/230359). For those familar with the annotation process and 
-with docker, there should be enough infomation to run the program. If you have problems, please open an issue.
+[bioRxiv](https://www.biorxiv.org/content/early/2017/12/08/230359) (earlier version ) or [Plant Physiology](http://www.plantphysiol.org/content/179/1/38) (peer reviewed).
+ For those familiar with the annotation process and 
+with docker, there should be enough information to run the program. If you have problems, please open an issue.
 
 This is how LoReAn works: [LoReAn schematic view](https://github.com/lfaino/LoReAn/wiki)
 
@@ -24,15 +25,15 @@ Please see the [installation instructions](INSTALL.md) for details.
 
 The software can be run after installing by:
 ```bash
-lorean.py -pr protein.fasta -sp spacies genome.fasta 
+lorean -pr protein.fasta -sp spacies genome.fasta 
 ```
 The full list of options can be found at [option instructions](OPTIONS.md) or by:
 
 ```bash
-lorean.py --help
+lorean --help
 ```
 
-LoReAn can run BRAKER to improve Augustus gene prediction;
+LoReAn can run BRAKER2 to improve Augustus gene prediction;
 
 To do so, short reads from RNA-seq or long reads RNA-seq need to be provided
 

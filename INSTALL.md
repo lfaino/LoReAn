@@ -6,7 +6,7 @@ LoReAn uses GeneMark-ES as *ab-initio* software which needs a license key to run
 Therefore, **IT IS MANDATORY TO** download the 64 bit Linux version key for [**GeneMark-ES/ET v.4.33 website**](http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
 
 
-# LoReAn using SINGULARITY (v2.6.0 - SINGULARITY 3.0-alfa does not work).
+# LoReAn using SINGULARITY.
 
 ### ***We prefer **SINGULARITY** to **DOCKER** because root access is not required.*** 
 
@@ -14,25 +14,12 @@ The best way to use LoReAn is by installing and running the software via [**SING
 We advice to use **LoReAn** via **SINGULARITY** because the pipeline uses a lot of software which maybe time take to 
 install separately. 
 
-A dedicated MYSQL user is required and a linux user is advice. MYSQL user is used by PASA while the Linux user 
-is important to not mess-up installations (few files are modified permanently by **SINGULARITY**)
-
 ## Here the required steps before using **LoReAn**:
 
+### 1) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
 
-### 1) CREATE LOREAN USER (UBUNTU) - (THIS IS AN OPTIONAL STEP) 
-
-```bash
-sudo adduser lorean
-```
-
-### 2) PLACE THE GENEMARK-ES KEY AT THE RIGHT PLACE 
-
-The next step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. In Ubuntu, 
+The first step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. In Ubuntu, 
 the end result would be **~/.gm_key**
-
-If a lorean user is created, add the unzipped gm_key to **/home/lorean** and run the **SINGULARITY** script from the 
-lorean home directory (/home/lorean/). 
    
 
 ```bash
@@ -41,68 +28,40 @@ gunzip gm_key_64.gz
 mv gm_key_64 ~/.gm_key
 ```
 
-### 3) CREATE MYSQL DATABASE AND DOWNLOAD LOREAN USING SINGULARITY 
+### 2) DOWNLOAD THE REQUIRED FILES/FOLDERS
 
-These commands can be run from the home directory. The following BASH script will start a new instance of **MYSQL**, download LoReAn
-singularity image and move important files.
-
-**NOTE**: **MYSQL** will run on port 5123 to avoid conflict with other **MYSQL** instance already running on the system. Please, 
-check that the door is open and available to use
-
-**NOTE**: the original .barsrc file should be without any **export $PATH:** add to it. If you added personal PATH to 
-the **~/.bahsrc** using the **export** command, please remove them from the final **~/.bashrc.lorean** before running the below 
-source command.   
+In order to run **LoReAn** by **Singularity exec** command, you need to download and unzip these two files:
 
 ```bash
-singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/my.cnf 
-wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/master/third_party/conf_files/mysqlrootpw
-mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
-singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
-singularity run instance://mysql
-singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean
-cat ~/.bashrc /opt/LoReAn/third_party/conf_files/pathToExport.txt  > ~/.bashrc.lorean
-source ~/.bashrc.lorean
-cp -r /opt/LoReAn/third_party/software/augustus/ ~/
+wget https://github.com/lfaino/LoReAn/raw/noIPRS/third_party/software/config.augustus.tar.gz && tar -zxvf config.augustus.tar.gz
+```
+```bash
+wget https://github.com/lfaino/LoReAn/raw/noIPRS/third_party/software/RepeatMasker.Libraries.tar.gz && tar -zxvf RepeatMasker.Libraries.tar.gz
+```    
+The firts file is the configuration folder from Augustus software (see below <PATH_TO_AUGUSTUS_CONF_FOLDER>) while the 
+second file is the Libraries folder of RepeatMasker software (see below <PATH_TO_LIBRARY_FOLDER>)
+
+Next you can download and build the **Syngularity** image using:  
+
+```bash
+singularity pull docker://lfaino/lorean:noIPRS
 ```
 
 
+### 3) CHECK THAT LOREAN WORKS
 
-### 4) CHECK THAT LOREAN WORKS
-
-Now, check if  **LoReAn** works
+Now, check if  **LoReAn** works by
  
  ```bash
-lorean.py -help
+ 
+singularity exec -B <PATH_TO_AUGUSTUS_CONF_FOLDER>:/opt/LoReAn/third_party/software/augustus/config/ -B 
+<PATH_TO_LIBRARY_FOLDER>:/usr/local/RepeatMasker/Libraries/ <PATH_TO_LOREAN_IMAGE>/lorean_noIPRS.sif lorean -h
+
  ```
 
 At this point, you should see the options list. 
 You can continue by testing lorean using the toy datasets located at [LoReAn examples](https://github.com/lfaino/LoReAn_Example)
 
-
-### OTHER USEFUL COMMANDS
-
-###TO STOP MYSQL INSTANCE 
-Use the following command to stop mysql instance.
-
-```bash
-singularity instance.stop mysql
-```
-### TO START LOREAN AFTER THE FIRST USE
-
-After the first use, the augustus folder and the bashrc.lorean are already prepared. therefore we need only to download 
-the singularity images. Here the code:
-
-```bash
-singularity pull --name mysql.simg shub://ISU-HPC/mysql
-wget -O ~/.my.cnf https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/my.cnf 
-wget -O ~/.mysqlrootpw https://raw.githubusercontent.com/lfaino/LoReAn/dev/third_party/conf_files/mysqlrootpw
-mkdir -p ${HOME}/mysql/var/lib/mysql ${HOME}/mysql/run/mysqld
-singularity instance.start --bind ${HOME} --bind ${HOME}/mysql/var/lib/mysql/:/var/lib/mysql --bind ${HOME}/mysql/run/mysqld:/run/mysqld ./mysql.simg mysql
-singularity run instance://mysql
-singularity shell --bind ${HOME}/mysql/run/mysqld:/run/mysqld/  docker://lfaino/lorean:iprscan_rpMask
-source ~/.bashrc.lorean
-```
 
 
 ## LoReAn using Docker.
@@ -134,5 +93,5 @@ docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID
 At this point, run
 
 ```bash
-lorean.py -help
+lorean -help
 ```

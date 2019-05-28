@@ -360,7 +360,7 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     for key in dict_fasta_prot:
         if key in record_dict:
             list_short.append(key)
-            output_filename_prot = wd + key + '.prot.fasta'
+            output_filename_prot = os.path.join(wd, key + '.prot.fasta')
             SeqIO.write(dict_fasta_prot[key], output_filename_prot, "fasta")
             list_fields = record_dict[key].description.split(' ')
             for elem in list_fields:
@@ -432,7 +432,7 @@ def transform_func(x):
 
     if 'locus' in x.featuretype:
         x.featuretype = "gene"
-        x.attributes['ID'] = x.attributes['locus']
+        #x.attributes['ID'] = x.attributes['locus']
         x.source = "LoReAn"
         return x
     elif 'mRNA' in x.featuretype:
@@ -586,44 +586,57 @@ def genename_evm(gff_filename, verbose, wd):
 def genename_lorean(gff_filename, verbose, wd):
 
 
-    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.", suffix=".err", dir=wd)
-
+    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="genename_lorean.1.", suffix=".err", dir=wd)
     cmd = GFFREAD_M % (outfile_gff.name, gff_filename)
 
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
     gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
     gffread.communicate()
-
-    out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "gt_gff3.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
-
+    out_final = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix = "genename_lorean.2.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.2.", dir=wd, suffix=".last.gt_gff3.err")
     gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_final.name, outfile_gff.name)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
     gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
     gt_call.communicate()
-
-    db_gffread = gffutils.create_db(out_final.name, ':memory:', merge_strategy='create_unique', keep_order=True, transform=transform_cds)
-    outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="uniq.ID.pasa.final.", suffix=".gff3", dir=wd)
-    gff_out_s = gffwriter.GFFWriter(outfile_out.name)
-
-    for gene in db_gffread.features_of_type("gene"):
-        gff_out_s.write_rec(db_gffread[gene])
-        for i in db_gffread.children(gene, order_by='start'):
-            gff_out_s.write_rec(i)
-
-    if verbose:
-        print(outfile_out.name)
-
-    out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="gt_gff3.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, mode="w", dir=wd, suffix=".last.gt_gff3.err")
-
-    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, outfile_out.name)
+    path_out = os.path.join(wd, "genename_lorean.3.gff3")
+    with open(out_final.name, "r") as fh, open(path_out, "w") as fhd:
+        count = 0
+        for line_f in fh:
+            line = line_f.rstrip()
+            fields = line.split("\t")
+            if len(fields) == 9:
+                if fields[2] == "locus":
+                    attributes = fields[8].split(";")
+                    for elemt in attributes:
+                        if elemt.startswith("ID"):
+                            fields[8] = elemt
+                            fields[2] = "gene"
+                            fields[1] = "LoReAn"
+                elif fields[2] == "mRNA":
+                    new_attrib = []
+                    attributes = fields[8].split(";")
+                    for elemt in attributes:
+                        if elemt.startswith("ID"):
+                            new_attrib.append(elemt)
+                        elif elemt.startswith("locus"):
+                            parent = "Parent=" + elemt.split("=")[-1]
+                            new_attrib.append(parent)
+                    fields[8] = ";".join(new_attrib)
+                else:
+                    count += 1
+                    fields[8] = fields[8] + ";ID=" + fields[2] + "." + str(count)
+            line_o = "\t". join(fields) + "\n"
+            if not line_o.startswith("###"):
+                fhd.write(line_o)
+    out_1 = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix="genename_lorean.4.", dir=wd, suffix=".last.gt_gff3.err")
+    gt_com = 'gt gff3 -retainids -sort -force -tidy -o %s %s' % (out_1.name, path_out)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gt_com)
     gt_call = subprocess.Popen(gt_com, stdout=log, stderr=err, shell=True)
@@ -631,12 +644,13 @@ def genename_lorean(gff_filename, verbose, wd):
     return out_1.name
 
 
+
 def transform_cds(x):
     global cds_count_lorean
     cds_count_lorean += 1
     if 'locus' in x.featuretype:
         x.featuretype = "gene"
-        x.attributes['ID'] = x.attributes['locus']
+        #x.attributes['ID'] = x.attributes['locus']
         x.attributes = {'ID': x.attributes['ID'], 'Name': x.attributes['transcripts'][0].split("_")[0]}
         x.source = "LoReAn"
         return x
@@ -658,6 +672,7 @@ def transform_cds(x):
         x.attributes = {'ID': other_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
+
 
 
 def add_removed_evm(pasa, exon, wd):

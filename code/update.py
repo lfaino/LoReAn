@@ -12,7 +12,6 @@ import arguments as arguments
 import collectOnly as collect
 import consensusIAssembler as consensus
 import dirsAndFiles as logistic
-import evmPipeline
 import getRightStrand as grs
 import manipulateSeq as mseq
 import mapping
@@ -67,7 +66,7 @@ def upgrade():
     max_threads = multiprocessing.cpu_count()
     if int(args.threads) > max_threads:
         threads_use = str(max_threads)
-        sys.stdout.write(('\n### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
+        sys.stdout.write(('### MAX NUMBER OF USED THREADS IS ' + str(max_threads) + ' AND NOT ' + args.threads + ' AS SET ###\n'))
     else:
         threads_use = args.threads
 
@@ -100,7 +99,7 @@ def upgrade():
 
     if args.short_reads or args.long_reads:
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(('\n###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
+        sys.stdout.write(('###STAR MAPPING  STARTED AT:\t' + now + '\t###\n'))
         if args.short_reads.endswith(fastq):
             if ',' in args.short_reads:
                 pairedEndFiles = args.short_reads.split(',')
@@ -126,14 +125,14 @@ def upgrade():
             sys.stdout.write('No short reads file')
         if args.long_reads.endswith(fastq) or args.long_reads.endswith(fasta):
             now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(("\n###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
+            sys.stdout.write(("###FILTERING OUT LONG READS STARTED AT:\t" + now + "\t###\n"))
             long_fasta = mseq.filterLongReads(args.long_reads, args.assembly_overlap_length,
                                                             args.max_long_read, gmap_wd, args.adapter, threads_use,
                                                             a=True)
             if not short_sorted_bam:
                 # If short reads have been mapped dont do it
                 now = datetime.datetime.now().strftime(fmtdate)
-                sys.stdout.write(('\n###GMAP\t' + now + 't###\n'))
+                sys.stdout.write(('###GMAP\t' + now + 't###\n'))
                 long_sam = mapping.gmap('sam', genome_gmap, long_fasta, threads_use, 'samse',
                                         args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                         args.verbose, Fflag=False)
@@ -143,7 +142,7 @@ def upgrade():
                 long_sorted_bam = False
         else:
             now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('\n###NO LONG READS FILE\t' + now + '\t###\n'))
+            sys.stdout.write(('###NO LONG READS FILE\t' + now + '\t###\n'))
             long_sorted_bam = False
         if short_sorted_bam:  # If there are short reads, these will serve to the transcript assembly pipeline
             default_bam = short_sorted_bam
@@ -152,7 +151,7 @@ def upgrade():
         # TRANSCRIPT ASSEMBLY
         # TRINITY
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(('\n###TRINITY STARTS AT:\t' + now + '\t###\n'))
+        sys.stdout.write(('###TRINITY STARTS AT:\t' + now + '\t###\n'))
         if int(threads_use) > 1:
             trinity_cpu = int(int(threads_use) / int(2))
         else:
@@ -173,7 +172,7 @@ def upgrade():
 
         mergedmapGFF3 = logistic.catTwoBeds(long_sorted_bam, args.upgrade, file_name, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n\t###GFFREAD\t" + now + "\t###\n"))
+        sys.stdout.write(("###GFFREAD\t" + now + "\t###\n"))
 
         gffread_fasta_file = consensus.gffread(mergedmapGFF3, ref, consensus_wd, args.verbose)
         # HERE WE STORE THE SEQUENCE IN A DICTIONARY
@@ -184,11 +183,11 @@ def upgrade():
 
         gffreadDict = consensus.fasta2Dict(gffread_fasta_file)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n\t#CLUSTERING\t" + now + "\t###\n"))
+        sys.stdout.write(("#CLUSTERING\t" + now + "\t###\n"))
 
         cluster_list = consensus.cluster_pipeline(mergedmapGFF3, args.assembly_overlap_length, args.stranded, args.verbose)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
+        sys.stdout.write(("#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
         tmp_wd = consensus_wd + 'tmp/'
         logistic.check_create_dir(tmp_wd)
         tmp_assembly_file = tmp_wd + 'assembly.fasta'
@@ -209,12 +208,12 @@ def upgrade():
         merged_fasta_filename = consensus_wd + 'assembly.wEVM.fasta'
         collect.add_EVM(gffread_fasta_file, tmp_assembly, merged_fasta_filename)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
+        sys.stdout.write(("###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
         consensus_mapped_gff3 = mapping.gmap('cons', genome_gmap, merged_fasta_filename, threads_use, 'gff3_gene',
                                              args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                              args.verbose, Fflag=True)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
+        sys.stdout.write(("###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
         strand_mapped_gff3 = grs.strand(args.upgrade, consensus_mapped_gff3, ref, threads_use, gmap_wd, args.verbose)
         gff_pasa = grs.appendID(strand_mapped_gff3)
         no_overl = grs.removeOverlap(gff_pasa, args.verbose)
@@ -222,14 +221,14 @@ def upgrade():
         uniq_gene = grs.newNames(no_disc)
 
         finalupdate3 = grs.genename(uniq_gene, args.prefix_gene, args.verbose)
-        print(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
+        print(("###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         finalupdate4 = grs.exonerate(ref, finalupdate3, threads_use, exonerate_wd, args.verbose)
         finalupdate5 = grs.genename(finalupdate4, args.prefix_gene, args.verbose)
 
         # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
         # PASA TO CORRECT SMALL ERRORS
 
-        sys.stdout.write(("\n###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
+        sys.stdout.write(("###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
         round_n = 0
         fasta_all = logistic.cat_two_fasta(trinity_out, tmp_assembly_all, long_fasta, pasa_dir)
         round_n += 1
@@ -245,11 +244,11 @@ def upgrade():
         final_files.append(final_update)
 
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(('\n###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
+        sys.stdout.write(('###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
         final_output_dir = os.path.join(output_dir,  args.species + '_output' )
         logistic.check_create_dir(final_output_dir)
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write(("\n##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
+        sys.stdout.write(("##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
 
         for filename in final_files:
             if filename != '':

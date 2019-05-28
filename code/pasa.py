@@ -31,7 +31,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
     conf_file = pasa_dir + 'annotCompare.config'
     conf = open(conf_file, 'w')
     lines = [
-        'DATABASE=' + pasa_db,
+        'DATABASE =/tmp/' + pasa_db + '.sqlite',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_OVERLAP=<__MIN_PERCENT_OVERLAP__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERCENT_PROT_CODING=<__MIN_PERCENT_PROT_CODING__>',
         'cDNA_annotation_comparer.dbi:--MIN_PERID_PROT_COMPARE=<__MIN_PERID_PROT_COMPARE__>',
@@ -44,6 +44,7 @@ def pasa_annot_configuration(pasa_dir, pasa_db):
         'cDNA_annotation_comparer.dbi:--TRUST_FL_STATUS=<__TRUST_FL_STATUS__>',
         'cDNA_annotation_comparer.dbi:--MAX_UTR_EXONS=<__MAX_UTR_EXONS__>',
         'cDNA_annotation_comparer.dbi:--GENETIC_CODE=<__GENETIC_CODE__>']
+
     for line in lines:
         conf.write(line + '\n')
 
@@ -64,9 +65,7 @@ def pasa_mysql_configuration(pasa_data):
                     cnfh.write(("=".join([line.split("=")[0], user_pws])) + "\n")
                 else:
                     cnfh.write(line)
-    sys.stdout.write('\n### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
-
-
+    sys.stdout.write('### PASA WILL RUN USING MYSQL  HAVING %s AS USER AND %s AS USER PASSWORD ###\n' % (user_name, user_pws))
 
 def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     '''Loads a gff3 file into a PASA database '''
@@ -90,8 +89,7 @@ def load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose):
     stdout_f.close()
     return processID
 
-
-def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, round_n, verbose):
+def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose):
     '''Loads a gff3 file into a PASA database '''
 
     cmd = COMP_ANNOT % (n_cpu, annot_conf_file, reference, transcripts_file)
@@ -104,17 +102,19 @@ def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_c
             sys.stderr.write('Executing: %s\n' % cmd)
         pasa_call = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=True)
         pasa_call.communicate()
+        number_pid = str(int(pasa_call.pid) + 1)
     except:
         raise NameError('')
     out_log.close()
     log.close()
+    return number_pid
 
 def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
     '''Parses through the files in the PASA directory, finds the update file and
     renames it and returns it'''
     pasa_files = os.listdir(pasa_dir)
 
-    pattern_build = '^' + pasa_db + '.gene_structures_post_PASA_updates.[0-9]+.gff3$'
+    pattern_build = '^' + pasa_db + '.sqlite.gene_structures_post_PASA_updates.[0-9]+.gff3$'
 
     pasa_pattern = re.compile(pattern_build)
     for filename in pasa_files:
@@ -122,25 +122,55 @@ def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
         if match:
             update_file = filename
 
-    new_filename = pasa_dir + 'FinalAnnotationLorean' + round_n + '.gff3'
+    new_filename = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
     root = os.path.join(pasa_dir, update_file)
     shutil.move(root, new_filename)
 
     return new_filename
 
+def parse_remove_update(pasa_dir, pasa_db):
+    '''Parses through the files in the PASA directory, finds the update file and
+    renames it and returns it'''
+    pasa_files = os.listdir(pasa_dir)
+
+    pattern_build = '^' + pasa_db + '.sqlite.gene_structures_post_PASA_updates.[0-9]+.gff3$'
+
+    pasa_pattern = re.compile(pattern_build)
+    for filename in pasa_files:
+        match = re.match(pasa_pattern, filename)
+        if match:
+            os.remove(os.path.join(pasa_dir,filename))
+
+    return
+
+# def parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose):
+#     '''Parses through the files in the PASA directory, finds the update file and
+#     renames it and returns it'''
+#     pasa_files = os.listdir(pasa_dir)
+#
+#     pattern_build = os.path.join(pasa_dir, pasa_db + '.sqlite.gene_structures_post_PASA_updates.' + number_pid + '.gff3')
+#     new_filename = os.path.join(pasa_dir,  'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+#     print(pattern_build, new_filename)
+#     os.rename(pattern_build, new_filename)
+#
+#     return new_filename
+
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
     '''Updates the gff3 file with the PASA database'''
-    sys.stdout.write('\t###CREATING CONFIGURATION FILE###\n')
-    annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
-    create_pasa_database(annot_conf_file, pasa_dir, verbose)
-    align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
-    sys.stdout.write('\t###LOADING GFF3 FILE INTO DATABASE###\n')
-    load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
-    sys.stdout.write('\t###UPDATING GFF3 FILE###\n')
-    annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, round_n, verbose)
-    sys.stdout.write('\t###PARSING OUTPUT###\n')
-    gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
+    gff3_out = os.path.join(pasa_dir, 'FinalAnnotationLorean.' + str(round_n) + '.gff3')
+    parse_remove_update(pasa_dir, pasa_db)
+    if not os.path.exists(gff3_out) or not os.path.getsize(gff3_out) > 0:
+        sys.stdout.write('###CREATING CONFIGURATION FILE###\n')
+        annot_conf_file = pasa_annot_configuration(pasa_dir, pasa_db)
+        create_pasa_database(annot_conf_file, pasa_dir, verbose)
+        align_conf_file = pasa_configuration(pasa_dir, pasa_db, verbose)
+        sys.stdout.write('###LOADING GFF3 FILE INTO DATABASE###\n')
+        load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
+        sys.stdout.write('###UPDATING GFF3 FILE###\n')
+        number_pid = annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
+        sys.stdout.write('###PARSING OUTPUT###\n')
+        gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
     return gff3_out
 
@@ -148,18 +178,10 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
 def pasa_configuration(pasa_dir, pasa_db, verbose):
     '''Creates a PASA configuration file. Database name will be the reference name'''
     conf_file = pasa_dir + 'alignAssembly.config'
-    if os.path.isfile(conf_file):
-        sys.stdout.write((
-            'PASA configuration file existed already: ' +
-            conf_file +
-            ' --- skipping\n'))
-        return conf_file
     conf = open(conf_file, 'w')
-    lines = [
-        'DATABASE=' + pasa_db,
-        'validate_alignments_in_db.dbi:--MIN_PERCENT_ALIGNED=<__MIN_PERCENT_ALIGNED__>',
-        'validate_alignments_in_db.dbi:--MIN_AVG_PER_ID=<__MIN_AVG_PER_ID__>',
-        'subcluster_builder.dbi:-m=50']
+    lines = ['DATABASE =/tmp/' + pasa_db + '.sqlite', 'validate_alignments_in_db.dbi: --MIN_PERCENT_ALIGNED = ',
+             'validate_alignments_in_db.dbi: --MIN_AVG_PER_ID = ',
+             'validate_alignments_in_db.dbi: --NUM_BP_PERFECT_SPLICE_BOUNDARY = ', 'subcluster_builder.dbi: -m = 50']
     for line in lines:
         conf.write(line + '\n')
     conf.close()
@@ -172,9 +194,10 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
 
     align_pasa_conf = pasa_configuration(pasa_dir, pasa_db, verbose)
     cmd = LAUNCH_PASA % (align_pasa_conf, reference, transcripts, max_intron_length, threads)
-    out_file = pasa_dir + pasa_db + '.pasa_assemblies.gff3'
+    out_file = pasa_dir + pasa_db + '.sqlite.pasa_assemblies.gff3'
+    #print(out_file)
     # sys.stdout.write out_file, os.path.isfile(out_file)
-    if os.path.isfile(out_file):
+    if os.path.isfile(out_file) and os.path.getsize(out_file) > 0 :
         sys.stdout.write(('PASA output existed already: ' + out_file + ' --- skipping\n'))
         return out_file
     log_name = pasa_dir + 'pasa.err.log'
@@ -192,6 +215,7 @@ def pasa_call(pasa_dir, pasa_db, reference, transcripts, max_intron_length, thre
     log.close()
     out_log.close()
     return out_file
+
 
 
 def create_pasa_database(conf_file, pasa_dir, verbose):

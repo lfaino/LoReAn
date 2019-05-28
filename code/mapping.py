@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 
 import datetime
-import gffutils
-import gffutils.gffwriter as gffwriter
-import math
 import os
 import subprocess
 import sys
 import tempfile
-from Bio import SeqIO
 from collections import OrderedDict
-from simplesam import Reader, Writer
 
 import dirsAndFiles as logistic
+import gffutils
+import gffutils.gffwriter as gffwriter
+import math
+from Bio import SeqIO
+from simplesam import Reader, Writer
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -33,11 +33,12 @@ STAR_PAIRED = 'STAR --runThreadN %s --genomeDir %s --outSAMtype BAM Unsorted --a
        '--outFilterMismatchNmax 15 --outFileNamePrefix %s --outSAMstrandField intronMotif --outFilterIntronMotifs RemoveNoncanonical ' \
        '--outSAMattrIHstart 1 --outFilterMultimapNmax 3 --readFilesIn %s %s'
 
-STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases 6 --genomeFastaFiles %s'
+STAR_BUILD = 'STAR --runThreadN %s --runMode genomeGenerate --genomeDir %s --genomeSAindexNbases %s --genomeChrBinNbits' \
+             ' %s --genomeFastaFiles %s'
 
 SAMTOOLS_VIEW = 'samtools view -@ %s -bS -o %s %s'
 
-SAMTOOLS_SORT = 'samtools sort -@ %s -o %s %s'
+SAMTOOLS_SORT = 'samtools sort -O BAM -@ %s -o %s %s'
 
 GT_RETAINID = 'gt gff3 -sort -tidy -retainids %s'
 
@@ -50,7 +51,8 @@ MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
 
 
 
-def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length, working_dir, Fflag, type_out, verbose):
+def gmap_map(reference_database, reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
+             working_dir, Fflag, type_out, verbose):
     '''Calls gmap to map reads to reference. Out_format can be samse of gff3 (2)'''
 
     if out_format == 'samse':
@@ -253,16 +255,17 @@ def star_build(reference, genome_dir, threads, wd, verbose):
             filter_count += 1
         fastaFile.close()
         # IF INDEX IS TOO BIG NEEDS TO BE FRAGMENTED
+        genomeChrBinNbits = int(math.log((int(genome_size) / int(filter_count))))
+        genomeSAindexNbases = int(math.log((int(genome_size) / 2 - 1)))
 
-        if filter_count > 5000 and genome_size > 1000000000:
-            fragmented_genome = int(
-                math.log(
-                    (int(genome_size) / int(filter_count)),
-                    2))  # WHAT IS THIS???
-            STAR_BUILD_NEW = STAR_BUILD + ' --genomeChrBinNbits =, min 18, %s'
-            cmd = STAR_BUILD_NEW % (threads, genome_dir, reference, fragmented_genome)
-        else:  # Genome small enough
-            cmd = STAR_BUILD % (threads, genome_dir, reference)
+        if not 0 <= genomeChrBinNbits <= 18:
+            genomeChrBinNbits = 18
+
+        if not 0 <= genomeSAindexNbases <= 14:
+            genomeSAindexNbases = 14
+
+
+        cmd = STAR_BUILD % (threads, genome_dir, genomeSAindexNbases, genomeChrBinNbits,reference)
 
         log_name_err = wd + 'star_build.err.log'
         log_err = open(log_name_err, 'w')
@@ -337,11 +340,11 @@ def star(reference, fastq_reads, threads, max_intron_length, wd, verbose):
     genome_dir = wd + refer + '_STARindex/'
     logistic.check_create_dir(genome_dir)
     # Build the reference
-    sys.stdout.write('\t###BUILD INDEX###\n')
+    sys.stdout.write('###BUILD INDEX###\n')
     star_build(reference, genome_dir, threads, wd, verbose)
 
     # Mapping
-    sys.stdout.write('\t###MAP###\n')
+    sys.stdout.write('###MAP###\n')
     out_file = star_map(
         fastq_reads,
         threads,
@@ -389,11 +392,11 @@ def gmap(type_out, reference, fastq_reads, threads, out_format, min_intron_lengt
     # Build the reference
     fmtdate = '%H:%M:%S %d-%m'
     now = datetime.datetime.now().strftime(fmtdate)
-    sys.stdout.write('\n###GMAP MAPPING  STARTED AT:\t' + now + '\t###\n')
-    sys.stdout.write('\t###BUILD INDEX###\n')
+    sys.stdout.write('###GMAP MAPPING  STARTED AT:\t' + now + '\t###\n')
+    sys.stdout.write('###BUILD INDEX###\n')
     reference_db = gmap_build(reference, wd, verbose)
     # Mapping
-    sys.stdout.write('\t###MAP###\n')
+    sys.stdout.write('###MAP###\n')
     out_file = gmap_map(reference_db, fastq_reads, threads, out_format, min_intron_length, max_intron_length, exon_length,
                         wd, Fflag, type_out, verbose)
     return out_file
@@ -447,16 +450,15 @@ def samtools_sort(bam_file, threads, wd, verbose):
 
 
 def sam_to_sorted_bam(sam_file, threads, wd, verbose):
-    sys.stdout.write('\t###SAM to BAM###\n')
+    sys.stdout.write('###SAM to BAM###\n')
     bam_filename = samtools_view(sam_file, wd, verbose, threads)
 
-    sys.stdout.write('\t###SORTING BAM###\n')
+    sys.stdout.write('###SORTING BAM###\n')
     s_bam_filename = samtools_sort(bam_filename, threads, wd, verbose)
     return s_bam_filename
 
 
 def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
-
     if "long" in type_reads:
         outfile = os.path.join(wd, 'long_reads_mapped')
     if "short" in type_reads:
@@ -484,10 +486,12 @@ def change_chr(long_sam, dict_chr_split, wd, threads, verbose, type_reads):
 
     bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
 
+
     return bam_final
 
 
 def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
+    sys.stdout.write('###CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     sam_link = os.path.join(wd, short_reads.split("/")[-1])
     if not os.path.exists(sam_link):
@@ -519,6 +523,7 @@ def change_chr_to_seq(short_reads, dict_ref_name, wd, threads, verbose):
     out_sam.close()
 
     bam_final = sam_to_sorted_bam(outfile, threads, wd, verbose)
+    sys.stdout.write('###DONE CHANGING CHROMOSOME NAMES IN BAM###\n')
 
     return bam_final
 

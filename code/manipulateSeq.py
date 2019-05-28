@@ -109,7 +109,7 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
             if i[4] > int(value_adapter):
                 value_adapter = i[4]
                 kmer_done = i[1]
-    adapter_file = "adapter.fasta"
+    adapter_file = os.path.join(working_dir, "adapter.fasta")
     with open(adapter_file, "w") as fh:
         record = SeqRecord(Seq(str(kmer_done)), id="adapter")
         SeqIO.write(record, fh, "fasta")
@@ -130,8 +130,7 @@ def soft_clip(long_sam):
     return soft_clip_file
 
 
-def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database,
-                    max_intron_length, verbose, stranded):
+def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads, align_score_value, reference_database, max_intron_length, verbose, stranded):
     """
     Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """
@@ -163,24 +162,31 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
     if stranded and adapter:
+        print("in")
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
         else:
             adapter_aaa = adapter
-        out_filename_oriented = wd + fastq_filename + '.longreads.filtered.oriented.fasta'
-        filter_count = align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
+        out_filename_oriented = os.path.join(wd, fastq_filename.split("/")[-1] + '.longreads.filtered.oriented.fasta')
+        filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+        if stranded_value:
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING AND ORIENTATION###\n")
-        return out_filename_oriented
+        else:
+            sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(filter_count) +
+                             "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
+        return out_filename_oriented, stranded_value
     else:
+        print("out")
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
+        stranded_value = False
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
-        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
+        sys.stdout.write("###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
                          "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
-        return out_filename
+        return out_filename, stranded_value
 
 
 def maskedgenome(wd, ref, gff3, length, verbose):
@@ -218,7 +224,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
     if gff_path.is_file():
         gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
     else:
-        sys.stdout.write("\t###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
+        sys.stdout.write("###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         freq_file = working_dir + genome.split("/")[-1] + ".freq"
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
@@ -242,7 +248,7 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        sys.stdout.write("\t###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
+        sys.stdout.write("###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
 
         cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
         if verbose:
