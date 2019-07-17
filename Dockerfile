@@ -4,13 +4,8 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
-    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3
-
-#RUN echo "mysql-server mysql-server/root_password password lorean" | debconf-set-selections
-
-#RUN echo "mysql-server mysql-server/root_password_again password lorean" | debconf-set-selections
-
-#RUN apt-get install -y mysql-server mysql-client mysql-common
+    zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
+    bamtools libbamtools-dev liblzma-dev automake autoconf hmmer
 
 RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
     psutil memory_profiler pathlib colorama simplesam tqdm
@@ -21,6 +16,8 @@ RUN git clone -b noIPRS https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
+RUN mv trf /usr/local/bin/
+
 RUN tar -zxvf Porechop.tar.gz && cd Porechop && make clean && make && cp porechop/cpp_functions.so  /opt/LoReAn/code/
 
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
@@ -30,14 +27,14 @@ RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -
 
 RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 
-COPY PASApipeline-v2.3.3.tar.gz ./
+#COPY PASApipeline-v2.3.3.tar.gz ./
 
-RUN tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && \
+RUN wget https://github.com/PASApipeline/PASApipeline/releases/download/pasa-v2.3.3/PASApipeline-v2.3.3.tar.gz && tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && \
     cp ../../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl scripts/ && chmod 775 scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
 ##    cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
 
-RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
+#RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
 
 RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader && autoconf && ./configure && make &&\
     sudo make install && cd .. &&  git clone https://github.com/samtools/bcftools.git && cd bcftools && autoheader &&\
@@ -50,35 +47,35 @@ RUN apt-get update && apt-get install -y -q --fix-missing libcurl4-gnutls-dev li
 RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
     mv Augustus augustus && cd augustus  && make clean && make
 
-COPY Trinity-v2.5.1.tar.gz ./
+##COPY Trinity-v2.5.1.tar.gz ./
 
-RUN tar -zxvf Trinity-v2.5.1.tar.gz && \
-    mv trinityrnaseq-Trinity-v2.5.1 Trinity &&rm Trinity-v2.5.1.tar.gz && cd Trinity && make && make plugins
+RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.8.5.tar.gz && tar -zxvf Trinity-v2.8.5.tar.gz && \
+    mv trinityrnaseq-Trinity-v2.8.5 Trinity && rm Trinity-v2.8.5.tar.gz && cd Trinity && make && make plugins
 
 RUN git clone https://github.com/lh3/minimap2.git && cd minimap2 && make
 
 RUN git clone https://github.com/alexdobin/STAR.git
 
-COPY v3.0.1.tar.gz ./
+##COPY v3.0.1.tar.gz ./
 
-RUN tar -zxvf v3.0.1.tar.gz && rm v3.0.1.tar.gz &&\
-    cd TransDecoder-3.0.1 && make
+RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf v5.5.0.tar.gz && rm v5.5.0.tar.gz &&\
+    cd TransDecoder-v5.5.0 && make
 
-COPY gmap-gsnap-2017-11-15.tar.gz ./
+##COPY gmap-gsnap-2017-11-15.tar.gz ./
 
-RUN tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz  && \
+RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz  && \
     mv gmap-2017-11-15  gmap && cd gmap/ && ./configure && make && sudo make install
 
-COPY fasta-36.3.8e.tar.gz ./
+##COPY fasta-36.3.8e.tar.gz ./
 
-RUN tar -zxvf fasta-36.3.8e.tar.gz && rm fasta-36.3.8e.tar.gz &&\
-    cd fasta-36.3.8e/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
+RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && tar -zxvf fasta-36.3.8g.tar.gz && rm fasta-36.3.8g.tar.gz &&\
+    cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
 
 RUN git clone https://github.com/Gaius-Augustus/BRAKER.git
 
-COPY v1.1.1.tar.gz ./
+#COPY v1.1.1.tar.gz ./
 
-RUN tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
+RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::Merge && sudo cpan -f -i  Logger::Simple && sudo cpan -f -i Parallel::ForkManager &&\
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric && sudo cpan -f -i File::Which && sudo cpan -f -i DBD::SQLite.pm
@@ -86,9 +83,9 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
 RUN mkdir gffread && cd gffread && git clone https://github.com/gpertea/gclib &&\
     git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
 
-COPY genometools-1.5.9.tar.gz ./
+##COPY genometools-1.5.9.tar.gz ./
 
-RUN tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
 
@@ -125,17 +122,16 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 
 WORKDIR /usr/local/bin
 
-RUN apt-get install -y -q hmmer
-
-COPY trf ./
+#COPY trf ./
 
 WORKDIR /usr/local
 
 RUN mkdir nseg && cd nseg && wget ftp://ftp.ncbi.nih.gov/pub/seg/nseg/* && make && mv nseg ../bin && mv nmerge ../bin
 
-COPY RepeatScout-1.0.5.tar.gz ./
+##COPY RepeatScout-1.0.5.tar.gz ./
 
-RUN tar -xvf RepeatScout* && rm RepeatScout*.tar.gz && mv RepeatScout* RepeatScout && cd RepeatScout && make
+RUN wget http://bix.ucsd.edu/repeatscout/RepeatScout-1.0.5.tar.gz && tar -xvf RepeatScout* && rm RepeatScout*.tar.gz && \
+    mv RepeatScout* RepeatScout && cd RepeatScout && make
 
 RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/rmblast/2.2.28/ncbi-rmblastn-2.2.28-x64-linux.tar.gz && \
     tar -xzvf ncbi-rmblastn* && rm ncbi-rmblastn*.tar.gz && mv ncbi-rmblastn*/bin/rmblastn bin && rm -rf ncbi-rmblastn
@@ -146,9 +142,9 @@ RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i Text::Soundex
 
-COPY RepeatMasker-open-4-0-7.tar.gz ./
+##COPY RepeatMasker-open-4-0-7.tar.gz ./
 
-RUN tar -xzvf RepeatMasker-open*.tar.gz \
+RUN wget http://www.repeatmasker.org/RepeatMasker-open-4-0-9-p2.tar.gz && tar -xzvf RepeatMasker-open*.tar.gz \
 	&& rm -f RepeatMasker-open*.tar.gz && perl -0p -e 's/\/usr\/local\/hmmer/\/usr\/bin/g;' -e 's/\/usr\/local\/rmblast/\/usr\/local\/bin/g;' \
     -e 's/DEFAULT_SEARCH_ENGINE = "crossmatch"/DEFAULT_SEARCH_ENGINE = "ncbi"/g;' \
     -e 's/TRF_PRGM = ""/TRF_PRGM = "\/usr\/local\/bin\/trf"/g;' RepeatMasker/RepeatMaskerConfig.tmpl > RepeatMasker/RepeatMaskerConfig.pm
