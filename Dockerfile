@@ -7,7 +7,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
     bamtools libbamtools-dev liblzma-dev automake autoconf hmmer
 
-RUN pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam matplotlib progressbar2 \
+RUN pip install --upgrade pip && pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam progressbar2 \
     psutil memory_profiler pathlib colorama simplesam tqdm
 
 WORKDIR /opt/
@@ -58,8 +58,8 @@ RUN git clone https://github.com/alexdobin/STAR.git
 
 ##COPY v3.0.1.tar.gz ./
 
-RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf v5.5.0.tar.gz && rm v5.5.0.tar.gz &&\
-    cd TransDecoder-v5.5.0 && make
+RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf TransDecoder-v5.5.0.tar.gz && rm TransDecoder-v5.5.0.tar.gz &&\
+    mv TransDecoder-TransDecoder-v5.5.0 TransDecoder-v5.5.0 && cd TransDecoder-v5.5.0 && make
 
 ##COPY gmap-gsnap-2017-11-15.tar.gz ./
 
@@ -69,7 +69,7 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && t
 ##COPY fasta-36.3.8e.tar.gz ./
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && tar -zxvf fasta-36.3.8g.tar.gz && rm fasta-36.3.8g.tar.gz &&\
-    cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8e/bin/fasta36 /usr/local/bin/fasta
+    cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8g/bin/fasta36 /usr/local/bin/fasta
 
 RUN git clone https://github.com/Gaius-Augustus/BRAKER.git
 
