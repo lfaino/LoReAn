@@ -60,7 +60,7 @@ RUN git clone https://github.com/alexdobin/STAR.git
 
 ##COPY v3.0.1.tar.gz ./
 
-RUN wget https://github.com/COMBINE-lab/salmon/releases/download/v0.14.1/salmon-0.14.1_linux_x86_64.tar.gz &&
+RUN wget https://github.com/COMBINE-lab/salmon/releases/download/v0.14.1/salmon-0.14.1_linux_x86_64.tar.gz &&\
     tar -zxvf salmon-0.14.1_linux_x86_64.tar.gz
 
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf TransDecoder-v5.5.0.tar.gz && rm TransDecoder-v5.5.0.tar.gz &&\
