@@ -29,8 +29,10 @@ RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 
 #COPY PASApipeline-v2.3.3.tar.gz ./
 
-RUN wget https://github.com/PASApipeline/PASApipeline/releases/download/pasa-v2.3.3/PASApipeline-v2.3.3.tar.gz && tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && cd PASApipeline && make clean && make && \
-    cp ../../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl scripts/ && chmod 775 scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
+RUN wget https://github.com/PASApipeline/PASApipeline/releases/download/pasa-v2.3.3/PASApipeline-v2.3.3.tar.gz && \
+    tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && \
+    cd PASApipeline && make clean && make && cp ../../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl scripts/ && \
+    chmod 775 scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
 ##    cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
 
@@ -57,6 +59,9 @@ RUN git clone https://github.com/lh3/minimap2.git && cd minimap2 && make
 RUN git clone https://github.com/alexdobin/STAR.git
 
 ##COPY v3.0.1.tar.gz ./
+
+RUN wget https://github.com/COMBINE-lab/salmon/releases/download/v0.14.1/salmon-0.14.1_linux_x86_64.tar.gz &&
+    tar -zxvf salmon-0.14.1_linux_x86_64.tar.gz
 
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf TransDecoder-v5.5.0.tar.gz && rm TransDecoder-v5.5.0.tar.gz &&\
     mv TransDecoder-TransDecoder-v5.5.0 TransDecoder-v5.5.0 && cd TransDecoder-v5.5.0 && make
