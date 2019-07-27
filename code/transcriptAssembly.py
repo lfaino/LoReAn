@@ -3,6 +3,11 @@
 import os
 import subprocess
 import sys
+from simplesam import Reader, Writer
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio import SeqIO
+
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -23,53 +28,21 @@ SAMTOOLS_VIEW = 'samtools view -@ %s -b -o %s %s %s'
 
 SAMTOOLS_INDEX = 'samtools index %s'
 
+BAMTOFASTQ = 'bedtools bamtofastq -i %s -fq /dev/stdout'
+
 #==========================================================================================================
 
 
-# def trinity(bam_file, wd, max_intron_length, threads, list_fasta_names, verbose):
-#
-#     list_command = []
-#     threads_single_trinity = int(math.modf(int(threads)/len(list_fasta_names))[1])
-#     if threads_single_trinity < 2:
-#         pool_threads = len(list_fasta_names)
-#         threads_single_trinity = 1
-#     else:
-#         pool_threads = int(math.modf(int(threads)/threads_single_trinity)[1])
-#     cmdI = SAMTOOLS_INDEX % (bam_file)
-#     try:
-#         if verbose:
-#             sys.stderr.write('Executing: %s\n' % cmdI)
-#         samtools_call = subprocess.Popen(cmdI, shell=True, cwd=wd)
-#         samtools_call.communicate()
-#     except:
-#         sys.stdout.write('SAMTOOLS split did not work properly\n')
-#     for line in list_fasta_names:
-#         chrPath = os.path.join(wd, "trinity_out_dir_" + line.split("/")[-1])
-#         logistic.check_create_dir(chrPath)
-#         chrName = line.split("/")[-1].split(".")[0]
-#         bamName = os.path.join(chrPath, chrName + ".bam")
-#         cmdS = SAMTOOLS_VIEW % (threads, bamName, bam_file, chrName)
-#         try:
-#             if verbose:
-#                 sys.stderr.write('Executing: %s\n' % cmdS)
-#             samtools_call = subprocess.Popen(cmdS, shell=True, cwd=wd)
-#             samtools_call.communicate()
-#             if os.path.getsize(bamName) > 0:
-#                 list_command.append([bamName, chrPath, max_intron_length, threads_single_trinity, verbose])
-#         except:
-#             sys.stdout.write('SAMTOOLS split did not work properly\n')
-#             raise NameError('')
-#
-#     with Pool(processes=pool_threads, maxtasksperchild=1000) as pool:
-#         results = pool.map(trinity_single, list_command)
-#     out_name = os.path.join(wd, 'Trinity-GG.fasta')
-#     with open(out_name,'wb') as wfd:
-#         for f in results:
-#             with open(f,'rb') as fd:
-#                 shutil.copyfileobj(fd, wfd)
-#     return out_name, results
-#
-
+def bamtofastq(bam, verbose):
+    fasta = bam + ".fasta"
+    in_file = open(bam, 'r')
+    in_sam = Reader(in_file)
+    with open(fasta, "w") as output_handle:
+        for line in in_sam:
+            if line.mapped:
+                record = SeqRecord(Seq(str(line.seq)),name = str(line.qname))
+                SeqIO.write(record, output_handle, "fasta")
+    return fasta
 
 def trinity(bam_file, wd, max_intron_length, threads, verbose):
     """Calls genome guided trinity on the BAM file to generate

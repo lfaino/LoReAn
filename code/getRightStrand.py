@@ -26,7 +26,7 @@ GFFREAD_W = 'gffread -W -g %s -w %s -y %s %s'
 
 GFFREAD_M = 'gffread -F -M -C -K -Q -Z --force-exons -o %s %s'
 
-GFFREAD_M_S = 'gffread -M -F -o %s %s'
+GFFREAD_M_S = 'gffread -M -Y -Q -K -F -o %s %s'
 
 EXONERATE = 'exonerate --model coding2genome --bestn 1 --refine region --showtargetgff yes --query %s --target %s'
 
@@ -380,12 +380,9 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     results_get = pool.map(get_fasta, list_get_seq, chunksize=1)
     results = pool.map(runExonerate, results_get, chunksize=1)
-    output_filename_gff = wd + 'mRNA_complete_gene_Annotation.gff3'
 
 
-    gff_out = gffwriter.GFFWriter(output_filename_gff)
     db1 = gffutils.create_db(gff_file, ':memory:', merge_strategy='create_unique', keep_order=True)
-
     list_gene_complete = []
     list_gene_incomplete = []
     for mRNA in list_complete:
@@ -397,6 +394,9 @@ def exonerate(ref, gff_file, proc, wd, verbose):
     list_gene_complete = sorted(list(set(list_gene_complete)))
     list_gene_incomplete = sorted(list(set(list_gene_incomplete)))
     list_gene_ok_uniq = sorted(list(set(list_gene_complete) - set(list_gene_incomplete)))
+
+    output_filename_gff = os.path.join(wd , 'exonerate_step1.gff3')
+    gff_out = gffwriter.GFFWriter(output_filename_gff)
     for evm in list_gene_ok_uniq:
         gff_out.write_rec(db1[evm])
         for i in db1.children(evm):
@@ -404,21 +404,21 @@ def exonerate(ref, gff_file, proc, wd, verbose):
 
     exonerate_files = results + [output_filename_gff]
     gff_out.close()
-    orintedFIleN = wd + '/oriented.oldname.gff3'
+    orintedFIleN = os.path.join(wd, 'exonerate_step2_oldnames.gff3')
     with open(orintedFIleN, 'wb') as wfd:
         for f in exonerate_files:
             with open(f, 'rb') as fd:
                 shutil.copyfileobj(fd, wfd, 1024 * 1024 * 10)
-    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="additional.2.", suffix=".gff3", dir=wd)
-    log = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".log", dir=wd)
-    err = tempfile.NamedTemporaryFile(delete=False, prefix="additional.", suffix=".err", dir=wd)
+    outfile_gff = tempfile.NamedTemporaryFile(delete=False, prefix="exonerate_step3.", suffix=".gff3", dir=wd)
+    log = tempfile.NamedTemporaryFile(delete=False, prefix="exonerate_step3.", suffix=".log", dir=wd)
+    err = tempfile.NamedTemporaryFile(delete=False, prefix="exonerate_step3.", suffix=".err", dir=wd)
     cmd = GFFREAD_M_S % (outfile_gff.name, orintedFIleN)
     gffread = subprocess.Popen(cmd, cwd=wd, shell=True, stdout=log, stderr=err)
     gffread.communicate()
     db_gffread = gffutils.create_db(outfile_gff.name, ':memory:', merge_strategy='create_unique', keep_order=True,
                                     transform=transform_func)
 
-    outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="additional.final.", suffix=".gff3", dir=wd)
+    outfile_out = tempfile.NamedTemporaryFile(delete=False, prefix="exonerate_step4.final.", suffix=".gff3", dir=wd)
     gff_out_s = gffwriter.GFFWriter(outfile_out.name)
 
     for gene in db_gffread.features_of_type("gene"):
@@ -443,7 +443,6 @@ def transform_func(x):
         x.source = "LoReAn"
         return x
 
-
 def get_fasta(list_data):
     err = tempfile.NamedTemporaryFile(delete=True)
     log = tempfile.NamedTemporaryFile(delete=True)
@@ -456,7 +455,6 @@ def get_fasta(list_data):
     os.remove(list_data[1])
     combList = [list_data[3], list_data[2], list_data[4], list_data[5]]
     return combList
-
 
 def runExonerate(commandList):
     outputFilenameProt = commandList[0]
@@ -511,8 +509,22 @@ def runExonerate(commandList):
 
     return protGff3
 
+def genename_evm(gff_filename, verbose, wd, dict_ref_name, upgrade):
 
-def genename_evm(gff_filename, verbose, wd):
+    match = {}
+    for name in dict_ref_name:
+        match[dict_ref_name[name]] = name
+    if upgrade != "":
+        out = tempfile.NamedTemporaryFile(delete=False, mode="w", prefix=".gff3", dir=wd)
+        #with open() as fho:
+        with open(gff_filename, "r") as fh:
+            for line in fh:
+                elements = line.split("\t")
+                if match[elements[0]]:
+                    elements[0] = match[elements[0]]
+                    out.write("\t".join(elements))
+        gff_filename = out.name
+
 
     gene_evm = "evm.TU."
     mRNA_evm = "evm.model."
@@ -565,7 +577,7 @@ def genename_evm(gff_filename, verbose, wd):
             for c in db1.children(mRNA_old, featuretype='CDS', order_by='start'):
                 cds_count += 1
                 cds = c
-                cds.attributes["Parent"][0] = mRNA.attributes["ID"][0]
+                cds.attributes["Parent"] = mRNA.attributes["ID"][0].split(",")[0]
                 cds.attributes["ID"] = "cds." + str(cds_count) + "." + id_new_mRNA
                 gff_out.write_rec(cds)
     gff_out.close()
@@ -580,8 +592,6 @@ def genename_evm(gff_filename, verbose, wd):
     if verbose:
         print(out.name)
     return out.name
-
-
 
 def genename_lorean(gff_filename, verbose, wd):
 
@@ -643,8 +653,6 @@ def genename_lorean(gff_filename, verbose, wd):
     gt_call.communicate()
     return out_1.name
 
-
-
 def transform_cds(x):
     global cds_count_lorean
     cds_count_lorean += 1
@@ -672,8 +680,6 @@ def transform_cds(x):
         x.attributes = {'ID': other_lorean + str(cds_count_lorean), 'Parent': x.attributes['Parent']}
         x.source = "LoReAn"
         return x
-
-
 
 def add_removed_evm(pasa, exon, wd):
     """
@@ -708,9 +714,9 @@ def add_removed_evm(pasa, exon, wd):
 
     return outfile.name
 
-
 if __name__ == '__main__':
     #strand(*sys.argv[1:])
-    #exonerate(fasta, outputFilename, proc, gmap_wd, verbose) genename_evm(gff_filename, verbose, wd)
+    gff_filename = exonerate(*sys.argv[1:])
+    genename_lorean(gff_filename, "True", "./")
     #update2 = exonerate(*sys.argv[1:])
-    genename_lorean(*sys.argv[1:])
+    #genename_evm(*sys.argv[1:])

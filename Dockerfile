@@ -76,7 +76,7 @@ RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && t
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && tar -zxvf fasta-36.3.8g.tar.gz && rm fasta-36.3.8g.tar.gz &&\
     cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8g/bin/fasta36 /usr/local/bin/fasta
 
-RUN git clone https://github.com/Gaius-Augustus/BRAKER.git
+RUN git clone https://github.com/Gaius-Augustus/BRAKER.git && cd BRAKER && chmod -R 777 scripts/ ##&& ln -s /opt/LoReAn/third_party/software/BRAKER/
 
 #COPY v1.1.1.tar.gz ./
 
@@ -164,12 +164,27 @@ WORKDIR /opt/LoReAn/
 
 RUN cp /opt/LoReAn/code/lorean /usr/local/bin && chmod 775 /usr/local/bin/lorean
 
-RUN cp /opt/LoReAn/third_party/conf_files/environment /etc/environment
-
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
 RUN chmod a+w /opt/
 
 WORKDIR /data/
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools-1.5.9/bin:/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/"
+
+ENV AUGUSTUS_CONFIG_PATH="/opt/LoReAn/third_party/software/augustus/config/"
+
+ENV GENEMARK_PATH="/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap/"
+
+ENV PERL5LIB="/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/PerlLib/:/opt/LoReAn/third_party/scripts/:/opt/LoReAn/third_party/software/PASApipeline/PerlLib/"
+
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/SW/src/"
+
+ENV SAMTOOLS_PATH="/usr/local/bin/"
+
+ENV BLAST_PATH="/usr/local/bin/"
+
+ENV TMPDIR="/tmp"
+
 
 CMD /usr/local/bin/createUser.py

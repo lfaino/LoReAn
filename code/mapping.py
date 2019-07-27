@@ -46,6 +46,8 @@ MINIMAP2 = 'minimap2 -ax splice -k14 -t %s -G %s -uf %s %s'
 
 MINIMAP2_BUILD = 'minimap2 -t %s -d %s %s'
 
+SAMTOOLS_INDEX = 'samtools index %s'
+
 
 #==========================================================================================================
 
@@ -422,6 +424,21 @@ def samtools_view(sam_file, wd, verbose, threads):
     log.close()
     return bam_filename
 
+def samtools_index(sam_file, wd, verbose):
+    '''SAM to BAM'''
+    cmd = SAMTOOLS_INDEX % (sam_file)
+    log_name = wd + 'samtools_index.log'
+    log = open(log_name, 'w')
+    try:
+        if verbose:
+            sys.stderr.write('Executing: %s\n' % cmd)
+        samtools = subprocess.Popen(cmd, stderr=log, shell=True)
+        samtools.communicate()
+    except:
+        raise NameError('')
+
+    log.close()
+    return
 
 def samtools_sort(bam_file, threads, wd, verbose):
     '''

@@ -12,10 +12,7 @@ def setting():
     parser.add_argument("reference", help="Path to reference file")
     parser.add_argument("-pr", "--proteins", nargs="?", help="Path to protein sequences FASTA file []")
     parser.add_argument("-sp", "--species", nargs="?", help="Species name for AUGUSTUS training. No re-training if species already present in AUGUSTUS "
-                             "config folder", default="", required=True)
-    parser.add_argument("-pm", "--pasa_mysql_data", nargs="?", help="MYSQL user name and password (comma separated )that PASA can use to build the database. "
-                                                                    "If empty, LoReAn assumes that you have a user called 'lorean' with password 'lorean' [lorean,lorean]",
-                        default="lorean,lorean")
+                             "config folder", default="")
     parser.add_argument("-d","--stranded", help="Run LoReAn on stranded mode [FALSE]", action='store_true')
     parser.add_argument("-mm","--minimap2", help="Use minimap2 to map long cDNA reads on the genome; default setting is GMAP [FALSE]", action='store_true')
     parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')
@@ -46,11 +43,12 @@ def setting():
     parser.add_argument("-m", "--max_long_read", nargs="?", default=20000, help="Filter out long reads longer than this value "
                                                                                "(longer reads may affect mapping and "
                              "assembling) [20000]", type=int)
-    parser.add_argument("-pasa","--pasa_db", nargs="?", default="pipeline_run", help="PASA database name [pipeline_run]")
+    parser.add_argument("-pasa","--pasa_db", nargs="?", default="", help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene", nargs="?", default="species", help="Prefix to add to the final Gff3 gene "
                                                                                  "name [specie]")
-    parser.add_argument("-w","--working_dir", nargs="?", default="annotation", help="Working directory (will create if "
-                                                                                    "not present) [./]")
+    parser.add_argument("-o","--out_dir", nargs="?", default="", help="In this path all the files will be stored")
+    parser.add_argument("-w", "--working_dir", nargs="?", default="annotation",
+                        help="Working directory (will create if not present)")
     parser.add_argument("-t","--threads", nargs="?", default="3", help="Number of threads [3]", metavar='N')
     parser.add_argument("-cw","--augustus_weigth",  default="1", help="Weight assigned to AUGUSTUS evidence for EVM [1]",
                         metavar='N')

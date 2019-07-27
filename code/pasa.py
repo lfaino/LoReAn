@@ -21,7 +21,7 @@ LOCATION_CONF_ORIGINAL = "/opt/LoReAn/third_party/software/PASApipeline/pasa_con
 
 LOCATION_CONF_NEW = "/opt/LoReAn/third_party/software/PASApipeline/pasa_conf/conf.txt"
 
-CREATE_DATABASE = 'create_mysql_cdnaassembly_db.dbi -c %s -S /opt/LoReAn/third_party/software/PASApipeline/schema/cdna_alignment_mysqlschema'
+CREATE_DATABASE = 'create_sqlite_cdnaassembly_db.dbi -c %s -S /opt/LoReAn/third_party/software/PASApipeline/schema/cdna_alignment_sqliteschema'
 
 #==========================================================================================================
 
@@ -102,12 +102,11 @@ def annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_c
             sys.stderr.write('Executing: %s\n' % cmd)
         pasa_call = subprocess.Popen(cmd, stdout=out_log, stderr=log, cwd=pasa_dir, shell=True)
         pasa_call.communicate()
-        number_pid = str(int(pasa_call.pid) + 1)
     except:
         raise NameError('')
     out_log.close()
     log.close()
-    return number_pid
+    return
 
 def parse_pasa_update(round_n, pasa_dir, pasa_db, verbose):
     '''Parses through the files in the PASA directory, finds the update file and
@@ -143,18 +142,6 @@ def parse_remove_update(pasa_dir, pasa_db):
 
     return
 
-# def parse_pasa_update(round_n, pasa_dir, pasa_db, number_pid, verbose):
-#     '''Parses through the files in the PASA directory, finds the update file and
-#     renames it and returns it'''
-#     pasa_files = os.listdir(pasa_dir)
-#
-#     pattern_build = os.path.join(pasa_dir, pasa_db + '.sqlite.gene_structures_post_PASA_updates.' + number_pid + '.gff3')
-#     new_filename = os.path.join(pasa_dir,  'FinalAnnotationLorean.' + str(round_n) + '.gff3')
-#     print(pattern_build, new_filename)
-#     os.rename(pattern_build, new_filename)
-#
-#     return new_filename
-
 
 def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_file, gff3_file, verbose):
     '''Updates the gff3 file with the PASA database'''
@@ -168,7 +155,7 @@ def update_database(n_cpu, round_n, pasa_dir, pasa_db, reference, transcripts_fi
         sys.stdout.write('###LOADING GFF3 FILE INTO DATABASE###\n')
         load_gff3_pasa(pasa_dir, align_conf_file, reference, gff3_file, verbose)
         sys.stdout.write('###UPDATING GFF3 FILE###\n')
-        number_pid = annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
+        annot_comparison(pasa_dir, annot_conf_file, reference, transcripts_file, n_cpu, verbose)
         sys.stdout.write('###PARSING OUTPUT###\n')
         gff3_out = parse_pasa_update(round_n, pasa_dir, pasa_db, verbose)
 
