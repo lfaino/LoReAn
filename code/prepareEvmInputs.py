@@ -201,7 +201,7 @@ def cat_EVM_inputs(evm_dir):  # , inputs):
             elif 'protein' in name:
                 protein_file = os.path.join(root, name)
                 protein_list.append(os.path.join(root, name))
-                list_soft.append('aat')
+                list_soft.append('exonerate')
             elif 'trinity' in name:
                 ab_initio_list.append(os.path.join(root, name))
                 list_soft.append('gmap')
@@ -244,9 +244,9 @@ def evm_weight(evm_dir, weights_dic, evidences, pasa_name, gmap_name):
     w_filename = evm_dir + 'weights.txt'
     list_match = []
 
-    evidence_dic = {'GeneMark.hmm': 'ABINITIO_PREDICTION', 'Augustus': 'ABINITIO_PREDICTION', 'AAT': 'PROTEIN', pasa_name: 'TRANSCRIPT',
+    evidence_dic = {'GeneMark.hmm': 'ABINITIO_PREDICTION', 'Augustus': 'ABINITIO_PREDICTION', 'exonerate': 'PROTEIN', pasa_name: 'TRANSCRIPT',
         gmap_name: 'ABINITIO_PREDICTION', 'external': 'ABINITIO_PREDICTION'}
-    software_links = { 'genemark': 'GeneMark.hmm',  'augustus': 'Augustus', 'aat': 'AAT', 'external': 'external', 'pasa': pasa_name,
+    software_links = { 'genemark': 'GeneMark.hmm',  'augustus': 'Augustus', 'exonerate': 'exonerate', 'external': 'external', 'pasa': pasa_name,
         'gmap': gmap_name}
 
     for software in software_links:

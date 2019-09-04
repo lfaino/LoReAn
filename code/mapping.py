@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import datetime
+import math
 import os
 import subprocess
 import sys
@@ -10,7 +11,6 @@ from collections import OrderedDict
 import dirsAndFiles as logistic
 import gffutils
 import gffutils.gffwriter as gffwriter
-import math
 from Bio import SeqIO
 from simplesam import Reader, Writer
 

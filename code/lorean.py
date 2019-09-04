@@ -9,14 +9,15 @@
 import datetime
 import multiprocessing
 import os
+import random
 import shutil
+import string
 import sys
 import tempfile
 import time
 from queue import Queue
 from threading import Thread
-import random
-import string
+
 # OTHER SCRIPTS
 import arguments as arguments
 import collectOnly as collect
@@ -120,17 +121,17 @@ def main():
         else:
             if args.short_reads == '' and long_reads == '':
                 if external_file.endswith("gff3") or external_file.endswith(fasta):
-                    weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth,
+                    weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'exonerate': args.exonerate_weigth,
                                    'external' : args.external_weigth}
                 else:
-                    weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'AAT': args.AAT_weigth}
+                    weights_dic = {'Augustus': args.augustus_weigth, 'GeneMark.hmm': args.genemark_weigth, 'exonerate': args.exonerate_weigth}
             elif args.short_reads != '' or long_reads != '':
                 if external_file.endswith("gff3") or external_file.endswith(fasta):
                     weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
-                                   'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth, 'external' : args.external_weigth}
+                                   'exonerate': args.exonerate_weigth, gmap_name: args.trinity_weigth, 'external' : args.external_weigth}
                 else:
                     weights_dic = {'Augustus': args.augustus_weigth, pasa_name: args.pasa_weigth, 'GeneMark.hmm': args.genemark_weigth,
-                               'AAT': args.AAT_weigth, gmap_name: args.trinity_weigth}
+                               'exonerate': args.exonerate_weigth, gmap_name: args.trinity_weigth}
     final_files = []  # STORE THE IMPORTANT OUTPUT FILES
     logistic.check_create_dir(wd)
     logistic.check_file(ref_link)
@@ -291,8 +292,8 @@ def main():
                     for software in range(3):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                         for software in range(3):
-                            t = Thread(target=handler.august_gmes_aat, args=(queue, ref_rename, args.species, protein_loc,
-                                                                           threads_use, args.fungus, list_fasta_names, wd,
+                            t = Thread(target=handler.august_gmes_exonerate, args=(queue, ref_rename, args.species, protein_loc,
+                                                                           threads_use, args.fungus, list_fasta_names, wd, exonerate_wd,
                                                                            args.verbose))
                             t.daemon = True
                             t.start()
@@ -301,7 +302,7 @@ def main():
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_file = wd + 'gmes/genemark.gtf'
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                    merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
+                    merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
 
                 elif args.short_reads or long_reads:  # USING PROTEINS AND SHORT READS
                     logistic.check_create_dir(braker_folder)
@@ -311,16 +312,16 @@ def main():
                     for software in range(2):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                         for software in range(2):
-                            t = Thread(target=handler.braker_aat, args=(queue, ref_rename, default_bam, args.species, protein_loc,
-                                                                       threads_use, args.fungus, list_fasta_names, wd,
-                                                                        braker_folder, args.verbose))
+                            t = Thread(target=handler.braker_exonerate, args=(queue, ref_rename, default_bam, args.species, protein_loc,
+                                                                       threads_use, args.fungus, wd,
+                                                                        braker_folder, exonerate_wd, args.verbose))
                             t.daemon = True
                             t.start()
                     queue.join()
                     augustus_file, genemark_file = inputEvm.braker_folder_find(braker_folder)
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                    merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
+                    merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
 
                 else:  # USING PROTEINS AND LONG READS
                     queue = Queue()
@@ -330,16 +331,16 @@ def main():
                     for software in range(2):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                         for software in range(2):
-                            t = Thread(target=handler.braker_aat,
+                            t = Thread(target=handler.braker_exonerate,
                                        args=(queue, ref_rename, long_sorted_bam, args.species, protein_loc,
-                                             threads_use, args.fungus, list_fasta_names, wd, braker_folder, args.verbose))
+                                             threads_use, args.fungus, wd, braker_folder, exonerate_wd, args.verbose))
                             t.daemon = True
                             t.start()
                     queue.join()
                     augustus_file, genemark_file = inputEvm.braker_folder_find(braker_folder)
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-                    merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
+                    merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species or args.species != "" or args.upgrade != "":
         if os.path.isfile(home + "/.gm_key") and args.proteins != "":
             now = datetime.datetime.now().strftime(fmtdate)
@@ -348,8 +349,8 @@ def main():
             for software in range(3):
                 queue.put(software)  # QUEUE WITH A ZERO AND A ONE
                 for software in range(3):
-                    t = Thread(target=handler.august_gmes_aat, args=(queue, ref_rename, args.species, protein_loc,
-                                                                   threads_use, args.fungus, list_fasta_names, wd,
+                    t = Thread(target=handler.august_gmes_exonerate, args=(queue, ref_rename, args.species, protein_loc,
+                                                                   threads_use, args.fungus, list_fasta_names, wd, exonerate_wd,
                                                                    args.verbose))
                     t.daemon = True
                     t.start()
@@ -358,7 +359,7 @@ def main():
             augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
             genemark_file = wd + 'gmes/genemark.gtf'
             genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
-            merged_prot_gff3 = wd + 'AAT/protein_evidence.gff3'
+            merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     else:
         now = datetime.datetime.now().strftime(fmtdate)
         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t" + now + "\t#####\n")
@@ -377,10 +378,10 @@ def main():
                     external_file_changed = update.external(external_file_gff3, gmap_wd, args.verbose)
                 elif external_file.endswith("gff3"):
                     external_file_changed = update.external(external_file, gmap_wd, args.verbose)
-                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': merged_prot_gff3,
+                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'exonerate': merged_prot_gff3,
                               'external': external_file_changed}
             else:
-                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'AAT': merged_prot_gff3}
+                evm_inputs = {'augustus': augustus_gff3, 'genemark': genemark_gff3, 'exonerate': merged_prot_gff3}
         elif args.short_reads or long_reads:
             if args.external:
                 external_file = args.external
@@ -392,10 +393,10 @@ def main():
                 elif external_file.endswith("gff3"):
                     external_file_changed = update.external(external_file, gmap_wd, args.verbose)
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
-                                  'AAT': merged_prot_gff3, 'gmap': trinity_path,'external': external_file_changed}
+                                  'exonerate': merged_prot_gff3, 'gmap': trinity_path,'external': external_file_changed}
             else:
                 evm_inputs = {'pasa': pasa_gff3, 'augustus': augustus_gff3, 'genemark': genemark_gff3,
-                              'AAT': merged_prot_gff3, 'gmap': trinity_path}
+                              'exonerate': merged_prot_gff3, 'gmap': trinity_path}
         # HERE WE RUN EVM; WE PREPARE FILES THAT ARE REQUIRED BY EVM LIKE
         # WEIGTH TABLE
 

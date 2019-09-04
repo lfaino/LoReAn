@@ -3,11 +3,11 @@
 import os
 import subprocess
 import sys
-from simplesam import Reader, Writer
+
+from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio import SeqIO
-
+from simplesam import Reader
 
 #==========================================================================================================
 # COMMANDS LIST

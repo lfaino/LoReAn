@@ -5,11 +5,10 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
-from multiprocessing import Pool, Manager
+from multiprocessing import Pool
 
 import numpy as np
-import progressbar
+import tqdm
 from Bio import SeqIO
 
 #==========================================================================================================
@@ -187,21 +186,23 @@ def generate_fasta(clusterList, fasta_dict, min_evidence, max_evidence, overlap_
 def assembly(overlap_length, percent_identity, threads, wd, verbose):
     """
     """
-    manage = Manager()
-    queue = manage.Queue()
+    #manage = Manager()
+    #queue = manage.Queue()
     pool = Pool(processes=int(threads), maxtasksperchild=10)
 
     new_commands = []
     for root, dirs, file in os.walk(wd):
         for fasta_file in file:
-            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose, queue)
+            complete_data = (fasta_file, percent_identity, overlap_length, wd, verbose)#, queue)
             new_commands.append(complete_data)
-    results = pool.map_async(iAssembler, new_commands, chunksize=1)
-    with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
-        while not results.ready():
-            size = queue.qsize()
-            bar.update(size)
-            time.sleep(1)
+    for _ in tqdm.tqdm(pool.imap_unordered(iAssembler, new_commands, chunksize=1), total=len(new_commands)):
+        pass
+
+    # with progressbar.ProgressBar(max_value=len(new_commands)) as bar:
+    #     while not results.ready():
+    #         size = queue.qsize()
+    #         bar.update(size)
+    #         time.sleep(1)
 
 def iAssembler(new_commands):
     """
@@ -209,7 +210,7 @@ def iAssembler(new_commands):
     """
 
     cmd = ASSEMBLY %(new_commands[0], new_commands[2], new_commands[1], new_commands[0], new_commands[0])
-    new_commands[5].put(cmd)
+    #new_commands[5].put(cmd)
     outputDir = new_commands[3] + new_commands[0] + '_output/'  # whole path
     log_name = new_commands[3] + "Assembly.log"
     log = open(log_name, 'w')

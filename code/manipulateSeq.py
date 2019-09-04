@@ -5,16 +5,16 @@ import os
 import subprocess
 import sys
 import tempfile
+from glob import glob
+from pathlib import Path
+
+import align as align
+import mapping
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqUtils import GC
-from glob import glob
-from pathlib import Path
 from simplesam import Reader
-
-import align as align
-import mapping
 
 #==========================================================================================================
 # COMMANDS LIST
@@ -162,7 +162,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
 
     if stranded and adapter:
-        print("in")
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
         else:

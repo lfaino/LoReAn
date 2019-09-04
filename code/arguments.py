@@ -60,7 +60,7 @@ def setting():
                                                                                "evidence for EVM [1]", metavar='N')
     parser.add_argument("-pw","--pasa_weigth", nargs="?", default="5", help="Weight assigned to PASA evidence for EVM [5]",
                         metavar='N')
-    parser.add_argument("-aw","--AAT_weigth", nargs="?", default="1", help="Weight assigned to AAT protein evidence for EVM [1]",
+    parser.add_argument("-aw","--exonerate_weigth", nargs="?", default="1", help="Weight assigned to AAT protein evidence for EVM [1]",
                         metavar='N')
     parser.add_argument("-c","--segmentSize", nargs="?", default="100000", help="Segment size for EVM partitions [100000]",
                         metavar='N')
