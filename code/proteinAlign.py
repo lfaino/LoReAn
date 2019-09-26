@@ -9,7 +9,7 @@ from Bio import SeqIO
 
 #bedtools getfasta -fo /tmp/pybedtools.423huf8a.tmp -fi /data/lfainoData/lorean/LoReAn_Example/JR2/LoReAn_annotation/run/chr8.fasta.masked.fasta.rename.fasta -bed /tmp/pybedtools.aeqgr5mv.tmp
 
-EXONERATE = 'exonerate --model protein2genome --bestn 1 --refine region --showtargetgff TRUE --showquerygff TRUE --showalignment FALSE --showvulgar FALSE  --query %s --target %s'
+EXONERATE = 'exonerate --model protein2genome --bestn 1  --showtargetgff TRUE --showquerygff TRUE --showalignment FALSE --showvulgar FALSE  --query %s --target %s' #--refine region
 TBLASTN = 'tblastn -query %s -subject %s -outfmt "6 sseqid sstart send slen evalue" -max_target_seqs 1'
 CONVERT = 'exonerate_gff_to_alignment_gff3.pl /dev/stdin'
 BEDTOOLS = 'bedtools getfasta -fo %s -fi %s -bed %s'
@@ -54,7 +54,7 @@ def runExonerate(sequence):
         for coord in list_match:
             count = count + 1
             elem = coord.split("\t")
-            if coord != '' and float(elem[4]) < 1e-5:
+            if coord != '' and float(elem[4]) < 1e-15:
                 begin = int(elem[1]) - 100000
                 stop = int(elem[2]) + 100000
                 if begin < 0 :
