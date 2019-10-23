@@ -35,38 +35,36 @@ RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -
 
 RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 
-#COPY PASApipeline-v2.3.3.tar.gz ./
-
 RUN wget https://github.com/PASApipeline/PASApipeline/releases/download/pasa-v2.3.3/PASApipeline-v2.3.3.tar.gz && \
     tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && \
     cd PASApipeline && make clean && make && cp ../../scripts/process_GMAP_alignments_gff3_chimeras_ok.pl scripts/ && \
     chmod 775 scripts/process_GMAP_alignments_gff3_chimeras_ok.pl
 
-##    cd .. &&  cp ../conf_files/conf.txt PASApipeline/pasa_conf/ &&\
+RUN wget https://github.com/samtools/htslib/releases/download/1.9/htslib-1.9.tar.bz2 && bunzip2 htslib-1.9.tar.bz2 && tar -xvf htslib-1.9.tar && \
+    mv htslib-1.9 htslib && cd htslib && autoheader && autoconf && ./configure && make &&\
+    sudo make install && cd ..
 
-#RUN apt-get install -y -q bamtools libbamtools-dev liblzma-dev automake autoconf
+RUN wget https://github.com/samtools/bcftools/releases/download/1.9/bcftools-1.9.tar.bz2 && bunzip2 bcftools-1.9.tar.bz2 && \
+    tar -xvf bcftools-1.9.tar && mv bcftools-1.9 bcftools && cd bcftools && autoheader &&\
+    autoconf && ./configure && make && sudo make install && cd ..
 
-RUN git clone https://github.com/samtools/htslib.git && cd htslib && autoheader && autoconf && ./configure && make &&\
-    sudo make install && cd .. &&  git clone https://github.com/samtools/bcftools.git && cd bcftools && autoheader &&\
-  autoconf && ./configure && make && sudo make install && cd .. && git clone https://github.com/samtools/tabix.git &&\
-  cd tabix && make && cd .. && git clone https://github.com/samtools/samtools.git && cd samtools && autoheader &&\
-   autoconf -Wno-syntax && ./configure && make && sudo make install
+RUN git clone https://github.com/samtools/tabix.git && cd tabix && make && cd ..
+
+RUN wget https://github.com/samtools/samtools/releases/download/1.9/samtools-1.9.tar.bz2 && bunzip2 samtools-1.9.tar.bz2 && \
+    tar -xvf samtools-1.9.tar && mv samtools-1.9 samtools && cd samtools && autoheader && \
+    autoconf -Wno-syntax && ./configure && make && sudo make install
 
 RUN apt-get update && apt-get install -y -q --fix-missing libcurl4-gnutls-dev libssl-dev
 
 RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
     mv Augustus augustus && cd augustus  && make clean && make
 
-##COPY Trinity-v2.5.1.tar.gz ./
-
 RUN wget https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.8.5.tar.gz && tar -zxvf Trinity-v2.8.5.tar.gz && \
     mv trinityrnaseq-Trinity-v2.8.5 Trinity && rm Trinity-v2.8.5.tar.gz && cd Trinity && make && make plugins
 
-RUN git clone https://github.com/lh3/minimap2.git && cd minimap2 && make
+RUN wget https://github.com/lh3/minimap2/archive/v2.17.tar.gz && tar -zxvf v2.17.tar.gz && mv minimap2-2.17 minimap2 && cd minimap2 && make
 
-RUN git clone https://github.com/alexdobin/STAR.git
-
-##COPY v3.0.1.tar.gz ./
+RUN wget https://github.com/alexdobin/STAR/archive/2.7.3a.tar.gz && tar -zxvf 2.7.3a.tar.gz && mv STAR-2.7.3a STAR
 
 RUN wget https://github.com/COMBINE-lab/salmon/releases/download/v0.14.1/salmon-0.14.1_linux_x86_64.tar.gz &&\
     tar -zxvf salmon-0.14.1_linux_x86_64.tar.gz
@@ -74,19 +72,14 @@ RUN wget https://github.com/COMBINE-lab/salmon/releases/download/v0.14.1/salmon-
 RUN wget https://github.com/TransDecoder/TransDecoder/archive/TransDecoder-v5.5.0.tar.gz && tar -zxvf TransDecoder-v5.5.0.tar.gz && rm TransDecoder-v5.5.0.tar.gz &&\
     mv TransDecoder-TransDecoder-v5.5.0 TransDecoder-v5.5.0 && cd TransDecoder-v5.5.0 && make
 
-##COPY gmap-gsnap-2017-11-15.tar.gz ./
-
 RUN wget http://research-pub.gene.com/gmap/src/gmap-gsnap-2017-11-15.tar.gz && tar -zxvf gmap-gsnap-2017-11-15.tar.gz && rm gmap-gsnap-2017-11-15.tar.gz  && \
     mv gmap-2017-11-15  gmap && cd gmap/ && ./configure && make && sudo make install
-
-##COPY fasta-36.3.8e.tar.gz ./
 
 RUN wget http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && tar -zxvf fasta-36.3.8g.tar.gz && rm fasta-36.3.8g.tar.gz &&\
     cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8g/bin/fasta36 /usr/local/bin/fasta
 
 RUN git clone https://github.com/Gaius-Augustus/BRAKER.git && cd BRAKER && chmod -R 777 scripts/ ##&& ln -s /opt/LoReAn/third_party/software/BRAKER/
 
-#COPY v1.1.1.tar.gz ./
 
 RUN wget https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
 
@@ -94,12 +87,6 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
     sudo cpan -f -i Config::Std && sudo cpan -f -i Scalar::Util::Numeric && sudo cpan -f -i File::Which && sudo cpan -f -i DBD::SQLite.pm
 
 RUN git clone https://github.com/gpertea/gclib && git clone https://github.com/gpertea/gffread && cd gffread && make release
-
-
-#git clone https://github.com/gpertea/gclib &&\
-#    git clone https://github.com/gpertea/gffread && cd gffread && make && cp ./gffread /usr/local/bin
-
-##COPY genometools-1.5.9.tar.gz ./
 
 RUN wget http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
 
@@ -134,17 +121,11 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 #RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
 #     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
-#RUN cp /opt/LoReAn/third_party/conf_files/interproscan.properties ./interproscan.properties
-
 WORKDIR /usr/local/bin
-
-#COPY trf ./
 
 WORKDIR /usr/local
 
 RUN mkdir nseg && cd nseg && wget ftp://ftp.ncbi.nih.gov/pub/seg/nseg/* && make && mv nseg ../bin && mv nmerge ../bin
-
-##COPY RepeatScout-1.0.5.tar.gz ./
 
 RUN wget http://bix.ucsd.edu/repeatscout/RepeatScout-1.0.5.tar.gz && tar -xvf RepeatScout* && rm RepeatScout*.tar.gz && \
     mv RepeatScout* RepeatScout && cd RepeatScout && make
@@ -157,8 +138,6 @@ RUN wget ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/2.6.0/ncbi-blast-2.
     tar -xzvf ncbi-blast* && find ncbi-blast* -type f -executable -exec mv {} bin \; &&  rm -rf ncbi-blast*
 
 RUN sudo perl -MCPAN -e shell && sudo cpan -f -i Text::Soundex
-
-##COPY RepeatMasker-open-4-0-7.tar.gz ./
 
 RUN wget http://www.repeatmasker.org/RepeatMasker-open-4-0-9-p2.tar.gz && tar -xzvf RepeatMasker-open*.tar.gz \
 	&& rm -f RepeatMasker-open*.tar.gz && perl -0p -e 's/\/usr\/local\/hmmer/\/usr\/bin/g;' -e 's/\/usr\/local\/rmblast/\/usr\/local\/bin/g;' \
