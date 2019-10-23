@@ -44,7 +44,7 @@ second file is the Libraries folder of RepeatMasker software (see below <PATH_TO
 Next you can download and build the **Syngularity** image using:  
 
 ```bash
-singularity pull docker://lfaino/lorean:noIPRS
+singularity pull docker://lfaino/lorean:latest
 ```
 
 

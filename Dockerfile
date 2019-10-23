@@ -7,14 +7,22 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
     bamtools libbamtools-dev liblzma-dev automake autoconf hmmer
 
-RUN pip install --upgrade pip && pip3 install numpy biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 pybedtools==0.7.8 gffutils regex pysam progressbar2 \
-    psutil memory_profiler pathlib colorama simplesam tqdm
+RUN pip install --upgrade pip && pip3 install numpy==1.17.1 biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
+    pybedtools==0.7.8 gffutils==0.9 regex==2019.8.19 pysam==0.15.3 progressbar2==3.43.1 \
+    psutil==5.6.3 memory_profiler==0.55.0 pathlib==1.0.1 colorama==0.4.1 simplesam==0.1.3 tqdm==4.35.0 \
+    argcomplete==1.10.0 argh==0.26.2 ordereddict==1.1 pycurl==7.43.0 pyfaidx==0.5.5.2 pygobject==3.20.0 python-apt==1.1.0b1+ubuntu0.16.4.5 \
+    python-dateutil==2.8.0 python-utils==2.3.0 pytz==2019.2 simplejson==3.16.0 six==1.12.0 unattended-upgrades==0.1
+
 
 WORKDIR /opt/
 
 RUN git clone https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
+
+RUN wget http://github.com/bbuchfink/diamond/releases/download/v0.9.26/diamond-linux64.tar.gz
+
+RUN  tar xzf diamond-linux64.tar.gz
 
 RUN mv trf /usr/local/bin/
 
