@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -13,9 +14,9 @@ from Bio.SeqRecord import SeqRecord
 
 #bedtools getfasta -fo /tmp/pybedtools.423huf8a.tmp -fi /data/lfainoData/lorean/LoReAn_Example/JR2/LoReAn_annotation/run/chr8.fasta.masked.fasta.rename.fasta -bed /tmp/pybedtools.aeqgr5mv.tmp
 
-EXONERATE = 'exonerate --model protein2genome --bestn 1  --showtargetgff TRUE --showquerygff TRUE --showalignment FALSE --showvulgar FALSE  --query %s --target %s' #--refine region
+EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --showtargetgff yes --query %s --target %s' #--refine region
 BLASTP = 'diamond blastp -q %s --db %s -k 1 -p %s'
-CONVERT = 'exonerate_gff_to_alignment_gff3.pl %s'
+CONVERT = 'exonerate_gff_to_alignment_gff3.pl /dev/stdin '
 BEDTOOLS = 'bedtools getfasta -fo %s -fi %s -bed %s'
 MAKEDB = 'diamond makedb --in %s -d %s -p %s'
 
@@ -120,73 +121,79 @@ def protAlign(genome, fasta, nproc, wd, verbose):
     for x in tqdm.tqdm(pool.imap_unordered(runExonerate, list_fasta), total=len(list_fasta)):
         results_get.append(x)
         pass
-    with open(os.path.join(wd, "protein_evidence.gff3"), "w") as fh:
-        for gene in results_get:
-            if gene is not None:
-                coords = gene.split("\n")
-                for line in coords:
-                    if line.strip() != "":
-                        elem = line.split("\t")
-                        location = elem[0].split(":")
-                        start = location[1].split("-")[0]
-                        elem[0] = location[0]
-                        elem[3] = str(int(start) + int(elem[3]))
-                        elem[4] = str(int(start) + int(elem[4]))
+    match_id = 0
+    final_ouput = os.path.join(wd, "protein_evidence.gff3")
+    print(final_ouput)
+    with open(final_ouput, "w") as fh:
+        for match in results_get:
+            match_id += 1
+            id = "ID=match" + str(match_id)
+            coords = match.split("\n")
+            for line in coords:
+                if not line.startswith("#") and "exonerate:protein2genome:local" in line:
+                    elem = line.split("\t")
+                    if len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "gene":
+                        target = elem[8].split(" ; ")[1].split(" ")[1]
+                    elif len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "exon":
+                        loc = elem[0].split(":")[0]
+                        elem[3] = str(int(elem[3]) + int(elem[0].split(":")[1].split("-")[0]))
+                        elem[4] = str(int(elem[4]) + int(elem[0].split(":")[1].split("-")[0]))
+                        elem[0] = loc
+                        elem[8] = id + ";Target=" + target
+                        elem[2] = "nucleotide_to_protein_match"
+                        elem[1] = "exonerate"
                         fh.write("\t".join(elem) + "\n")
-    return
+    return(final_ouput)
 
 
 def runExonerate(sequence):
     elem = sequence[0].split("\t")
     name_prot = os.path.join(sequence[4],  elem[0] + ".fasta")
     name_gff = os.path.join(sequence[4],  elem[0] + ".gff")
-    if not os._exists(name_gff):
-        with open(name_prot, "w") as output_handle:
-            SeqIO.write(sequence[2] , output_handle, "fasta")
-        if float(elem[10]) < 1e-5:
-            if elem[1].endswith("plus"):
-                begin = (int(elem[8]) * 3) - 100000
-                stop = (int(elem[9]) * 3)  + 100000
-                if begin < 0 :
-                    begin = "0"
-                else:
-                    begin = str(begin)
-                if stop > int(elem[9] * 3):
-                    stop = elem[3] * 3 - 3
-                else:
-                    stop = str(stop)
+    with open(name_prot, "w") as output_handle:
+        SeqIO.write(sequence[2] , output_handle, "fasta")
+    if float(elem[10]) < 1e-5:
+        if elem[1].endswith("plus"):
+            begin = (int(elem[8]) * 3) - 100000
+            stop = (int(elem[9]) * 3)  + 100000
+            if begin < 0 :
+                begin = "0"
             else:
-                stop = int(sequence[3]) - (int(elem[8]) * 3)
-                begin = int(sequence[3]) -(int(elem[9]) * 3)
-                begin = begin - 100000
-                stop = stop  + 100000
-                if begin < 0 :
-                    begin = "0"
-                else:
-                    begin = str(begin)
-                if stop > int(elem[9] * 3):
-                    stop = elem[3] * 3 - 3
-                else:
-                    stop = str(stop)
-            chr = elem[1].split("_")[0]
-            new_coords = "\t".join([chr, begin, stop]) + "\n"
-            outfile_bed = tempfile.NamedTemporaryFile()
-            with open(outfile_bed.name, "w") as fp:
-                fp.write(new_coords)
-            outfile_fo_fasta = tempfile.NamedTemporaryFile()
-            com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, sequence[1], outfile_bed.name)
-            call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            call_bedtools.communicate()
-            com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
+                begin = str(begin)
+            if stop > int(elem[9] * 3):
+                stop = elem[3] * 3 - 3
+            else:
+                stop = str(stop)
+        else:
+            stop = int(sequence[3]) - (int(elem[8]) * 3)
+            begin = int(sequence[3]) -(int(elem[9]) * 3)
+            begin = begin - 100000
+            stop = stop  + 100000
+            if begin < 0 :
+                begin = "0"
+            else:
+                begin = str(begin)
+            if stop > int(elem[9] * 3):
+                stop = elem[3] * 3 - 3
+            else:
+                stop = str(stop)
+        chr = elem[1].split("_")[0]
+        new_coords = "\t".join([chr, begin, stop]) + "\n"
+        outfile_bed = tempfile.NamedTemporaryFile()
+        with open(outfile_bed.name, "w") as fp:
+            fp.write(new_coords)
+        outfile_fo_fasta = tempfile.NamedTemporaryFile()
+        com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, sequence[1], outfile_bed.name)
+        call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        call_bedtools.communicate()
+        com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
+        #com_conv = CONVERT
+        call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        #call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stdin=call_exo.stdout, stderr=subprocess.PIPE)
+        output_final, err = call_exo.communicate()
+        if output_final.decode != "":
+            return (output_final.decode())
 
-            with open(name_gff, "w") as fh:
-                call_exo = subprocess.Popen(com_exo, shell=True, stdout=fh, stderr=subprocess.PIPE)
-            call_exo.communicate()
-        com_conv = CONVERT % name_gff
-        call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        out, err = call_conv.communicate()
-        output = out.decode()
-        return (output)
 
 if __name__ == '__main__':
     protAlign(*sys.argv[1:])
