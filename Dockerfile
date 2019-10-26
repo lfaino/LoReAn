@@ -20,9 +20,7 @@ RUN git clone https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
-RUN wget http://github.com/bbuchfink/diamond/releases/download/v0.9.26/diamond-linux64.tar.gz
-
-RUN  tar xzf diamond-linux64.tar.gz
+RUN wget http://github.com/bbuchfink/diamond/releases/download/v0.9.26/diamond-linux64.tar.gz && tar -zxvf diamond-linux64.tar.gz && mv diamond /usr/local/bin/
 
 RUN mv trf /usr/local/bin/
 
@@ -120,6 +118,8 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 
 #RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
 #     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
+
+RUN rm *
 
 WORKDIR /usr/local/bin
 
