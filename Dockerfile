@@ -150,6 +150,8 @@ RUN cd /usr/local/RepeatMasker && perl -i -0pe 's/^#\!.*perl.*/#\!\/usr\/bin\/en
 
 RUN chmod -R 777 RepeatMasker/
 
+RUN cp /opt/LoReAn/third_party/software/diamond /usr/local/bin/ && chmod 777 /usr/local/bin/diamond
+
 WORKDIR /opt/LoReAn/
 
 RUN cp /opt/LoReAn/code/lorean /usr/local/bin && chmod 775 /usr/local/bin/lorean
@@ -175,6 +177,5 @@ ENV SAMTOOLS_PATH="/usr/local/bin/"
 ENV BLAST_PATH="/usr/local/bin/"
 
 ENV TMPDIR="/tmp"
-
 
 CMD /usr/local/bin/createUser.py

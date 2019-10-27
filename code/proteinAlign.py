@@ -123,26 +123,27 @@ def protAlign(genome, fasta, nproc, wd, verbose):
         pass
     match_id = 0
     final_ouput = os.path.join(wd, "protein_evidence.gff3")
-    print(final_ouput)
+    #print(final_ouput)
     with open(final_ouput, "w") as fh:
         for match in results_get:
             match_id += 1
             id = "ID=match" + str(match_id)
-            coords = match.split("\n")
-            for line in coords:
-                if not line.startswith("#") and "exonerate:protein2genome:local" in line:
-                    elem = line.split("\t")
-                    if len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "gene":
-                        target = elem[8].split(" ; ")[1].split(" ")[1]
-                    elif len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "exon":
-                        loc = elem[0].split(":")[0]
-                        elem[3] = str(int(elem[3]) + int(elem[0].split(":")[1].split("-")[0]))
-                        elem[4] = str(int(elem[4]) + int(elem[0].split(":")[1].split("-")[0]))
-                        elem[0] = loc
-                        elem[8] = id + ";Target=" + target
-                        elem[2] = "nucleotide_to_protein_match"
-                        elem[1] = "exonerate"
-                        fh.write("\t".join(elem) + "\n")
+            if match is not None:
+                coords = match.split("\n")
+                for line in coords:
+                    if not line.startswith("#") and "exonerate:protein2genome:local" in line:
+                        elem = line.split("\t")
+                        if len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "gene":
+                            target = elem[8].split(" ; ")[1].split(" ")[1]
+                        elif len(elem) == 9 and len(re.split(':|-', elem[0])) == 3 and elem[2] == "exon":
+                            loc = elem[0].split(":")[0]
+                            elem[3] = str(int(elem[3]) + int(elem[0].split(":")[1].split("-")[0]))
+                            elem[4] = str(int(elem[4]) + int(elem[0].split(":")[1].split("-")[0]))
+                            elem[0] = loc
+                            elem[8] = id + ";Target=" + target
+                            elem[2] = "nucleotide_to_protein_match"
+                            elem[1] = "exonerate"
+                            fh.write("\t".join(elem) + "\n")
     return(final_ouput)
 
 
