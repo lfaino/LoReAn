@@ -14,8 +14,8 @@ from Bio.SeqRecord import SeqRecord
 
 #bedtools getfasta -fo /tmp/pybedtools.423huf8a.tmp -fi /data/lfainoData/lorean/LoReAn_Example/JR2/LoReAn_annotation/run/chr8.fasta.masked.fasta.rename.fasta -bed /tmp/pybedtools.aeqgr5mv.tmp
 
-EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --showtargetgff yes --query %s --target %s' #--refine region
-BLASTP = 'diamond blastp -q %s --db %s -k 1 -p %s'
+EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --percentage 80 --showtargetgff yes --query %s --target %s' #--refine region
+BLASTP = 'diamond blastp -q %s --db %s -k 1 -p %s --out %s --evalue 1e-15'
 CONVERT = 'exonerate_gff_to_alignment_gff3.pl /dev/stdin '
 BEDTOOLS = 'bedtools getfasta -fo %s -fi %s -bed %s'
 MAKEDB = 'diamond makedb --in %s -d %s -p %s'
@@ -75,36 +75,41 @@ def transeq(data):
 
 
 def protAlign(genome, fasta, nproc, wd, verbose):
-    translate_genome = os.path.join(wd, "test.fasta")
-    results_get = []
+    output_dimaonds = os.path.join(wd, "output_diamonds.txt")
+    output_dimaonds_done = os.path.join(wd, "output_diamonds..done.txt")
     genome_dict = SeqIO.to_dict(SeqIO.parse(genome, "fasta"))
+    if not os.path.exists(output_dimaonds) and not os.path.exists(output_dimaonds_done):
+        translate_genome = os.path.join(wd, "test.fasta")
+        results_get = []
+        list_fasta = []
+        for record in genome_dict:
+            count = 0
+            for strand in range(6):
+                count += 1
+                list_fasta.append([genome_dict[record], str(strand)])
+        pool = Pool(processes=int(nproc))
+        for x in tqdm.tqdm(pool.imap_unordered(transeq, list_fasta), total=len(list_fasta)):
+            results_get.append(x)
+            pass
+        with open(translate_genome, "w") as output_handle:
+            SeqIO.write(results_get, output_handle, "fasta")
+        com = MAKEDB % (translate_genome, translate_genome, str(nproc))
+        if verbose:
+            sys.stdout.write(com)
+        call = subprocess.Popen(com, shell=True , cwd = wd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        call.communicate()
+        com = BLASTP % (fasta, translate_genome, str(nproc), output_dimaonds)
+        if verbose:
+            sys.stdout.write(com)
+        call = subprocess.Popen(com, shell=True, stderr=subprocess.PIPE)
+        call.communicate()
+        os.mknod(output_dimaonds_done)
 
-    list_fasta = []
+    list_match = []
+    with open(output_dimaonds, "r") as fh:
+        for line in fh:
+            list_match.append(line)
 
-    for record in genome_dict:
-        count = 0
-        for strand in range(6):
-            count += 1
-            list_fasta.append([genome_dict[record], str(strand)])
-    pool = Pool(processes=int(nproc))
-    for x in tqdm.tqdm(pool.imap_unordered(transeq, list_fasta), total=len(list_fasta)):
-        results_get.append(x)
-        pass
-    with open(translate_genome, "w") as output_handle:
-        SeqIO.write(results_get, output_handle, "fasta")
-
-    com = MAKEDB % (translate_genome, translate_genome, str(nproc))
-    if verbose:
-        sys.stdout.write(com)
-    call = subprocess.Popen(com, shell=True , cwd = wd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    call.communicate()
-
-    com = BLASTP % (fasta, translate_genome, str(nproc))
-    if verbose:
-        sys.stdout.write(com)
-    call = subprocess.Popen(com, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out_b, err_b = call.communicate()
-    list_match = out_b.decode().split("\n")
     record_dict = {}
     for record in SeqIO.parse(fasta, "fasta"):
         if record.id not in record_dict:
@@ -153,47 +158,48 @@ def runExonerate(sequence):
     name_gff = os.path.join(sequence[4],  elem[0] + ".gff")
     with open(name_prot, "w") as output_handle:
         SeqIO.write(sequence[2] , output_handle, "fasta")
-    if float(elem[10]) < 1e-5:
-        if elem[1].endswith("plus"):
-            begin = (int(elem[8]) * 3) - 100000
-            stop = (int(elem[9]) * 3)  + 100000
-            if begin < 0 :
-                begin = "0"
+    if len(elem) == 12:
+        if float(elem[10]) < 1e-100:
+            if elem[1].endswith("plus"):
+                begin = (int(elem[8]) * 3) - 100000
+                stop = (int(elem[9]) * 3)  + 100000
+                if begin < 0 :
+                    begin = "0"
+                else:
+                    begin = str(begin)
+                if stop > int(elem[9] * 3):
+                    stop = elem[3] * 3 - 3
+                else:
+                    stop = str(stop)
             else:
-                begin = str(begin)
-            if stop > int(elem[9] * 3):
-                stop = elem[3] * 3 - 3
-            else:
-                stop = str(stop)
-        else:
-            stop = int(sequence[3]) - (int(elem[8]) * 3)
-            begin = int(sequence[3]) -(int(elem[9]) * 3)
-            begin = begin - 100000
-            stop = stop  + 100000
-            if begin < 0 :
-                begin = "0"
-            else:
-                begin = str(begin)
-            if stop > int(elem[9] * 3):
-                stop = elem[3] * 3 - 3
-            else:
-                stop = str(stop)
-        chr = elem[1].split("_")[0]
-        new_coords = "\t".join([chr, begin, stop]) + "\n"
-        outfile_bed = tempfile.NamedTemporaryFile()
-        with open(outfile_bed.name, "w") as fp:
-            fp.write(new_coords)
-        outfile_fo_fasta = tempfile.NamedTemporaryFile()
-        com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, sequence[1], outfile_bed.name)
-        call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        call_bedtools.communicate()
-        com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
-        #com_conv = CONVERT
-        call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        #call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stdin=call_exo.stdout, stderr=subprocess.PIPE)
-        output_final, err = call_exo.communicate()
-        if output_final.decode != "":
-            return (output_final.decode())
+                stop = int(sequence[3]) - (int(elem[8]) * 3)
+                begin = int(sequence[3]) -(int(elem[9]) * 3)
+                begin = begin - 100000
+                stop = stop  + 100000
+                if begin < 0 :
+                    begin = "0"
+                else:
+                    begin = str(begin)
+                if stop > int(elem[9] * 3):
+                    stop = elem[3] * 3 - 3
+                else:
+                    stop = str(stop)
+            chr = elem[1].split("_")[0]
+            new_coords = "\t".join([chr, begin, stop]) + "\n"
+            outfile_bed = tempfile.NamedTemporaryFile()
+            with open(outfile_bed.name, "w") as fp:
+                fp.write(new_coords)
+            outfile_fo_fasta = tempfile.NamedTemporaryFile()
+            com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, sequence[1], outfile_bed.name)
+            call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            call_bedtools.communicate()
+            com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
+            #com_conv = CONVERT
+            call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            #call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stdin=call_exo.stdout, stderr=subprocess.PIPE)
+            output_final, err = call_exo.communicate()
+            if output_final.decode != "":
+                return (output_final.decode())
 
 
 if __name__ == '__main__':
