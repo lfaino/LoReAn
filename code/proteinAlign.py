@@ -14,7 +14,7 @@ from Bio.SeqRecord import SeqRecord
 
 #bedtools getfasta -fo /tmp/pybedtools.423huf8a.tmp -fi /data/lfainoData/lorean/LoReAn_Example/JR2/LoReAn_annotation/run/chr8.fasta.masked.fasta.rename.fasta -bed /tmp/pybedtools.aeqgr5mv.tmp
 
-EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --percentage 80 --showtargetgff yes --query %s --target %s' #--refine region
+EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --percent 80 --showtargetgff yes --query %s --target %s' #--refine region
 BLASTP = 'diamond blastp -q %s --db %s -k 1 -p %s --out %s --evalue 1e-15'
 CONVERT = 'exonerate_gff_to_alignment_gff3.pl /dev/stdin '
 BEDTOOLS = 'bedtools getfasta -fo %s -fi %s -bed %s'
