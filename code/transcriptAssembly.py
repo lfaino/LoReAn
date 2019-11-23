@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from collections import namedtuple
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -12,7 +13,7 @@ from simplesam import Reader
 #==========================================================================================================
 # COMMANDS LIST
 
-TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --grid_node_max_memory %sG --max_memory %sG --output %s --CPU %s --full_cleanup --no_path_merging'
+TRINITY = 'Trinity --genome_guided_bam %s --genome_guided_max_intron %s --grid_node_max_memory %sG --max_memory %sG --output %s --CPU %s --full_cleanup --no_path_merging --max_reads_per_graph 100000'
 #TODO more option can be changed in trinity run
 #TODO test if trinity can speed up
 
@@ -48,6 +49,19 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     """Calls genome guided trinity on the BAM file to generate
     assembled transcripts"""
     #bam_file, out_dir, max_intron_length, threads, verbose = run
+
+
+    MemInfoEntry = namedtuple('MemInfoEntry', ['value', 'unit'])
+    meminfo = {}
+    with open('/proc/meminfo') as file:
+        for line in file:
+            key, value, *unit = line.strip().split()
+            meminfo[key.rstrip(':')] = MemInfoEntry(value, unit)
+    memtotal = round((int(meminfo['MemTotal'].value)/10000000)-2)
+
+    if memtotal < threads:
+        threads = str(memtotal)
+
     out_dir = wd + 'trinity_out_dir/'
     cmd = TRINITY % (bam_file, max_intron_length, '3','10', out_dir, threads)
     out_name = os.path.join(out_dir, 'Trinity-GG.fasta')

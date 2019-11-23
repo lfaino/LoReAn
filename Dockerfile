@@ -29,7 +29,7 @@ RUN tar -zxvf Porechop.tar.gz && cd Porechop && make clean && make && cp porecho
 RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
  sudo ./configure --prefix=$PWD && sudo make && sudo make install
 
-RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64.tar.gz && rm gm_et_linux_64.tar.gz
+RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64_4.48_3.60.tar.gz && rm gm_et_linux_64_4.48_3.60.tar.gz
 
 RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
 
@@ -162,11 +162,11 @@ RUN chmod a+w /opt/
 
 WORKDIR /data/
 
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools-1.5.9/bin:/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/:/opt/LoReAn/third_party/software/gffread"
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:/opt/LoReAn/third_party/software/gm_et_linux_64:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools-1.5.9/bin:/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/:/opt/LoReAn/third_party/software/gffread"
 
 ENV AUGUSTUS_CONFIG_PATH="/opt/LoReAn/third_party/software/augustus/config/"
 
-ENV GENEMARK_PATH="/opt/LoReAn/third_party/software/gm_et_linux_64/gmes_petap/"
+ENV GENEMARK_PATH="/opt/LoReAn/third_party/software/gm_et_linux_64"
 
 ENV PERL5LIB="/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/PerlLib/:/opt/LoReAn/third_party/scripts/:/opt/LoReAn/third_party/software/PASApipeline/PerlLib/"
 
