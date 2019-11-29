@@ -55,7 +55,7 @@ Now, check if  **LoReAn** works by
  ```bash
  
 singularity exec -B <PATH_TO_AUGUSTUS_CONF_FOLDER>:/opt/LoReAn/third_party/software/augustus/config/ -B 
-<PATH_TO_LIBRARY_FOLDER>:/usr/local/RepeatMasker/Libraries/ <PATH_TO_LOREAN_IMAGE>/lorean_noIPRS.sif lorean -h
+<PATH_TO_LIBRARY_FOLDER>:/usr/local/RepeatMasker/Libraries/ <PATH_TO_LOREAN_IMAGE>/lorean_latest.sif lorean -h
 
  ```
 
