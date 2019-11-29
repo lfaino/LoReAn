@@ -75,7 +75,7 @@ After the installation run Docker Quickstart Terminal and follow the instruction
 ### IMPORTANT
 LoReAn uses GeneMark-ES as ab-initio software which needs a license key to run. 
 
-Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.33"** website (http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in 
+Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.48"** website (http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in 
 the folder together with your data.
 
 The best way to use LoReAn is by installing and running the software by Docker
