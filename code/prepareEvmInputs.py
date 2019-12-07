@@ -112,7 +112,7 @@ def move_single_file(filename, key, evm_dir, new_file_d):
 
 def braker_folder_find(location):
 
-    gff = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "augustus.hints.gff"))][0]
+    gff = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "augustus.hints.gtf"))][0]
     gtf = [y for x in os.walk(location) for y in glob(os.path.join(x[0], "genemark.gtf"))][0]
     return gff, gtf
 
