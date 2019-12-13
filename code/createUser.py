@@ -54,6 +54,10 @@ def create_user():
     create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
     create_user_call.communicate()
 
+    com = "cp /opt/LoReAn/third_party/conf_files/environment /opt/environment"
+    create_user_call = subprocess.Popen(com, stdout=log, stderr=err, shell=True)
+    create_user_call.communicate()
+
     shutil.chown(log_file, user=name_user, group=name_user)
     shutil.chown(err_file, user=name_user, group=name_user)
 
