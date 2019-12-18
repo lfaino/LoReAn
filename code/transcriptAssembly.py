@@ -3,7 +3,6 @@
 import os
 import subprocess
 import sys
-from collections import namedtuple
 
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -51,16 +50,16 @@ def trinity(bam_file, wd, max_intron_length, threads, verbose):
     #bam_file, out_dir, max_intron_length, threads, verbose = run
 
 
-    MemInfoEntry = namedtuple('MemInfoEntry', ['value', 'unit'])
-    meminfo = {}
-    with open('/proc/meminfo') as file:
-        for line in file:
-            key, value, *unit = line.strip().split()
-            meminfo[key.rstrip(':')] = MemInfoEntry(value, unit)
-    memtotal = round((int(meminfo['MemTotal'].value)/10000000)-2)
-
-    if memtotal < threads:
-        threads = str(memtotal)
+    # MemInfoEntry = namedtuple('MemInfoEntry', ['value', 'unit'])
+    # meminfo = {}
+    # with open('/proc/meminfo') as file:
+    #     for line in file:
+    #         key, value, *unit = line.strip().split()
+    #         meminfo[key.rstrip(':')] = MemInfoEntry(value, unit)
+    # memtotal = round((int(meminfo['MemTotal'].value)/10000000)-2)
+    #
+    # if memtotal < threads:
+    #     threads = str(memtotal)
 
     out_dir = wd + 'trinity_out_dir/'
     cmd = TRINITY % (bam_file, max_intron_length, '3','10', out_dir, threads)
