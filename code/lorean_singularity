@@ -1,0 +1,2 @@
+#!/bin/bash
+/opt/LoReAn/code/lorean.py "$@"
