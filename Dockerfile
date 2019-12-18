@@ -154,7 +154,9 @@ RUN cp /opt/LoReAn/third_party/software/diamond /usr/local/bin/ && chmod 777 /us
 
 WORKDIR /opt/LoReAn/
 
-RUN cp /opt/LoReAn/code/lorean /usr/local/bin && chmod 775 /usr/local/bin/lorean
+RUN cp /opt/LoReAn/code/lorean_singularity /usr/local/bin && chmod 775 /usr/local/bin/lorean_singularity
+
+RUN cp /opt/LoReAn/code/lorean_docker /usr/local/bin && chmod 775 /usr/local/bin/lorean_docker
 
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
