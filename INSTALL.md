@@ -90,8 +90,14 @@ After Docker installation, you can download  LoReAn by using:
 docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID 
 ```
 
+and
+
+```bash
+source /opt/LoReAn/third_party/conf_files/environment
+```
+
 At this point, run
 
 ```bash
-lorean_docker -help
+lorean -help
 ```
