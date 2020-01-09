@@ -152,10 +152,10 @@ def main():
     logistic.check_create_dir(star_out)
     logistic.check_create_dir(pasa_dir)
     logistic.check_create_dir(gmap_wd)
+    logistic.check_create_dir(exonerate_wd)
     if args.interproscan:
         logistic.check_create_dir(interproscan_out_dir)
     if long_reads:
-        logistic.check_create_dir(exonerate_wd)
         consensus_wd = os.path.join(wd , 'consensus/')
         logistic.check_create_dir(consensus_wd)
     if long_reads != "" or args.short_reads != "":
