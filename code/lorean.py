@@ -287,7 +287,7 @@ def main():
         # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
                 if args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
                     now = datetime.datetime.now().strftime(fmtdate)
-                    sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:' + now + '\t###\n'))
+                    sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND EXONERATE STARTED AT:' + now + '\t###\n'))
                     queue = Queue()
                     for software in range(3):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
@@ -307,7 +307,7 @@ def main():
                 elif args.short_reads or long_reads:  # USING PROTEINS AND SHORT READS
                     logistic.check_create_dir(braker_folder)
                     now = datetime.datetime.now().strftime(fmtdate)
-                    sys.stdout.write(('###BRAKER1 (USING SHORT READS) AND AAT STARTED AT:\t' + now + '\t###\n'))
+                    sys.stdout.write(('###BRAKER1 (USING SHORT READS) AND EXONERATE STARTED AT:\t' + now + '\t###\n'))
                     queue = Queue()
                     for software in range(2):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
@@ -326,7 +326,7 @@ def main():
                 else:  # USING PROTEINS AND LONG READS
                     queue = Queue()
                     now = datetime.datetime.now().strftime(fmtdate)
-                    sys.stdout.write(('###BRAKER1 (USING LONG READS) AND AAT STARTED AT: \t' + now + '\t###\n'))
+                    sys.stdout.write(('###BRAKER1 (USING LONG READS) AND EXONERATE STARTED AT: \t' + now + '\t###\n'))
                     logistic.check_create_dir(braker_folder)
                     for software in range(2):
                         queue.put(software)  # QUEUE WITH A ZERO AND A ONE
@@ -344,7 +344,7 @@ def main():
     elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species or args.species != "" or args.upgrade != "":
         if os.path.isfile(home + "/.gm_key") and args.proteins != "":
             now = datetime.datetime.now().strftime(fmtdate)
-            sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND AAT STARTED AT:' + now + '\t###\n'))
+            sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND EXONERATE STARTED AT:' + now + '\t###\n'))
             queue = Queue()
             for software in range(3):
                 queue.put(software)  # QUEUE WITH A ZERO AND A ONE

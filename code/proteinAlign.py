@@ -76,7 +76,7 @@ def transeq(data):
 
 def protAlign(genome, fasta, nproc, wd, verbose):
     output_dimaonds = os.path.join(wd, "output_diamonds.txt")
-    output_dimaonds_done = os.path.join(wd, "output_diamonds..done.txt")
+    output_dimaonds_done = os.path.join(wd, "output_diamonds.done.txt")
     genome_dict = SeqIO.to_dict(SeqIO.parse(genome, "fasta"))
     if not os.path.exists(output_dimaonds) and not os.path.exists(output_dimaonds_done):
         translate_genome = os.path.join(wd, "test.fasta")
@@ -98,6 +98,7 @@ def protAlign(genome, fasta, nproc, wd, verbose):
             sys.stdout.write(com)
         call = subprocess.Popen(com, shell=True , cwd = wd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         call.communicate()
+        sys.stdout.write("###RUNNING DIAMOND ###\n")
         com = BLASTP % (fasta, translate_genome, str(nproc), output_dimaonds)
         if verbose:
             sys.stdout.write(com)
