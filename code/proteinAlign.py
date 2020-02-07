@@ -14,7 +14,7 @@ from Bio.SeqRecord import SeqRecord
 
 #bedtools getfasta -fo /tmp/pybedtools.423huf8a.tmp -fi /data/lfainoData/lorean/LoReAn_Example/JR2/LoReAn_annotation/run/chr8.fasta.masked.fasta.rename.fasta -bed /tmp/pybedtools.aeqgr5mv.tmp
 
-EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --percent 80 --showtargetgff yes --query %s --target %s' #--refine region
+EXONERATE = 'exonerate --model protein2genome --bestn 1  --showvulgar no --showalignment no --showquerygff no --showtargetgff yes --query %s --target %s' #--refine region
 BLASTP = 'diamond blastp -q %s --db %s -k 1 -p %s --out %s --evalue 1e-15'
 CONVERT = 'exonerate_gff_to_alignment_gff3.pl /dev/stdin '
 BEDTOOLS = 'bedtools getfasta -fo %s -fi %s -bed %s'
@@ -79,7 +79,7 @@ def protAlign(genome, fasta, nproc, wd, verbose):
     output_dimaonds_done = os.path.join(wd, "output_diamonds.done.txt")
     genome_dict = SeqIO.to_dict(SeqIO.parse(genome, "fasta"))
     if not os.path.exists(output_dimaonds) and not os.path.exists(output_dimaonds_done):
-        translate_genome = os.path.join(wd, "test.fasta")
+        translate_genome = genome + ".prot"#os.path.join(wd, "translatedProtGenome.fasta")
         results_get = []
         list_fasta = []
         for record in genome_dict:
@@ -91,19 +91,26 @@ def protAlign(genome, fasta, nproc, wd, verbose):
         for x in tqdm.tqdm(pool.imap_unordered(transeq, list_fasta), total=len(list_fasta)):
             results_get.append(x)
             pass
+        sys.stdout.write("\n###RUNNING DIAMOND MAKEDB###\n")
         with open(translate_genome, "w") as output_handle:
             SeqIO.write(results_get, output_handle, "fasta")
         com = MAKEDB % (translate_genome, translate_genome, str(nproc))
         if verbose:
             sys.stdout.write(com)
         call = subprocess.Popen(com, shell=True , cwd = wd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        call.communicate()
-        sys.stdout.write("###RUNNING DIAMOND ###\n")
+        err, out = call.communicate()
+        if verbose:
+            sys.stdout.write(err.decode())
+            sys.stdout.write(out.decode())
+        sys.stdout.write("\n###RUNNING DIAMOND ###\n")
         com = BLASTP % (fasta, translate_genome, str(nproc), output_dimaonds)
         if verbose:
             sys.stdout.write(com)
-        call = subprocess.Popen(com, shell=True, stderr=subprocess.PIPE)
-        call.communicate()
+        call = subprocess.Popen(com, shell=True, stdout= subprocess.PIPE, stderr=subprocess.PIPE)
+        err, out = call.communicate()
+        if verbose:
+            sys.stdout.write(err.decode())
+            sys.stdout.write(out.decode())
         os.mknod(output_dimaonds_done)
 
     list_match = []
@@ -115,12 +122,18 @@ def protAlign(genome, fasta, nproc, wd, verbose):
     for record in SeqIO.parse(fasta, "fasta"):
         if record.id not in record_dict:
             record_dict[record.id] = record
-
     list_fasta = []
     for align in list_match:
         if align != "":
             name_prot = align.split("\t")
-            list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[name_prot[1].split("_")[0]].seq), wd])
+            if len(name_prot) == 12:
+                chr = name_prot[1].split("_")[0]
+                #chr.pop()
+                #chr_name = "_".join(chr)
+                if verbose:
+                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, "True"])
+                else:
+                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, "False"])
     pool = Pool(processes=int(nproc))
     results_get = []
     sys.stdout.write("###RUNNING EXONERATE ###\n")
@@ -154,11 +167,12 @@ def protAlign(genome, fasta, nproc, wd, verbose):
 
 
 def runExonerate(sequence):
-    elem = sequence[0].split("\t")
-    name_prot = os.path.join(sequence[4],  elem[0] + ".fasta")
-    name_gff = os.path.join(sequence[4],  elem[0] + ".gff")
+    align, genome, prot, length, wd, verbose = sequence
+    elem = align.split("\t")
+    name_prot = os.path.join(wd,  elem[0] + ".fasta")
+    #name_gff = os.path.join(wd,  elem[0] + ".gff")
     with open(name_prot, "w") as output_handle:
-        SeqIO.write(sequence[2] , output_handle, "fasta")
+        SeqIO.write(prot , output_handle, "fasta")
     if len(elem) == 12:
         if float(elem[10]) < 1e-100:
             if elem[1].endswith("plus"):
@@ -173,8 +187,8 @@ def runExonerate(sequence):
                 else:
                     stop = str(stop)
             else:
-                stop = int(sequence[3]) - (int(elem[8]) * 3)
-                begin = int(sequence[3]) -(int(elem[9]) * 3)
+                stop = int(length) - (int(elem[8]) * 3)
+                begin = int(length) -(int(elem[9]) * 3)
                 begin = begin - 100000
                 stop = stop  + 100000
                 if begin < 0 :
@@ -185,16 +199,28 @@ def runExonerate(sequence):
                     stop = elem[3] * 3 - 3
                 else:
                     stop = str(stop)
+            #chr = elem[1].split("_")[0]
             chr = elem[1].split("_")[0]
+            #chr.pop()
+            #chr_name = "_".join(chr)
             new_coords = "\t".join([chr, begin, stop]) + "\n"
-            outfile_bed = tempfile.NamedTemporaryFile()
+            if verbose:
+                outfile_bed = tempfile.NamedTemporaryFile(delete=False, suffix=".bed")
+            else:
+                outfile_bed = tempfile.NamedTemporaryFile(suffix=".bed")
             with open(outfile_bed.name, "w") as fp:
                 fp.write(new_coords)
-            outfile_fo_fasta = tempfile.NamedTemporaryFile()
-            com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, sequence[1], outfile_bed.name)
+            if verbose:
+                outfile_fo_fasta = tempfile.NamedTemporaryFile(delete=False, suffix=".fasta")
+            else:
+                outfile_fo_fasta = tempfile.NamedTemporaryFile(suffix=".fasta")
+            com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, genome, outfile_bed.name)
             call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             call_bedtools.communicate()
+
             com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
+            if verbose:
+                sys.stdout.write(com_exo)
             #com_conv = CONVERT
             call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             #call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stdin=call_exo.stdout, stderr=subprocess.PIPE)
