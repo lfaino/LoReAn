@@ -178,4 +178,4 @@ ENV BLAST_PATH="/usr/local/bin/"
 
 ENV TMPDIR="/tmp"
 
-CMD /usr/local/bin/createUser.py
+CMD /usr/local/bin/lorean
