@@ -128,8 +128,6 @@ def protAlign(genome, fasta, nproc, wd, verbose):
             name_prot = align.split("\t")
             if len(name_prot) == 12:
                 chr = name_prot[1].split("_")[0]
-                #chr.pop()
-                #chr_name = "_".join(chr)
                 if verbose:
                     list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, "True"])
                 else:
@@ -142,7 +140,6 @@ def protAlign(genome, fasta, nproc, wd, verbose):
         pass
     match_id = 0
     final_ouput = os.path.join(wd, "protein_evidence.gff3")
-    #print(final_ouput)
     with open(final_ouput, "w") as fh:
         for match in results_get:
             match_id += 1
