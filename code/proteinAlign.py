@@ -167,7 +167,6 @@ def runExonerate(sequence):
     align, genome, prot, length, wd, verbose = sequence
     elem = align.split("\t")
     name_prot = os.path.join(wd,  elem[0] + ".fasta")
-    #name_gff = os.path.join(wd,  elem[0] + ".gff")
     with open(name_prot, "w") as output_handle:
         SeqIO.write(prot , output_handle, "fasta")
     if len(elem) == 12:
@@ -196,10 +195,7 @@ def runExonerate(sequence):
                     stop = elem[3] * 3 - 3
                 else:
                     stop = str(stop)
-            #chr = elem[1].split("_")[0]
             chr = elem[1].split("_")[0]
-            #chr.pop()
-            #chr_name = "_".join(chr)
             new_coords = "\t".join([chr, begin, stop]) + "\n"
             if verbose:
                 outfile_bed = tempfile.NamedTemporaryFile(delete=False, suffix=".bed")
@@ -214,13 +210,10 @@ def runExonerate(sequence):
             com_bedtools = BEDTOOLS % (outfile_fo_fasta.name, genome, outfile_bed.name)
             call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             call_bedtools.communicate()
-
             com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
             if verbose:
                 sys.stdout.write(com_exo)
-            #com_conv = CONVERT
             call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            #call_conv = subprocess.Popen(com_conv, shell=True, stdout=subprocess.PIPE, stdin=call_exo.stdout, stderr=subprocess.PIPE)
             output_final, err = call_exo.communicate()
             if output_final.decode != "":
                 return (output_final.decode())
