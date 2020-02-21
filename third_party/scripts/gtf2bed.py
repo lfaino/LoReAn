@@ -9,8 +9,8 @@ History
         2. If multiple identical transcript_id exist, transcript_id will be appended a string like "_DUP#" to separate.
 '''
 
-import sys;
 import re;
+import sys;
 
 if len(sys.argv)<2:
   print('This script converts .GTF into .BED annotations.\n');

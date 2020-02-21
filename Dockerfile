@@ -76,8 +76,8 @@ RUN wget --no-check-certificate http://research-pub.gene.com/gmap/src/gmap-gsnap
 RUN wget --no-check-certificate http://faculty.virginia.edu/wrpearson/fasta/fasta36/fasta-36.3.8g.tar.gz && tar -zxvf fasta-36.3.8g.tar.gz && rm fasta-36.3.8g.tar.gz &&\
     cd fasta-36.3.8g/src && make -f ../make/Makefile.linux fasta36 && cp /opt/LoReAn/third_party/software/fasta-36.3.8g/bin/fasta36 /usr/local/bin/fasta
 
-RUN wget --no-check-certificate  https://github.com/Gaius-Augustus/BRAKER/archive/v2.1.4.tar.gz && tar -zxvf v2.1.4.tar.gz &&\
-    mv BRAKER-2.1.4 BRAKER && cd BRAKER && chmod -R 777 scripts/ ##&& ln -s /opt/LoReAn/third_party/software/BRAKER/
+RUN wget --no-check-certificate  https://github.com/Gaius-Augustus/BRAKER/archive/v2.1.5.tar.gz && tar -zxvf v2.1.5.tar.gz &&\
+    mv BRAKER-2.1.5 BRAKER && cd BRAKER && chmod -R 777 scripts/ ##&& ln -s /opt/LoReAn/third_party/software/BRAKER/
 
 
 RUN wget --no-check-certificate https://github.com/EVidenceModeler/EVidenceModeler/archive/v1.1.1.tar.gz && tar -zxvf v1.1.1.tar.gz && rm v1.1.1.tar.gz
