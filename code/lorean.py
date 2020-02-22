@@ -79,8 +79,8 @@ def main():
         wd = temp_dir.name
 
     if args.upgrade == "":
-        if not os.path.isfile(home + "/.gm_key"):
-            sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE gm_key IS IN THE HOME FOLDER#####\n")
+        #if not os.path.isfile(home + "/.gm_key"):
+        #    sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE gm_key IS IN THE HOME FOLDER#####\n")
         if args.proteins == "":
             sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN OPTION IS SET#####\n")
 
@@ -281,7 +281,8 @@ def main():
         # Launch PASA
 
         if args.upgrade == "":
-            if os.path.isfile(home + "/.gm_key") and args.proteins != "":
+            #if os.path.isfile(home + "/.gm_key") and args.proteins != "":
+            if args.proteins != "":
                 pasa_gff3 = pasa.pasa_call(pasa_dir, pasadb, ref_rename, trinity_out, args.max_intron_length,
                                            threads_use, args.verbose)
         # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
@@ -342,7 +343,8 @@ def main():
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                     merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species or args.species != "" or args.upgrade != "":
-        if os.path.isfile(home + "/.gm_key") and args.proteins != "":
+        #if os.path.isfile(home + "/.gm_key") and args.proteins != "":
+        if args.proteins != "":
             now = datetime.datetime.now().strftime(fmtdate)
             sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND EXONERATE STARTED AT:' + now + '\t###\n'))
             queue = Queue()
