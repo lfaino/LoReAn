@@ -1,11 +1,13 @@
 FROM ubuntu:xenial
 
-RUN apt-get clean all && apt-get update && apt-get install -y -q build-essential git wget perl \
+RUN apt-get clean all && apt-get update && apt-get install -y -q --fix-missing build-essential git wget perl \
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
-    bamtools libbamtools-dev liblzma-dev automake autoconf hmmer
+    bamtools libbamtools-dev liblzma-dev automake autoconf hmmer libssl-dev libmysqlclient-dev mysql-client libsqlite3-dev libmysql++-dev \
+    libgsl-dev libboost-all-dev libsuitesparse-dev liblpsolve55-dev libboost-iostreams-dev zlib1g-dev libbamtools-dev libbz2-dev \
+    liblzma-dev libncurses5-dev libssl-dev libcurl3-dev libboost-all-dev
 
 RUN pip install --upgrade pip && pip3 install numpy==1.17.1 biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
     pybedtools==0.7.8 gffutils==0.9 regex==2019.8.19 pysam==0.15.3 progressbar2==3.43.1 \
@@ -52,10 +54,10 @@ RUN wget --no-check-certificate https://github.com/samtools/samtools/releases/do
     tar -xvf samtools-1.9.tar && mv samtools-1.9 samtools && cd samtools && autoheader && \
     autoconf -Wno-syntax && ./configure && make && sudo make install
 
-RUN apt-get update && apt-get install -y -q --fix-missing libcurl4-gnutls-dev libssl-dev
-
-RUN export TOOLDIR=/opt/LoReAn/third_party/software && wget --no-check-certificate https://github.com/Gaius-Augustus/Augustus/releases/download/v3.3.3/augustus-3.3.3.tar.gz &&\
-    tar -zxvf augustus-3.3.3.tar.gz && mv augustus-3.3.3 augustus && cd augustus  && make clean && make
+RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
+    #wget --no-check-certificate https://github.com/Gaius-Augustus/Augustus/releases/download/v3.3.3/augustus-3.3.3.tar.gz &&\
+    #tar -zxvf augustus-3.3.3.tar.gz &&
+    mv Augustus augustus && cd augustus  && make clean && make
 
 RUN wget --no-check-certificate https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.8.5.tar.gz && tar -zxvf Trinity-v2.8.5.tar.gz && \
     mv trinityrnaseq-Trinity-v2.8.5 Trinity && rm Trinity-v2.8.5.tar.gz && cd Trinity && make && make plugins

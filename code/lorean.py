@@ -565,23 +565,18 @@ def main():
         sys.stdout.write(update6)
     final_update_update = grs.genename_last(update6, args.prefix_gene, args.verbose, pasa_dir, dict_ref_name, "lorean")
     final_files.append(final_update_update)
-
     final_update_stats = evmPipeline.gff3_stats(final_update_update, pasa_dir)
     final_files.append(final_update_stats)
-
     if "command" not in (iprscan_log.decode("utf-8")) and args.interproscan:
         annot, bad_models = iprscan.iprscan(masked_ref, final_update_update, interproscan_out_dir, args.threads)
         final_files.append(annot)
         final_files.append(bad_models)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(('###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
-
     final_output_dir = os.path.join(output_dir,  args.species + '_output')
-
     logistic.check_create_dir(final_output_dir)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
-
     for filename in final_files:
         if filename != '':
             logistic.copy_file(filename, final_output_dir)
@@ -592,16 +587,6 @@ def main():
     sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
 
 
-
-
 if __name__ == '__main__':
     realstart = time.perf_counter()
     main()
-    realend = time.perf_counter()
-    realt = round(realend - realstart)
-    m, s = divmod(realt, 60)
-    h, m = divmod(m, 60)
-    d, h = divmod(h, 24)
-    sys.stdout.write(
-        "###LOREAN FINISHED WITHOUT ERRORS IN:" + " " + str(d) + " days " + str(h) + " hours " + str(m) + " min " + str(
-            s) + " sec\t###\n")

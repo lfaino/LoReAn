@@ -112,12 +112,10 @@ def protAlign(genome, fasta, nproc, wd, verbose):
             sys.stdout.write(err.decode())
             sys.stdout.write(out.decode())
         os.mknod(output_dimaonds_done)
-
     list_match = []
     with open(output_dimaonds, "r") as fh:
         for line in fh:
             list_match.append(line)
-
     record_dict = {}
     for record in SeqIO.parse(fasta, "fasta"):
         if record.id not in record_dict:
@@ -160,7 +158,7 @@ def protAlign(genome, fasta, nproc, wd, verbose):
                             elem[2] = "nucleotide_to_protein_match"
                             elem[1] = "exonerate"
                             fh.write("\t".join(elem) + "\n")
-    return(final_ouput)
+    return final_ouput
 
 
 def runExonerate(sequence):
@@ -216,7 +214,7 @@ def runExonerate(sequence):
             call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output_final, err = call_exo.communicate()
             if output_final.decode != "":
-                return (output_final.decode())
+                return output_final.decode()
 
 
 if __name__ == '__main__':
