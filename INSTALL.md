@@ -3,7 +3,7 @@
 ## IMPORTANT
 LoReAn uses GeneMark-ES as *ab-initio* software which needs a license key to run. 
 
-Therefore, **IT IS MANDATORY TO** download the 64 bit Linux version key for [**GeneMark-ES/ET v.4.33 website**](http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
+Therefore, **IT IS MANDATORY TO** download the 64 bit Linux version key for [**GeneMark-ES/ET v.4.48_3.60 website**](http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in the right location.
 
 
 # LoReAn using SINGULARITY.
@@ -33,10 +33,10 @@ mv gm_key_64 ~/.gm_key
 In order to run **LoReAn** by **Singularity exec** command, you need to download and unzip these two files:
 
 ```bash
-wget https://github.com/lfaino/LoReAn/raw/noIPRS/third_party/software/config.augustus.tar.gz && tar -zxvf config.augustus.tar.gz
+wget https://github.com/lfaino/LoReAn/blob/master/third_party/software/RepeatMasker.Libraries.tar.gz && tar -zxvf config.augustus.tar.gz
 ```
 ```bash
-wget https://github.com/lfaino/LoReAn/raw/noIPRS/third_party/software/RepeatMasker.Libraries.tar.gz && tar -zxvf RepeatMasker.Libraries.tar.gz
+wget https://github.com/lfaino/LoReAn/blob/master/third_party/software/RepeatMasker.Libraries.tar.gz && tar -zxvf RepeatMasker.Libraries.tar.gz
 ```    
 The firts file is the configuration folder from Augustus software (see below <PATH_TO_AUGUSTUS_CONF_FOLDER>) while the 
 second file is the Libraries folder of RepeatMasker software (see below <PATH_TO_LIBRARY_FOLDER>)
@@ -53,8 +53,7 @@ singularity pull docker://lfaino/lorean:latest
 Now, check if  **LoReAn** works by
  
  ```bash
- 
-singularity exec -B <PATH_TO_AUGUSTUS_CONF_FOLDER>:/opt/LoReAn/third_party/software/augustus/config/ -B 
+ singularity exec -B <PATH_TO_AUGUSTUS_CONF_FOLDER>:/opt/LoReAn/third_party/software/augustus/config/ -B 
 <PATH_TO_LIBRARY_FOLDER>:/usr/local/RepeatMasker/Libraries/ <PATH_TO_LOREAN_IMAGE>/lorean_latest.sif lorean -h
 
  ```
@@ -75,8 +74,18 @@ After the installation run Docker Quickstart Terminal and follow the instruction
 ### IMPORTANT
 LoReAn uses GeneMark-ES as ab-initio software which needs a license key to run. 
 
-Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.48"** website (http://exon.gatech.edu/GeneMark/license_download.cgi), un-gunzip the key and place it in 
-the folder together with your data.
+Therefore, **IT IS MANDATORY TO download the 64 bit Linux version key for "GeneMark-ES / ET v.4.48"** website 
+(http://exon.gatech.edu/GeneMark/license_download.cgi) and follow  the intruction for the key.
+
+The first step is to place the ***GeneMark key*** in the home directory of the user running **SINGULARITY**. In Ubuntu, 
+the end result would be **~/.gm_key**
+   
+
+```bash
+cd Downloads
+gunzip gm_key_64.gz
+mv gm_key_64 ~/.gm_key
+```
 
 The best way to use LoReAn is by installing and running the software by Docker
 We used Docker because the pipeline uses a lot of software which maybe difficult to install independently.
@@ -85,19 +94,8 @@ We used Docker because the pipeline uses a lot of software which maybe difficult
 To install Docker, please refer to:
 https://docs.docker.com/engine/installation/
 
-After Docker installation, you can download  LoReAn by using:
+After Docker installation, you can download LoReAn by using:
 ```bash
-docker run -it --rm -v $PWD:/data lfaino/lorean createUser.py $USER $UID 
-```
-
-and
-
-```bash
-source /opt/LoReAn/third_party/conf_files/environment
-```
-
-At this point, run
-
-```bash
-lorean -help
+docker run -it --rm -v <PATH_TO_AUGUSTUS_CONF_FOLDER>:/opt/LoReAn/third_party/software/augustus/config/  
+-v $HOME:/home/lorean  -v $PWD:/data -u $(id -u ${USER}):$(id -g ${USER}) lfaino/lorean:latest lorean -h
 ```
