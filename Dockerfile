@@ -28,8 +28,8 @@ RUN mv trf /usr/local/bin/
 
 RUN tar -zxvf Porechop.tar.gz && cd Porechop && make clean && make && cp porechop/cpp_functions.so  /opt/LoReAn/code/
 
-RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
- sudo ./configure --prefix=$PWD && sudo make && sudo make install
+#RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
+# sudo ./configure --prefix=$PWD && sudo make && sudo make install
 
 RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64_4.48_3.60.tar.gz && rm gm_et_linux_64_4.48_3.60.tar.gz
 
