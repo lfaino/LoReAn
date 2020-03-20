@@ -46,7 +46,7 @@ def setting():
     parser.add_argument("-pasa","--pasa_db", nargs="?", default="", help="PASA database name [pipeline_run]")
     parser.add_argument("-n","--prefix_gene", nargs="?", default="species", help="Prefix to add to the final Gff3 gene "
                                                                                  "name [specie]")
-    parser.add_argument("-o","--out_dir", nargs="?", default="", help="In this path all the files will be stored")
+    parser.add_argument("-o","--out_dir", nargs="?", default="annotation", help="In this path all the files will be stored")
     parser.add_argument("-w", "--working_dir", nargs="?", default="annotation",
                         help="Working directory (will create if not present)")
     parser.add_argument("-t","--threads", nargs="?", default="3", help="Number of threads [3]", metavar='N')

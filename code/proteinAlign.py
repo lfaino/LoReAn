@@ -91,7 +91,7 @@ def protAlign(genome, fasta, nproc, wd, verbose):
         for x in tqdm.tqdm(pool.imap_unordered(transeq, list_fasta), total=len(list_fasta)):
             results_get.append(x)
             pass
-        sys.stdout.write("\n###RUNNING DIAMOND MAKEDB###\n")
+        sys.stdout.write("###RUNNING DIAMOND MAKEDB###\n")
         with open(translate_genome, "w") as output_handle:
             SeqIO.write(results_get, output_handle, "fasta")
         com = MAKEDB % (translate_genome, translate_genome, str(nproc))
@@ -102,7 +102,7 @@ def protAlign(genome, fasta, nproc, wd, verbose):
         if verbose:
             sys.stdout.write(err.decode())
             sys.stdout.write(out.decode())
-        sys.stdout.write("\n###RUNNING DIAMOND ###\n")
+        sys.stdout.write("###RUNNING DIAMOND ###\n")
         com = BLASTP % (fasta, translate_genome, str(nproc), output_dimaonds)
         if verbose:
             sys.stdout.write(com)
@@ -127,9 +127,9 @@ def protAlign(genome, fasta, nproc, wd, verbose):
             if len(name_prot) == 12:
                 chr = name_prot[1].split("_")[0]
                 if verbose:
-                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, "True"])
+                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, verbose])
                 else:
-                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, "False"])
+                    list_fasta.append([align, genome, record_dict[name_prot[0]], len(genome_dict[chr].seq), wd, verbose])
     pool = Pool(processes=int(nproc))
     results_get = []
     sys.stdout.write("###RUNNING EXONERATE ###\n")

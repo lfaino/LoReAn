@@ -13,7 +13,6 @@ import random
 import shutil
 import string
 import sys
-import tempfile
 import time
 from queue import Queue
 from threading import Thread
@@ -60,43 +59,42 @@ def main():
     # Useful variables for later
     root = os.getcwd()
 
-    if args.out_dir != "" and args.out_dir.startswith("/"):
-        output_dir = os.path.join(args.out_dir, "LoReAn" + args.working_dir)
-    else:
-        output_dir = os.path.join(root, "LoReAn_" + args.working_dir)
-
+    #if args.out_dir != "":# and args.out_dir.startswith("/"):
+    #    output_dir = os.path.join(root, "LoReAn" + args.out_dir)
+    #else:
+    output_dir = os.path.join(root, "LoReAn_" + args.out_dir)
     logistic.check_create_dir(output_dir)
-
-
-    if args.keep_tmp:
-        wd = os.path.join(output_dir, "run/")
-        logistic.check_create_dir(wd)
-    elif args.verbose:
-        wd = os.path.join(output_dir, "run/")
-        logistic.check_create_dir(wd)
-    else:
-        temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
-        wd = temp_dir.name
+    #if args.keep_tmp:
+    wd = os.path.join(output_dir, "run/")
+    logistic.check_create_dir(wd)
+    #elif args.verbose:
+    #    wd = os.path.join(output_dir, "run/")
+    #    logistic.check_create_dir(wd)
+    #else:
+    #    temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
+    #    wd = temp_dir.name
 
     if args.upgrade == "":
         #if not os.path.isfile(home + "/.gm_key"):
         #    sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE gm_key IS IN THE HOME FOLDER#####\n")
         if args.proteins == "":
+            if not args.keep_tmp or not args.verbose:
+                shutil.rmtree(wd)
             sys.exit("#####LOREAN STOPS HERE. CHECK THAT THE PROTEIN OPTION IS SET#####\n")
-
-    if args.stranded or args.adapter:
-        if args.adapter == '':
-            adapter_value = True
-            sys.stdout.write('### RUNNING IN STRAND MODE AND FINDING ADAPTER AUTOMATICALLY ###\n')
-            stranded_value = True
+    if args.long_reads != "":
+        if args.stranded or args.adapter:
+            if args.adapter == '':
+                adapter_value = True
+                sys.stdout.write('### RUNNING IN STRAND MODE AND FINDING ADAPTER AUTOMATICALLY ###\n')
+                stranded_value = True
+            else:
+                adapter_value = args.adapter
+                sys.stdout.write('### RUNNING IN STRAND MODE AND USING ADAPTER PROVIDED ###\n')
+                stranded_value = True
         else:
-            adapter_value = args.adapter
-            sys.stdout.write('### RUNNING IN STRAND MODE AND USING ADAPTER PROVIDED ###\n')
-            stranded_value = True
-    else:
-        stranded_value = False
-        sys.stdout.write('### RUNNING IN NON-STRAND MODE ###\n')
-        adapter_value = False
+            stranded_value = False
+            sys.stdout.write('### RUNNING IN NON-STRAND MODE ###\n')
+            adapter_value = False
     ref_orig = os.path.abspath(args.reference)
     ref_link = os.path.join(wd, args.reference)
     if not os.path.exists(ref_link):
@@ -117,6 +115,8 @@ def main():
         external_file = ''
     if args.upgrade == "":
         if args.species == "":
+            if not args.keep_tmp or not args.verbose:
+                shutil.rmtree(wd)
             sys.exit("#####PLEASE DEFINE A SPECIES NAME\t" + now + "\t#####\n")
         else:
             if args.short_reads == '' and long_reads == '':
@@ -364,6 +364,8 @@ def main():
             merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     else:
         now = datetime.datetime.now().strftime(fmtdate)
+        if not args.keep_tmp or not args.verbose:
+            shutil.rmtree(wd)
         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t" + now + "\t#####\n")
     # Prepare EVM input files
     now = datetime.datetime.now().strftime(fmtdate)
@@ -426,7 +428,7 @@ def main():
                     annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                     final_files.append(annot)
                     final_files.append(bad_models)
-                final_output_dir = os.path.join(output_dir, args.species + '_output')
+                final_output_dir = os.path.join(output_dir, args.out_dir + '_output')
                 logistic.check_create_dir(final_output_dir)
                 for filename in final_files:
                     if filename != '':
@@ -434,6 +436,8 @@ def main():
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
                 now = datetime.datetime.now().strftime(fmtdate)
+                if not args.keep_tmp or not args.verbose:
+                    shutil.rmtree(wd)
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
             else:
@@ -455,7 +459,7 @@ def main():
                 annot, bad_models = iprscan.iprscan(masked_ref, final_update_all, interproscan_out_dir, args.threads)
                 final_files.append(annot)
                 final_files.append(bad_models)
-            final_output_dir = os.path.join(output_dir, args.species + '_output')
+            final_output_dir = os.path.join(output_dir, args.out_dir + '_output')
             logistic.check_create_dir(final_output_dir)
             for filename in final_files:
                 if filename != '':
@@ -463,6 +467,8 @@ def main():
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
             now = datetime.datetime.now().strftime(fmtdate)
+            if not args.keep_tmp or not args.verbose:
+                shutil.rmtree(wd)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
     else:
         final_evm = grs.genename_evm(args.upgrade, args.verbose, evm_output_dir, dict_ref_name, args.upgrade)
@@ -573,7 +579,7 @@ def main():
         final_files.append(bad_models)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(('###CREATING OUTPUT DIRECTORY\t' + now + '\t###\n'))
-    final_output_dir = os.path.join(output_dir,  args.species + '_output')
+    final_output_dir = os.path.join(output_dir,  args.out_dir + '_output')
     logistic.check_create_dir(final_output_dir)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
@@ -582,8 +588,8 @@ def main():
             logistic.copy_file(filename, final_output_dir)
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
-    if not args.keep_tmp:
-        temp_dir.cleanup()
+    if not args.keep_tmp or not args.verbose:
+        shutil.rmtree(wd)
     sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
 
 
