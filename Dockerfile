@@ -1,20 +1,21 @@
-FROM ubuntu:xenial
+FROM ubuntu:bionic
 
 RUN apt-get clean all && apt-get update && apt-get install -y -q --fix-missing build-essential git wget perl \
     python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
-    bamtools libbamtools-dev liblzma-dev automake autoconf hmmer libssl-dev libmysqlclient-dev mysql-client libsqlite3-dev libmysql++-dev \
+    bamtools libbamtools-dev liblzma-dev automake autoconf libssl-dev libmysqlclient-dev mysql-client libsqlite3-dev libmysql++-dev \
     libgsl-dev libboost-all-dev libsuitesparse-dev liblpsolve55-dev libboost-iostreams-dev zlib1g-dev libbamtools-dev libbz2-dev \
-    liblzma-dev libncurses5-dev libssl-dev libcurl3-dev libboost-all-dev
+    liblzma-dev libncurses5-dev libssl-dev libcurl3-dev libboost-all-dev hmmer
 
-RUN pip install --upgrade pip && pip3 install numpy==1.17.1 biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
+RUN pip install --upgrade pip && pip3 install numpy==1.17.1
+
+RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
     pybedtools==0.7.8 gffutils==0.9 regex==2019.8.19 pysam==0.15.3 progressbar2==3.43.1 \
     psutil==5.6.3 memory_profiler==0.55.0 pathlib==1.0.1 colorama==0.4.1 simplesam==0.1.3 tqdm==4.35.0 \
-    argcomplete==1.10.0 argh==0.26.2 ordereddict==1.1 pycurl==7.43.0 pyfaidx==0.5.5.2 pygobject==3.20.0 python-apt \
+    argcomplete==1.10.0 argh==0.26.2 ordereddict==1.1 pycurl==7.43.0 pyfaidx==0.5.5.2 pygobject python-apt \
     python-dateutil==2.8.0 python-utils==2.3.0 pytz==2019.2 simplejson==3.16.0 six==1.12.0 unattended-upgrades==0.1
-
 
 WORKDIR /opt/
 
@@ -28,12 +29,9 @@ RUN mv trf /usr/local/bin/
 
 RUN tar -zxvf Porechop.tar.gz && cd Porechop && make clean && make && cp porechop/cpp_functions.so  /opt/LoReAn/code/
 
-#RUN tar -zxvf AATpackage-r03052011.tgz && rm AATpackage-r03052011.tgz && cd AATpackage-r03052011 && make clean &&\
-# sudo ./configure --prefix=$PWD && sudo make && sudo make install
-
 RUN tar -zxvf iAssembler-v1.3.2.x64.tgz && rm iAssembler-v1.3.2.x64.tgz && tar -zxvf gm_et_linux_64_4.48_3.60.tar.gz && rm gm_et_linux_64_4.48_3.60.tar.gz
 
-RUN tar -zxvf SE-MEI.tar.gz && cd SE-MEI && make
+RUN git clone --recursive https://github.com/dpryan79/SE-MEI.git && cd SE-MEI && make
 
 RUN wget --no-check-certificate https://github.com/PASApipeline/PASApipeline/releases/download/pasa-v2.3.3/PASApipeline-v2.3.3.tar.gz && \
     tar -zxvf PASApipeline-v2.3.3.tar.gz  && rm PASApipeline-v2.3.3.tar.gz && mv PASApipeline-v2.3.3 PASApipeline && \
@@ -55,8 +53,6 @@ RUN wget --no-check-certificate https://github.com/samtools/samtools/releases/do
     autoconf -Wno-syntax && ./configure && make && sudo make install
 
 RUN export TOOLDIR=/opt/LoReAn/third_party/software && git clone https://github.com/Gaius-Augustus/Augustus.git &&\
-    #wget --no-check-certificate https://github.com/Gaius-Augustus/Augustus/releases/download/v3.3.3/augustus-3.3.3.tar.gz &&\
-    #tar -zxvf augustus-3.3.3.tar.gz &&
     mv Augustus augustus && cd augustus  && make clean && make
 
 RUN wget --no-check-certificate https://github.com/trinityrnaseq/trinityrnaseq/archive/Trinity-v2.8.5.tar.gz && tar -zxvf Trinity-v2.8.5.tar.gz && \
@@ -89,7 +85,8 @@ RUN sudo perl -MCPAN -e shell && sudo cpan -f -i YAML && sudo cpan -f -i Hash::M
 
 RUN git clone https://github.com/gpertea/gclib && git clone https://github.com/gpertea/gffread && cd gffread && make release
 
-RUN wget --no-check-certificate http://genometools.org/pub/genometools-1.5.9.tar.gz && tar -zxvf genometools-1.5.9.tar.gz && rm genometools-1.5.9.tar.gz && cd genometools-1.5.9 && make
+RUN wget --no-check-certificate http://genometools.org/pub/binary_distributions/gt-1.6.0-Linux_x86_64_x86_64-64bit.tar.gz \
+    && tar -zxvf gt-1.6.0-Linux_x86_64_x86_64-64bit.tar.gz && mv gt-1.6.0-Linux_x86_64_x86_64-64bit genometools
 
 RUN cp ../../code/createUser.py /usr/local/bin && chmod 775 /usr/local/bin/createUser.py
 
@@ -100,31 +97,6 @@ RUN sudo chmod -R 775 /opt/LoReAn/code/
 RUN wget --no-check-certificate http://genomethreader.org/distributions/gth-1.7.3-Linux_x86_64-64bit.tar.gz && tar -zxvf gth-1.7.3-Linux_x86_64-64bit.tar.gz
 
 RUN git clone  https://github.com/gpertea/cdbfasta.git && cd cdbfasta/ && make
-
-#COPY interproscan-5.27-66.0-64-bit.tar.gz ./
-
-#RUN tar -pxvzf interproscan-5.27-66.0-64-bit.tar.gz && rm interproscan-5.27-66.0-64-bit.tar.gz
-
-#WORKDIR /opt/LoReAn/third_party/software/interproscan-5.27-66.0
-
-#RUN mkdir cddblast
-
-#COPY ncbi-blast-2.7.1+-x64-linux.tar.gz ./cddblast
-
-#RUN cd cddblast && tar -zxvf ncbi-blast-2.7.1+-x64-linux.tar.gz && cp -r ncbi-blast-2.7.1+ ../bin/blast
-
-#COPY signalp-4.1f.Linux.tar.gz ./
-
-#RUN  tar -xzf signalp-4.1f.Linux.tar.gz -C bin/signalp/4.1 --strip-components 1 && rm signalp-4.1f.Linux.tar.gz
-
-#COPY signalp-4.1/signalp bin/signalp/4.1/
-
-#RUN mkdir /data_panther
-
-#COPY tmhmm-2.0c.Linux.tar.gz ./
-
-#RUN  tar -xzf tmhmm-2.0c.Linux.tar.gz -C ./ && cp tmhmm-2.0c/bin/decodeanhmm.Linux_x86_64  bin/tmhmm/2.0c/decodeanhmm && \
-#     cp tmhmm-2.0c/lib/TMHMM2.0.model  data/tmhmm/2.0c/TMHMM2.0c.model
 
 RUN rm *.tar.gz
 
@@ -165,13 +137,15 @@ RUN cp /opt/LoReAn/code/lorean /usr/local/bin/ && chmod -R 775 /usr/local/bin/ &
 
 RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
 
+RUN wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/fastqToFa && mv fastqToFa /usr/local/bin && chmod 775 /usr/local/bin/fastqToFa
+
 WORKDIR /data/
 
 RUN mkdir /home/lorean
 
 ENV HOME="/home/lorean"
 
-ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:/opt/LoReAn/third_party/software/gm_et_linux_64:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools-1.5.9/bin:/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/:/opt/LoReAn/third_party/software/gffread:/opt/LoReAn/third_party/software/gth-1.7.3-Linux_x86_64-64bit/bin:/opt/LoReAn/third_party/software/cdbfasta/"
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:/opt/LoReAn/third_party/software/gm_et_linux_64:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools/bin:/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/:/opt/LoReAn/third_party/software/gffread:/opt/LoReAn/third_party/software/gth-1.7.3-Linux_x86_64-64bit/bin:/opt/LoReAn/third_party/software/cdbfasta/:/opt/RepeatMasker:/opt/RepeatMasker/util:/opt/RepeatModeler:/opt/RepeatModeler/util:/opt/coseg"
 
 ENV AUGUSTUS_BIN_PATH="/opt/LoReAn/third_party/software/augustus/bin/"
 
@@ -194,5 +168,7 @@ ENV SAMTOOLS_PATH="/usr/local/bin/"
 ENV BLAST_PATH="/usr/local/bin/"
 
 ENV TMPDIR="/tmp"
+
+ENV LANG=C
 
 CMD /usr/local/bin/lorean

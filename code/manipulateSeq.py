@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 import datetime
-import gzip
 import os
 import subprocess
 import sys
 import tempfile
-from glob import glob
-from pathlib import Path
 
 import align as align
 import mapping
@@ -39,7 +36,6 @@ REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
 
 def adapter_find(reference_database, reads, threads, max_intron_length, working_dir, verbose):
     subset_fasta = reads + "subset.10000.fasta"
-    count_reads = 0
     with open(subset_fasta, "w") as fh:
         for rec in SeqIO.parse(reads, "fasta"):
             if int(rec.id) < 10000:
@@ -47,8 +43,8 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
 
     bam = mapping.minimap(reference_database, subset_fasta, threads, max_intron_length, working_dir, verbose)
     #soft_clip_regions = soft_clip(bam)
-    fasta_gz = bam + ".fasta.gz"
-    cmd = "extractSoftclipped %s > %s" % (bam, fasta_gz)
+    fasta_gz = bam + ".fasta"
+    cmd = "extractSoftclipped %s | zcat | fastqToFa /dev/stdin %s" % (bam, fasta_gz)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % cmd)
     extract_clip = subprocess.Popen(cmd, cwd=working_dir, shell=True)
@@ -57,7 +53,7 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
     list_short = []
     list_long = []
     dict_uniq = {}
-    with gzip.open(fasta_gz, "rt") as handle:
+    with open(fasta_gz, "r") as handle:
         for rec in SeqIO.parse(handle, "fasta"):
             name_seq = str(rec.id)
             name = name_seq.split("_")[0]
@@ -77,8 +73,6 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
     with open(short_file, "w") as fh:
         SeqIO.write(list_short, fh, "fasta")
     list_file_clip = [(long_file, "long"),(short_file,"short")]
-
-    list_file_adapter = []
     for clip_file in list_file_clip:
         kmer_start = 21
         list_kmer = []
@@ -103,16 +97,17 @@ def adapter_find(reference_database, reads, threads, max_intron_length, working_
             data_kmer = (kmer_start, mer, GC(mer), (bias_count/kmer_start)*100,  (bias_count/kmer_start)*100 - GC(mer) )
             list_kmer.append(data_kmer)
             kmer_start += 5
-
         value_adapter = 0
         for i in list_kmer:
             if i[4] > int(value_adapter):
                 value_adapter = i[4]
                 kmer_done = i[1]
+
     adapter_file = os.path.join(working_dir, "adapter.fasta")
-    with open(adapter_file, "w") as fh:
-        record = SeqRecord(Seq(str(kmer_done)), id="adapter")
-        SeqIO.write(record, fh, "fasta")
+    if value_adapter > 0:
+        with open(adapter_file, "w") as fh:
+            record = SeqRecord(Seq(str(kmer_done)), id="adapter")
+            SeqIO.write(record, fh, "fasta")
     return adapter_file
 
 def soft_clip(long_sam):
@@ -164,10 +159,20 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     if stranded and adapter:
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
+            if os.path.getsize(adapter_aaa) == 0:
+                sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
+                stranded_value = False
+                fmtdate = '%H:%M:%S %d-%m'
+                now = datetime.datetime.now().strftime(fmtdate)
+                sys.stdout.write(
+                    "###FINISHED FILTERING AT:\t" + now + "###\n###LOREAN KEPT\t\033[32m" + str(len(sizes)) +
+                    "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
+                return out_filename, stranded_value
         else:
             adapter_aaa = adapter
         out_filename_oriented = os.path.join(wd, fastq_filename.split("/")[-1] + '.longreads.filtered.oriented.fasta')
-        filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value, out_filename_oriented, threads, min_length)
+        filter_count, out_filename_oriented, stranded_value= align.adapter_alignment(out_filename, adapter_aaa, scoring, align_score_value,
+                                                                                     out_filename_oriented, threads, min_length)
         fmtdate = '%H:%M:%S %d-%m'
         now = datetime.datetime.now().strftime(fmtdate)
         if stranded_value:
@@ -178,7 +183,6 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                              "\033[0m\tREADS AFTER LENGTH FILTERING###\n")
         return out_filename_oriented, stranded_value
     else:
-        print("out")
         sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
         stranded_value = False
         fmtdate = '%H:%M:%S %d-%m'
@@ -217,12 +221,10 @@ def maskedgenome(wd, ref, gff3, length, verbose):
 
 def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
 
-    name_gff = genome.split("/")[-1] + ".out.gff"
-    gff_path = Path(working_dir + "/" + genome.split("/")[-1] + ".out.gff")
+    #name_gff = genome.split("/")[-1] + ".out.gff"
+    gff_path = os.path.join(working_dir, genome.split("/")[-1] + ".masked")
 
-    if gff_path.is_file():
-        gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
-    else:
+    if not os.path.exists(gff_path):
         sys.stdout.write("###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
         freq_file = working_dir + genome.split("/")[-1] + ".freq"
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
@@ -254,10 +256,11 @@ def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
             sys.stdout.write(cmd)
         mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         mask.communicate()
-        gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
+        #gff_path = os.path.join(working_dir,
+        #gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
 
-    genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
-    return genome_masked
+    #genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
+    return gff_path
 
 
 if __name__ == '__main__':

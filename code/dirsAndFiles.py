@@ -73,23 +73,13 @@ def catTwoBeds(gmap_bam, evm_orig, verbose, wd):
     err = tempfile.NamedTemporaryFile()
     outFilename = wd + 'mergedGmapEvm.beforeAssembly.gff3'
     evm = evm_orig
-    gtf = evm + ".gtf"
-    bed12_evm = evm + ".bed12"
-    bed12file = open(bed12_evm, "w")
-    gtffile = open(gtf, "w")
-    gffread_con = GFFREAD % evm
+    gtf = evm + ".gtf.bed12"
+
+    gffread_con = 'gffread -o- -T %s | gtf2bed.py transcripts /dev/stdin > %s' % (evm, gtf)
     if verbose:
         sys.stderr.write('Executing: %s\n\n' % gffread_con)
-    gffread_call = subprocess.Popen(gffread_con, stdout=gtffile, stderr=err, shell=True)
+    gffread_call = subprocess.Popen(gffread_con, stderr=err, shell=True)
     gffread_call.communicate()
-    err = tempfile.NamedTemporaryFile()
-    gft2bed = GTF2BED % gtf
-    if verbose:
-        sys.stderr.write('Executing: %s\n\n' % gft2bed)
-    evm_call = subprocess.Popen(gft2bed, stdout=bed12file, stderr=err, shell=True)
-    evm_call.communicate()
-    #bed12_evm = tmp.name
-
     bed12_gmap = gmap_bam + ".bed12"
     bed12gmapfile = open(bed12_gmap, "w")
     bedtools = BEDTOOLS % gmap_bam
@@ -99,7 +89,7 @@ def catTwoBeds(gmap_bam, evm_orig, verbose, wd):
     bedtools_call = subprocess.Popen(bedtools, stdout=bed12gmapfile, stderr=err, shell=True)
     bedtools_call.communicate()
     inFile1 = open(bed12_gmap, 'r')
-    inFile2 = open(bed12_evm, 'r')
+    inFile2 = open(gtf, 'r')
 
     outFile = open(outFilename, 'w')
     for File in [inFile1, inFile2]:
@@ -108,23 +98,20 @@ def catTwoBeds(gmap_bam, evm_orig, verbose, wd):
     inFile1.close()
     inFile2.close()
     outFile.close()
+
     outNameNew = outFilename + 'new.bed'
-    lastFile = open(outFilename, 'r')
-    o = open(outNameNew, 'w')
-    countLine = 0
-    for line in lastFile:
-        countLine += 1
-        linenew = line.split('\t')
-        if "evm" in linenew[3]:
-            o.write(line)
-        else:
-            linenew[3] = str(countLine)
-            aline = '\t'.join(linenew)
-            o.write(aline)
-    o.close()
+    with open(outFilename, 'r') as fh, open(outNameNew, 'w') as fhw:
+        countLine = 0
+        for line in fh:
+            countLine += 1
+            linenew = line.split('\t')
+            if "evm" in linenew[3]:
+                fhw.write(line)
+            else:
+                linenew[3] = str(countLine)
+                aline = '\t'.join(linenew)
+                fhw.write(aline)
     bed12gmapfile.close()
-    bed12file.close()
-    gtffile.close()
     return outNameNew
 
 

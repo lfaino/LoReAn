@@ -498,7 +498,7 @@ def main():
     # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE            # FILE
     # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
     # ORIGINAL FILE
-
+    print(long_sorted_bam, final_evm, args.verbose, consensus_wd)
     mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_evm, args.verbose, consensus_wd)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("\t###GFFREAD\t" + now + "\t###\n"))

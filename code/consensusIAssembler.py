@@ -102,7 +102,7 @@ def fasta2Dict(fasta_filename):
     fasta_dict = {}
     for key, seq2 in list(fasta_dict2.items()):
         seq = str(seq2.seq).replace("N", "")
-        fasta_dict[key] = seq
+        fasta_dict[key.split(":")[0]] = seq
         del fasta_dict2[key]
     fasta_file.close()
     return fasta_dict
