@@ -13,6 +13,7 @@ import random
 import shutil
 import string
 import sys
+import test as test
 import time
 from queue import Queue
 from threading import Thread
@@ -364,7 +365,7 @@ def main():
             merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     else:
         now = datetime.datetime.now().strftime(fmtdate)
-        if not args.keep_tmp or not args.verbose:
+        if args.keep_tmp != True or args.verbose != True:
             shutil.rmtree(wd)
         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t" + now + "\t#####\n")
     # Prepare EVM input files
@@ -436,7 +437,7 @@ def main():
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
                 now = datetime.datetime.now().strftime(fmtdate)
-                if not args.keep_tmp or not args.verbose:
+                if args.keep_tmp != True or args.verbose != True:
                     shutil.rmtree(wd)
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
@@ -467,7 +468,7 @@ def main():
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
             now = datetime.datetime.now().strftime(fmtdate)
-            if not args.keep_tmp or not args.verbose:
+            if args.keep_tmp != True or args.verbose!= True :
                 shutil.rmtree(wd)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
     else:
@@ -482,9 +483,12 @@ def main():
 
     if not long_sorted_bam:
         #print("line 430")
-        long_fasta, stranded_value = mseq.filterLongReads(long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
+        long_fasta, stranded_value_new = mseq.filterLongReads(long_reads, args.assembly_overlap_length, args.max_long_read, gmap_wd,
                                           adapter_value, threads_use, args.adapter_match_score, ref_rename,
                                               args.max_intron_length, args.verbose, stranded_value)
+        if stranded_value != stranded_value_new:
+            stranded_value = stranded_value_new
+
         if args.minimap2:
             long_sam = mapping.minimap(ref_rename, long_fasta, threads_use, args.max_intron_length, gmap_wd, args.verbose)
         else:
@@ -498,7 +502,6 @@ def main():
     # HERE WE MERGE THE GMAP OUTPUT WITH THE EVM OUTPUT TO HAVE ONE            # FILE
     # HERE WE CHECK IF WE HAVE THE PASA UPDATED FILE OR THE EVM
     # ORIGINAL FILE
-    print(long_sorted_bam, final_evm, args.verbose, consensus_wd)
     mergedmap_gff3 = logistic.catTwoBeds(long_sorted_bam, final_evm, args.verbose, consensus_wd)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("\t###GFFREAD\t" + now + "\t###\n"))
@@ -515,9 +518,7 @@ def main():
     # HERE WE CLUSTER THE SEQUENCES BASED ON THE GENOME POSITION
     cluster_list = consensus.cluster_pipeline(mergedmap_gff3, stranded_value, args.verbose)
     now = datetime.datetime.now().strftime(fmtdate)
-
     sys.stdout.write(("\t#CONSENSUS FOR EACH CLUSTER\t" + now + "\t###\n"))
-
     # HERE WE MAKE CONSENSUS FOR EACH CLUSTER
     tmp_wd = consensus_wd + 'tmp/'
     logistic.check_create_dir(tmp_wd)
@@ -544,16 +545,17 @@ def main():
     # EVM DATA
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("###MAPPING CONSENSUS ASSEMBLIES\t" + now + "\t###\n"))
-
     # HERE WE MAP ALL THE FASTA FILES TO THE GENOME USING GMAP
     consensus_mapped_gff3 = mapping.gmap('cons', ref_rename, tmp_assembly, threads_use, 'gff3_gene',
                                          args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                          args.verbose, Fflag=True)
-
+    print(final_output, consensus_mapped_gff3)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
     merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
-    update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
+    update2_1 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
+    print(update2_1)
+    update2 = test.remove_redudant(ref_rename, update2_1)
     update3 = grs.genename_lorean(update2, args.verbose, exonerate_wd)
     # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
     # PASA TO CORRECT SMALL ERRORS
@@ -588,7 +590,7 @@ def main():
             logistic.copy_file(filename, final_output_dir)
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
-    if not args.keep_tmp or not args.verbose:
+    if args.keep_tmp != True or args.verbose != True:
         shutil.rmtree(wd)
     sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
 

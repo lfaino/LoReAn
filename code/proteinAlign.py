@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 import os
 import re
 import subprocess
@@ -168,7 +169,7 @@ def runExonerate(sequence):
     with open(name_prot, "w") as output_handle:
         SeqIO.write(prot , output_handle, "fasta")
     if len(elem) == 12:
-        if float(elem[10]) < 1e-100:
+        if float(elem[10]) < 1:
             if elem[1].endswith("plus"):
                 begin = (int(elem[8]) * 3) - 100000
                 stop = (int(elem[9]) * 3)  + 100000
@@ -181,8 +182,8 @@ def runExonerate(sequence):
                 else:
                     stop = str(stop)
             else:
-                stop = int(length) - (int(elem[8]) * 3)
-                begin = int(length) -(int(elem[9]) * 3)
+                stop = int(length) - (int(elem[9]) * 3)
+                begin = stop -((int(elem[9]) - int(elem[8]))  * 3)
                 begin = begin - 100000
                 stop = stop  + 100000
                 if begin < 0 :
@@ -209,8 +210,8 @@ def runExonerate(sequence):
             call_bedtools= subprocess.Popen(com_bedtools, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             call_bedtools.communicate()
             com_exo = EXONERATE % (name_prot, outfile_fo_fasta.name)
-            if verbose:
-                sys.stdout.write(com_exo)
+            #if verbose:
+            #    sys.stdout.write(com_exo)
             call_exo = subprocess.Popen(com_exo, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             output_final, err = call_exo.communicate()
             if output_final.decode != "":

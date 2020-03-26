@@ -130,11 +130,8 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """
     scoring = [3, -6, -5, -2]
-
     out_filename = wd + fastq_filename.split("/")[-1] + '.long_reads.filtered.fasta'
-
     filter_count = 0
-
     if not os.path.isfile(out_filename):
         with open(out_filename, "w") as output_handle:
             if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
@@ -155,11 +152,10 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                         SeqIO.write(record, output_handle, "fasta")
     else:
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
-
     if stranded and adapter:
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
-            if os.path.getsize(adapter_aaa) == 0:
+            if not os.path.exists(adapter_aaa) or os.path.getsize(adapter_aaa) == 0:
                 sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
                 stranded_value = False
                 fmtdate = '%H:%M:%S %d-%m'
