@@ -9,7 +9,7 @@ RUN apt-get -y update && apt-get -y install \
 
 WORKDIR /opt/
 
-RUN git clone https://github.com/lfaino/LoReAn.git
+RUN git clone --branch cahngeUsingProt https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
@@ -226,11 +226,66 @@ WORKDIR /usr/local
 
 RUN mkdir nseg && cd nseg && wget --no-check-certificate ftp://ftp.ncbi.nih.gov/pub/seg/nseg/* && make && mv nseg ../bin && mv nmerge ../bin
 
+RUN cp /opt/LoReAn/third_party/software/diamond /usr/local/bin/ && chmod 777 /usr/local/bin/diamond
 
+WORKDIR /opt/LoReAn/
 
-RUN echo "PS1='(dfam-tetools \$(pwd))\\\$ '" >> /etc/bash.bashrc
+RUN cp /opt/LoReAn/code/lorean /usr/local/bin/ && chmod -R 775 /usr/local/bin/ && chmod a+w /opt/
+
+RUN apt-get install -y locales && locale-gen en_US.UTF-8  && update-locale
+
+RUN wget http://hgdownload.soe.ucsc.edu/admin/exe/linux.x86_64/fastqToFa && mv fastqToFa /usr/local/bin && chmod 775 /usr/local/bin/fastqToFa
+
+WORKDIR /data/
+
+RUN mkdir /home/lorean
+
+ENV HOME="/home/lorean"
+
+ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/opt/LoReAn/third_party/software/\
+:/opt/LoReAn/third_party/software/augustus/bin:/opt/LoReAn/third_party/software/LoReAn/:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1:\
+/opt/LoReAn/third_party/software/gm_et_linux_64:/opt/LoReAn/third_party/software/iAssembler-v1.3.2.x64:/opt/LoReAn/third_party/software/PASApipeline/scripts:\
+/opt/LoReAn/third_party/software/PASApipeline/:/opt/LoReAn/third_party/software/Trinity:/opt/LoReAn/third_party/software/AATpackage-r03052011/bin:\
+/opt/LoReAn/third_party/software/LoReAn/third_party:/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils:\
+/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/EvmUtils/misc:/opt/LoReAn/third_party/scripts:/opt/LoReAn/code/:\
+/opt/LoReAn/third_party/software/STAR/bin/Linux_x86_64:/opt/LoReAn/third_party/software/PASApipeline/bin:/opt/LoReAn/third_party/software/genometools/bin:\
+/opt/LoReAn/third_party/software/BRAKER/scripts/:/opt/LoReAn/third_party/software/interproscan-5.27-66.0:\
+/opt/LoReAn/third_party/software/TransDecoder-3.0.1:/opt/LoReAn/third_party/software/TransDecoder-3.0.1/util:/opt/LoReAn/third_party/conf_files:\
+/opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/\
+:/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/\
+:/opt/LoReAn/third_party/software/gffread:/opt/LoReAn/third_party/software/gth-1.7.3-Linux_x86_64-64bit/bin:/opt/LoReAn/third_party/software/cdbfasta/\
+:/opt/RepeatMasker:/opt/RepeatMasker/util:/opt/RepeatModeler:/opt/RepeatModeler/util:/opt/coseg"
+
+#RUN echo "PS1='(dfam-tetools \$(pwd))\\\$ '" >> /etc/bash.bashrc
+#ENV LANG=C
+ENV PATH="/opt/LoReAn/third_party/software/RepeatMasker:/opt/LoReAn/third_party/software/RepeatMasker/util:\
+/opt/LoReAn/third_party/software/cd-hit:/opt/LoReAn/third_party/software/genometools/bin/:/opt/LoReAn/third_party/software/LTR_retriever:/opt/LoReAn/third_party/software/mafft/bin:\
+/opt/LoReAn/third_party/software/NINJA/NINJA:/opt/LoReAn/third_party/software/RECON/bin:/opt/LoReAn/third_party/software/RepeatMasker/:\
+/opt/LoReAn/third_party/software/rmblast/bin/:/opt/LoReAn/third_party/software/RepeatScout/:/opt/LoReAn/third_party/software/RepeatModeler:\
+/opt/LoReAn/third_party/software/RepeatModeler/util:/opt/LoReAn/third_party/software/coseg:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+ENV AUGUSTUS_BIN_PATH="/opt/LoReAn/third_party/software/augustus/bin/"
+
+ENV AUGUSTUS_SCRIPTS_PATH="/opt/LoReAn/third_party/software/augustus/scripts/"
+
+ENV DIAMOND_PATH="/usr/local/bin/"
+
+ENV CDBTOOLS_PATH="/opt/LoReAn/third_party/software/cdbfasta/"
+
+ENV AUGUSTUS_CONFIG_PATH="/opt/LoReAn/third_party/software/augustus/config/"
+
+ENV GENEMARK_PATH="/opt/LoReAn/third_party/software/gm_et_linux_64"
+
+ENV PERL5LIB="/opt/LoReAn/third_party/software/EVidenceModeler-1.1.1/PerlLib/:/opt/LoReAn/third_party/scripts/:/opt/LoReAn/third_party/software/PASApipeline/PerlLib/"
+
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/opt/SW/src/"
+
+ENV SAMTOOLS_PATH="/usr/local/bin/"
+
+ENV BLAST_PATH="/usr/local/bin/"
+
+ENV TMPDIR="/tmp"
+
 ENV LANG=C
-ENV PATH=/opt/LoReAn/third_party/software/RepeatMasker:/opt/LoReAn/third_party/software/RepeatMasker/util:/opt/LoReAn/third_party/software/RepeatModeler:/opt/LoReAn/third_party/software/RepeatModeler/util:/opt/LoReAn/third_party/software/coseg:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-
-
+CMD /usr/local/bin/lorean

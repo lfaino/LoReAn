@@ -13,7 +13,7 @@ import random
 import shutil
 import string
 import sys
-import test as test
+import tempfile
 import time
 from queue import Queue
 from threading import Thread
@@ -51,6 +51,9 @@ def main():
         pasadb = ''.join(random.sample(string.ascii_lowercase, 5))
     else:
         pasadb = args.pasa_db
+    augustus_species = logistic.augustus_species_func()
+    if augustus_species == "" and args.long_reads  == "" and args.short_reads == "":
+        sys.exit("#####PLEASE DEFINE A SPECIES NAME OR ANY KIND OF RNA-SEQ AND RE-RUN\t" + now + "\t#####\n")
     max_threads = multiprocessing.cpu_count()
     gmap_name = args.reference + '_GMAPindex'
     pasa_name = 'assembler-' + pasadb
@@ -65,15 +68,12 @@ def main():
     #else:
     output_dir = os.path.join(root, "LoReAn_" + args.out_dir)
     logistic.check_create_dir(output_dir)
-    #if args.keep_tmp:
-    wd = os.path.join(output_dir, "run/")
-    logistic.check_create_dir(wd)
-    #elif args.verbose:
-    #    wd = os.path.join(output_dir, "run/")
-    #    logistic.check_create_dir(wd)
-    #else:
-    #    temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
-    #    wd = temp_dir.name
+    if args.keep_tmp or args.verbose:
+        wd = os.path.join(output_dir, "run/")
+        logistic.check_create_dir(wd)
+    else:
+        temp_dir = tempfile.TemporaryDirectory(prefix='run_', dir=output_dir, suffix="/", )
+        wd = temp_dir.name
 
     if args.upgrade == "":
         #if not os.path.isfile(home + "/.gm_key"):
@@ -116,8 +116,6 @@ def main():
         external_file = ''
     if args.upgrade == "":
         if args.species == "":
-            if not args.keep_tmp or not args.verbose:
-                shutil.rmtree(wd)
             sys.exit("#####PLEASE DEFINE A SPECIES NAME\t" + now + "\t#####\n")
         else:
             if args.short_reads == '' and long_reads == '':
@@ -162,7 +160,7 @@ def main():
     if long_reads != "" or args.short_reads != "":
         logistic.check_gmap(threads_use, 'samse', args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                         args.verbose)
-    augustus_species, err_augustus = logistic.augustus_species_func(home)
+
     if args.repeat_masked != "":
         sys.stdout.write(('###MASKING THE GENOME STARTED AT:\t' + now + '\t###\n'))
         masked_ref = mseq.maskedgenome(wd_split, ref_link, args.repeat_masked, args.repeat_lenght, args.verbose)
@@ -287,7 +285,7 @@ def main():
                 pasa_gff3 = pasa.pasa_call(pasa_dir, pasadb, ref_rename, trinity_out, args.max_intron_length,
                                            threads_use, args.verbose)
         # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
-                if args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species:
+                if args.species in augustus_species:
                     now = datetime.datetime.now().strftime(fmtdate)
                     sys.stdout.write(('###AUGUSTUS, GENEMARK-ES AND EXONERATE STARTED AT:' + now + '\t###\n'))
                     queue = Queue()
@@ -343,7 +341,7 @@ def main():
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                     merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
-    elif args.species in (err_augustus.decode("utf-8")) or args.species in augustus_species or args.species != "" or args.upgrade != "":
+    elif args.species in augustus_species or args.species != "" or args.upgrade != "":
         #if os.path.isfile(home + "/.gm_key") and args.proteins != "":
         if args.proteins != "":
             now = datetime.datetime.now().strftime(fmtdate)
@@ -365,8 +363,6 @@ def main():
             merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
     else:
         now = datetime.datetime.now().strftime(fmtdate)
-        if args.keep_tmp != True or args.verbose != True:
-            shutil.rmtree(wd)
         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t" + now + "\t#####\n")
     # Prepare EVM input files
     now = datetime.datetime.now().strftime(fmtdate)
@@ -437,8 +433,6 @@ def main():
                 cmdstring = "chmod -R 775 %s" % wd
                 os.system(cmdstring)
                 now = datetime.datetime.now().strftime(fmtdate)
-                if args.keep_tmp != True or args.verbose != True:
-                    shutil.rmtree(wd)
                 sys.exit("#####LOREAN FINISHED WITHOUT USING LONG READS\t" + now + "\t. GOOD BYE.#####\n")
 
             else:
@@ -468,8 +462,6 @@ def main():
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
             now = datetime.datetime.now().strftime(fmtdate)
-            if args.keep_tmp != True or args.verbose!= True :
-                shutil.rmtree(wd)
             sys.exit("##### EVM FINISHED AT:\t" + now + "\t#####\n")
     else:
         final_evm = grs.genename_evm(args.upgrade, args.verbose, evm_output_dir, dict_ref_name, args.upgrade)
@@ -549,14 +541,16 @@ def main():
     consensus_mapped_gff3 = mapping.gmap('cons', ref_rename, tmp_assembly, threads_use, 'gff3_gene',
                                          args.min_intron_length, args.max_intron_length, args.end_exon, gmap_wd,
                                          args.verbose, Fflag=True)
-    print(final_output, consensus_mapped_gff3)
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("###GETTING THE STRAND RIGHT\t" + now + "\t###\n"))
     merged_gff3 = collect.add_EVM(final_output, gmap_wd, consensus_mapped_gff3)
-    update2_1 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
-    print(update2_1)
-    update2 = test.remove_redudant(ref_rename, update2_1)
-    update3 = grs.genename_lorean(update2, args.verbose, exonerate_wd)
+    #print(merged_gff3)
+    update2 = grs.exonerate(ref_rename, merged_gff3, threads_use, exonerate_wd, args.verbose)
+    print(ref_rename, update2)
+    update3_1 = grs.remove_redudant(ref_rename, update2)
+    print(update3_1)
+    update3 = grs.genename_lorean(update3_1, args.verbose, exonerate_wd)
+    print(update3)
     # HERE WE COMBINE TRINITY OUTPUT AND THE ASSEMBLY OUTPUT TO RUN AGAIN
     # PASA TO CORRECT SMALL ERRORS
     sys.stdout.write(("###FIXING GENES NON STARTING WITH MET\t" + now + "\t###\n"))
@@ -590,8 +584,6 @@ def main():
             logistic.copy_file(filename, final_output_dir)
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)
-    if args.keep_tmp != True or args.verbose != True:
-        shutil.rmtree(wd)
     sys.exit("##### LOREAN FINISHED HERE. GOOD BYE. #####\n")
 
 

@@ -2,6 +2,7 @@
 
 import errno
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -165,15 +166,17 @@ def check_gmap(threads_use, type, min_intron_length, max_intron_length, end_exon
             sys.exit("\033[31m ### GMAP DID NOT COMPILE CORRECTLY ### \n")
 
 
-def augustus_species_func(home):
+def augustus_species_func():
     path = os.path.join(os.environ["AUGUSTUS_CONFIG_PATH"], "species/")
     a = os.listdir(path)#with open("/opt/LoReAn/third_party/conf_files/environment", "r") as bashrc:
     augustus_species = [d for d in os.listdir(path)]
     check_species = 'augustus --species=help'
     process = subprocess.Popen(check_species, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out_augustus, err_augustus = process.communicate()
-    return augustus_species, err_augustus
+    err_augustus = re.sub(' +', '', err_augustus.decode())
+    species_list = re.split('\n|\|',err_augustus)
+    return [augustus_species + species_list]
 
 if __name__ == '__main__':
-    a,b,= augustus_species_func("/home/lfaino/")
+    a,b= augustus_species_func()
 #    change_chr_to_seq(*sys.argv[1:], dict_ref_name)

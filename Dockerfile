@@ -1,7 +1,7 @@
 FROM ubuntu:bionic
 
 RUN apt-get clean all && apt-get update && apt-get install -y -q --fix-missing build-essential git wget perl \
-    python3.5 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
+    python3.6 python2.7 software-properties-common python3-pip python-pip debconf-utils sudo python-numpy cmake samtools bedtools zlib1g-dev libc6 aptitude \
     libdbd-mysql-perl libdbi-perl libboost-all-dev libncurses5-dev bowtie default-jre parallel nano bowtie2 exonerate \
     bzip2 liblzma-dev libbz2-dev software-properties-common libboost-iostreams-dev libboost-system-dev libboost-filesystem-dev \
     zlibc gcc-multilib apt-utils zlib1g-dev cmake tcsh g++ iputils-ping jellyfish bowtie bioperl apache2 libcairo2-dev libpango1.0-dev libfile-homedir-perl sqlite3 \
@@ -11,7 +11,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q --fix-missing b
 
 RUN pip install --upgrade pip && pip3 install numpy==1.17.1
 
-RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
+RUN pip3 install biopython==1.73 bcbio-gff==0.6.4 pandas==0.19.1 \
     pybedtools==0.7.8 gffutils==0.9 regex==2019.8.19 pysam==0.15.3 progressbar2==3.43.1 \
     psutil==5.6.3 memory_profiler==0.55.0 pathlib==1.0.1 colorama==0.4.1 simplesam==0.1.3 tqdm==4.35.0 \
     argcomplete==1.10.0 argh==0.26.2 ordereddict==1.1 pycurl==7.43.0 pyfaidx==0.5.5.2 pygobject python-apt \
