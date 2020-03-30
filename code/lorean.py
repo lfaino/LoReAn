@@ -52,7 +52,8 @@ def main():
     else:
         pasadb = args.pasa_db
     augustus_species = logistic.augustus_species_func()
-    if augustus_species == "" and args.long_reads  == "" and args.short_reads == "":
+
+    if not augustus_species.get(args.species) and args.long_reads == "" and args.short_reads == "":
         sys.exit("#####PLEASE DEFINE A SPECIES NAME OR ANY KIND OF RNA-SEQ AND RE-RUN\t" + now + "\t#####\n")
     max_threads = multiprocessing.cpu_count()
     gmap_name = args.reference + '_GMAPindex'
