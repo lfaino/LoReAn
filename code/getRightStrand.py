@@ -161,6 +161,22 @@ def longest(gff_file, fasta, proc, wd, verbose):
     return outputFilenameFinal
 
 
+def trasform_gff(gff_filename, dict_ref_name):
+    out_gff = gff_filename + ".gff3"
+    with open(out_gff, "w") as fhd:
+        with open(gff_filename, "r") as fh:
+            for line in fh:
+                line = line.rstrip()
+                elm = line.split("\t")
+                if not line.startswith("#") and line.startswith("seq"):
+                    if dict_ref_name[elm[0]]:
+                        elm[0] = dict_ref_name[elm[0]]
+                        line = "\t".join(elm)
+                        fhd.write(line + "\n")
+                else:
+                    fhd.write(line+ "\n")
+    return out_gff
+
 def genename_last(gff_filename, prefix, verbose, wd, dict_ref_name, step):
 
     global prefix_name

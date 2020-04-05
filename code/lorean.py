@@ -167,7 +167,11 @@ def main():
         masked_ref = mseq.maskedgenome(wd_split, ref_link, args.repeat_masked, args.repeat_lenght, args.verbose)
     elif args.mask_genome:
         sys.stdout.write(('###RUNNNG REPEATSCOUT AND REPEATMASK TO MASK THE GENOME STARTED AT:\t' + now + '\t###\n'))
-        masked_ref = mseq.repeatsfind(ref_link, wd_split, args.repeat_lenght, threads_use, args.verbose)
+        masked_ref, repeats_families, repeats_gff = mseq.repeatsfind(ref_link, wd_split, threads_use, args.verbose)
+        if os.path.exists(repeats_families):
+            final_files.append(repeats_families)
+        if os.path.exists(repeats_gff):
+            final_files.append(repeats_gff)
     else:
         masked_ref = ref_link
     list_fasta_names, dict_ref_name, ref_rename = multiple.single_fasta(masked_ref, wd_split)
@@ -285,6 +289,7 @@ def main():
             if args.proteins != "":
                 pasa_gff3 = pasa.pasa_call(pasa_dir, pasadb, ref_rename, trinity_out, args.max_intron_length,
                                            threads_use, args.verbose)
+                final_files.append(grs.trasform_gff(pasa_gff3, dict_ref_name))
         # HERE WE PARALLELIZE PROCESSES WHEN MULTIPLE THREADS ARE USED
                 if args.species in augustus_species:
                     now = datetime.datetime.now().strftime(fmtdate)
@@ -301,9 +306,12 @@ def main():
                     queue.join()
                     augustus_file = wd + 'augustus/augustus.gff'
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
+                    final_files.append(grs.trasform_gff(augustus_gff3, dict_ref_name))
                     genemark_file = wd + 'gmes/genemark.gtf'
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
+                    final_files.append(grs.trasform_gff(genemark_gff3, dict_ref_name))
                     merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
+                    final_files.append(grs.trasform_gff(merged_prot_gff3, dict_ref_name))
 
                 elif args.short_reads or long_reads:  # USING PROTEINS AND SHORT READS
                     logistic.check_create_dir(braker_folder)
@@ -323,6 +331,9 @@ def main():
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                     merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
+                    final_files.append(grs.trasform_gff(augustus_gff3, dict_ref_name))
+                    final_files.append(grs.trasform_gff(genemark_gff3, dict_ref_name))
+                    final_files.append(grs.trasform_gff(merged_prot_gff3, dict_ref_name))
 
                 else:  # USING PROTEINS AND LONG READS
                     queue = Queue()
@@ -342,6 +353,9 @@ def main():
                     augustus_gff3 = inputEvm.convert_augustus(augustus_file, wd)
                     genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
                     merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
+                    final_files.append(grs.trasform_gff(augustus_gff3, dict_ref_name))
+                    final_files.append(grs.trasform_gff(genemark_gff3, dict_ref_name))
+                    final_files.append(grs.trasform_gff(merged_prot_gff3, dict_ref_name))
     elif args.species in augustus_species or args.species != "" or args.upgrade != "":
         #if os.path.isfile(home + "/.gm_key") and args.proteins != "":
         if args.proteins != "":
@@ -362,6 +376,9 @@ def main():
             genemark_file = wd + 'gmes/genemark.gtf'
             genemark_gff3 = inputEvm.convert_genemark(genemark_file, wd)
             merged_prot_gff3 = wd + 'exonerate/protein_evidence.gff3'
+            final_files.append(grs.trasform_gff(augustus_gff3, dict_ref_name))
+            final_files.append(grs.trasform_gff(genemark_gff3, dict_ref_name))
+            final_files.append(grs.trasform_gff(merged_prot_gff3, dict_ref_name))
     else:
         now = datetime.datetime.now().strftime(fmtdate)
         sys.exit("#####UNRECOGNIZED SPECIES FOR AUGUSTUS AND NO READS\t" + now + "\t#####\n")
@@ -581,7 +598,7 @@ def main():
     now = datetime.datetime.now().strftime(fmtdate)
     sys.stdout.write(("##PLACING OUTPUT FILES IN OUTPUT DIRECTORY\t" + now + "\t###\n"))
     for filename in final_files:
-        if filename != '':
+        if os.path.exists(filename):
             logistic.copy_file(filename, final_output_dir)
             cmdstring = "chmod -R 775 %s" % wd
             os.system(cmdstring)

@@ -145,7 +145,7 @@ RUN apt-get clean all && apt-get update && apt-get install -y -q --fix-missing b
 
 RUN pip install --upgrade pip && pip3 install numpy==1.17.1
 
-RUN pip3 install biopython==1.68 bcbio-gff==0.6.4 pandas==0.19.1 \
+RUN pip3 install biopython==1.73 bcbio-gff==0.6.4 pandas==0.19.1 \
     pybedtools==0.7.8 gffutils==0.9 regex==2019.8.19 pysam==0.15.3 progressbar2==3.43.1 \
     psutil==5.6.3 memory_profiler==0.55.0 pathlib==1.0.1 colorama==0.4.1 simplesam==0.1.3 tqdm==4.35.0 \
     argcomplete==1.10.0 argh==0.26.2 ordereddict==1.1 pycurl==7.43.0 pyfaidx==0.5.5.2 pygobject python-apt \
@@ -254,11 +254,7 @@ ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/game
 /opt/:/usr/local/RepeatMasker:/usr/local/RepeatScout:/opt/LoReAn/third_party/software/PASApipeline/misc_utilities/\
 :/opt/LoReAn/third_party/software/minimap2/:/opt/LoReAn/third_party/software/SE-MEI/:/opt/LoReAn/third_party/software/salmon-latest_linux_x86_64/bin/\
 :/opt/LoReAn/third_party/software/gffread:/opt/LoReAn/third_party/software/gth-1.7.3-Linux_x86_64-64bit/bin:/opt/LoReAn/third_party/software/cdbfasta/\
-:/opt/RepeatMasker:/opt/RepeatMasker/util:/opt/RepeatModeler:/opt/RepeatModeler/util:/opt/coseg"
-
-#RUN echo "PS1='(dfam-tetools \$(pwd))\\\$ '" >> /etc/bash.bashrc
-#ENV LANG=C
-ENV PATH="/opt/LoReAn/third_party/software/RepeatMasker:/opt/LoReAn/third_party/software/RepeatMasker/util:\
+:/opt/RepeatMasker:/opt/RepeatMasker/util:/opt/RepeatModeler:/opt/RepeatModeler/util:/opt/coseg:/opt/LoReAn/third_party/software/RepeatMasker:/opt/LoReAn/third_party/software/RepeatMasker/util:\
 /opt/LoReAn/third_party/software/cd-hit:/opt/LoReAn/third_party/software/genometools/bin/:/opt/LoReAn/third_party/software/LTR_retriever:/opt/LoReAn/third_party/software/mafft/bin:\
 /opt/LoReAn/third_party/software/NINJA/NINJA:/opt/LoReAn/third_party/software/RECON/bin:/opt/LoReAn/third_party/software/RepeatMasker/:\
 /opt/LoReAn/third_party/software/rmblast/bin/:/opt/LoReAn/third_party/software/RepeatScout/:/opt/LoReAn/third_party/software/RepeatModeler:\
