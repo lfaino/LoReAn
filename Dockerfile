@@ -9,7 +9,7 @@ RUN apt-get -y update && apt-get -y install \
 
 WORKDIR /opt/
 
-RUN git clone --branch cahngeUsingProt https://github.com/lfaino/LoReAn.git
+RUN git clone https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
