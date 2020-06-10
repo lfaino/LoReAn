@@ -28,7 +28,13 @@ BUILD_TABLE  = 'build_lmer_table -sequence  %s -freq %s'
 
 REPEAT_SCOUT =  'RepeatScout -sequence %s -output %s -freq %s'
 
-REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s'
+GFF3_REPEATS = 'rmOutToGFF3.pl %s > %s'
+
+REPEAT_MASKER = 'RepeatMasker %s -e ncbi -lib %s -gff -pa %s -dir %s -nolow'
+
+REPEAT_MODELER = 'RepeatModeler -LTRStruct -pa %s -database %s'
+
+BUILD_DATABASE = 'BuildDatabase -name %s %s'
 
 
 #==========================================================================================================
@@ -130,11 +136,8 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
     Filters out reads longer than length provided and it is used to call the alignment and parse the outputs
     """
     scoring = [3, -6, -5, -2]
-
     out_filename = wd + fastq_filename.split("/")[-1] + '.long_reads.filtered.fasta'
-
     filter_count = 0
-
     if not os.path.isfile(out_filename):
         with open(out_filename, "w") as output_handle:
             if fastq_filename.endswith('fastq') or fastq_filename.endswith('fq'):
@@ -155,11 +158,10 @@ def filterLongReads(fastq_filename, min_length, max_length, wd, adapter, threads
                         SeqIO.write(record, output_handle, "fasta")
     else:
         sys.stdout.write(('Filtered FASTQ existed already: ' + out_filename + ' --- skipping\n'))
-
     if stranded and adapter:
         if not os.path.isfile(adapter):
             adapter_aaa = adapter_find(reference_database, out_filename, threads, max_intron_length, wd, verbose)
-            if os.path.getsize(adapter_aaa) == 0:
+            if not os.path.exists(adapter_aaa) or os.path.getsize(adapter_aaa) == 0:
                 sizes = [rec.id for rec in SeqIO.parse(out_filename, "fasta")]
                 stranded_value = False
                 fmtdate = '%H:%M:%S %d-%m'
@@ -219,48 +221,56 @@ def maskedgenome(wd, ref, gff3, length, verbose):
     return masked
 
 
-def repeatsfind(genome, working_dir, repeat_lenght, threads_use, verbose):
+def repeatsfind(genome, working_dir, threads_use, verbose):
 
     #name_gff = genome.split("/")[-1] + ".out.gff"
-    gff_path = os.path.join(working_dir, genome.split("/")[-1] + ".masked")
 
-    if not os.path.exists(gff_path):
-        sys.stdout.write("###RUNNING REPEATSCOUT TO FIND REPETITIVE ELEMENTS###\n")
-        freq_file = working_dir + genome.split("/")[-1] + ".freq"
+    fasta_path = os.path.join(working_dir, genome.split("/")[-1] + ".masked") #Fv10027.fasta.ModelRepets-families.fa
+    fasta_out = working_dir + genome.split("/")[-1] + "-families.fa"
+    gff_out = working_dir + genome.split("/")[-1] + ".out.gff3"
+    if not os.path.exists(fasta_out):
+        sys.stdout.write("###RUNNING REPEATMODELER TO FIND REPETITIVE ELEMENTS###\n")
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        cmd = BUILD_TABLE % (genome, freq_file)
+        cmd = BUILD_DATABASE % (genome.split("/")[-1], genome)
         if verbose:
             sys.stdout.write(cmd)
         build = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         build.communicate()
 
-        fasta_out = working_dir + genome.split("/")[-1] + ".repeats.fasta"
+
         log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
         err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        cmd = REPEAT_SCOUT % (genome, fasta_out, freq_file)
+        cmd = REPEAT_MODELER % (threads_use, genome.split("/")[-1])
         if verbose:
             sys.stdout.write(cmd)
         scout = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
         scout.communicate()
+        if not os.path.exists(fasta_out):
+            sys.stdout.write("###REPEATMODELER DID NOT FIND ANY FAMILY. REVERTING TO ANNOTATE NON-MASKED GENOME###\n")
+            return (genome,fasta_out,gff_out)
+    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
 
-        log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
-        err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    sys.stdout.write("###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
 
-        sys.stdout.write("###RUNNING REPEATMASKER TO MASK THE GENOME###\n")
+    cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
+    if verbose:
+        sys.stdout.write(cmd)
+    mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+    mask.communicate()
 
-        cmd = REPEAT_MASKER % (genome, fasta_out, str(threads_use), working_dir)
-        if verbose:
-            sys.stdout.write(cmd)
-        mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
-        mask.communicate()
-        #gff_path = os.path.join(working_dir,
-        #gff = [y for x in os.walk(working_dir) for y in glob(os.path.join(x[0], name_gff))][0]
+    log = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    err = tempfile.NamedTemporaryFile(delete=False, mode='w', dir=working_dir)
+    cmd = GFF3_REPEATS % (working_dir + genome.split("/")[-1] + ".out", gff_out)
+    if verbose:
+        sys.stdout.write(cmd)
+    mask = subprocess.Popen(cmd, cwd=working_dir, stdout=log, stderr=err, shell=True)
+    mask.communicate()
 
-    #genome_masked = maskedgenome(working_dir, genome, gff, repeat_lenght, verbose)
-    return gff_path
+    return (fasta_path, fasta_out, gff_out)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ def setting():
     parser.add_argument("-iprs","--interproscan", help="Run interproscan after gene annotation [FALSE]", action='store_true')
     parser.add_argument("-f","--fungus", help="Use this option for fungal species (used in Gene Mark-ES) [FALSE]",
                         action='store_true')
-    parser.add_argument("-k","--keep_tmp", help="Keep temporary files [FALSE]", action='store_true')
+    parser.add_argument("-kt","--keep_tmp", help="Keep temporary files [FALSE]", action='store_true')
     parser.add_argument("-sr","--short_reads", nargs="?", default="", metavar='FASTQ_file',
                         help="Path to short reads FASTQ. If paired end, comma-separated (1-1.fq,1-2.fq). BAM sorted files "
                              "are allowed; the extension of the file should be filename.sorted.bam []")
