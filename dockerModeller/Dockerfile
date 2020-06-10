@@ -13,7 +13,7 @@ RUN git clone --branch cahngeUsingProt https://github.com/lfaino/LoReAn.git
 
 WORKDIR /opt/LoReAn/third_party/software/
 
-RUN wget --no-check-certificate http://github.com/bbuchfink/diamond/releases/download/v0.9.26/diamond-linux64.tar.gz && tar -zxvf diamond-linux64.tar.gz
+RUN wget --no-check-certificate http://github.com/bbuchfink/diamond/releases/download/v0.9.31/diamond-linux64.tar.gz && tar -zxvf diamond-linux64.tar.gz
 
 RUN mv trf /usr/local/bin/ && chmod 775 /usr/local/bin/trf
 
