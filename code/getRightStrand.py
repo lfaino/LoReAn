@@ -491,11 +491,28 @@ def runExonerate(commandList):
     protGff3 = protGff + ".gff3"
     fileFinalGff = open(protGff3, "w")
     gff = fileGff.readlines()
+    gff = fileGff.readlines()
+    flag = 1
     for line in gff:
+        if "Query:" in line and "[revcomp]" in line:
+            flag = flag * -1
+        if "Target:" in line and "[revcomp]" in line:
+            flag = flag * -1
+        if "# --- END OF GFF DUMP ---" in line:
+            break
         if "exonerate:" in line:
             splitLine = line.split("\t")
             # sys.stdout.write (splitLine)
             if (len(splitLine)) > 8:
+                # print (flag)
+                if flag > 0:
+                    splitLine[6] = "+"
+                else:
+                    splitLine[6] = "-"
+        # if "exonerate:" in line:
+        #     splitLine = line.split("\t")
+        #     # sys.stdout.write (splitLine)
+        #     if (len(splitLine)) > 8:
                 chNr = splitLine[0].split(":")
                 start = chNr[1].split("-")[0]
                 elm = splitLine[8].split(";")
