@@ -32,10 +32,10 @@ mv gm_key_64 ~/.gm_key
 In order to run **LoReAn** by **Singularity exec** command, you need to download and unzip these two files:
 
 ```bash
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1ZzbbHXYGLGtScrpC3SmRGT0w2DWBNRaP' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1ZzbbHXYGLGtScrpC3SmRGT0w2DWBNRaP" -O ./config.augustus.tar.gz && rm -rf /tmp/cookies.txt && tar -zxvf config.augustus.tar.gz
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1ZzbbHXYGLGtScrpC3SmRGT0w2DWBNRaP' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1ZzbbHXYGLGtScrpC3SmRGT0w2DWBNRaP" -O ./config.augustus.tar.gz && rm -rf /tmp/cookies.txt && tar -zxvf config.augustus.tar.gz && rm config.augustus.tar.gz
 ```
 ```bash
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1hEhzvyLDRTLPJM_f7pibq9E9X7ral5j0' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1hEhzvyLDRTLPJM_f7pibq9E9X7ral5j0" -O ./RepeatMasker.Libraries.tar.gz && rm -rf /tmp/cookies.txt && tar -zxvf RepeatMasker.Libraries.tar.gz
+wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt --keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1hEhzvyLDRTLPJM_f7pibq9E9X7ral5j0' -O- | sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1hEhzvyLDRTLPJM_f7pibq9E9X7ral5j0" -O ./RepeatMasker.Libraries.tar.gz && rm -rf /tmp/cookies.txt && tar -zxvf RepeatMasker.Libraries.tar.gz && rm RepeatMasker.Libraries.tar.gz
 ```    
 
 The firts file is the configuration folder from Augustus software (see below <PATH_TO_AUGUSTUS_CONF_FOLDER>) while the 
